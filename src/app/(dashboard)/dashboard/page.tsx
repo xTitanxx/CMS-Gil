@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -28,6 +28,10 @@ export default async function DashboardPage() {
         take: 3,
       }),
     ]);
+
+  type RecentJob = (typeof recentJobs)[0];
+  type RecentPost = (typeof recentPosts)[0];
+  type Publish = RecentPost["publishes"][0];
 
   const stats = [
     { label: "Total Posts", value: totalPosts },
@@ -61,7 +65,7 @@ export default async function DashboardPage() {
             Recent Imports
           </h2>
           <div className="space-y-2">
-            {recentJobs.map((job: (typeof recentJobs)[0]) => (
+            {recentJobs.map((job: RecentJob) => (
               <div
                 key={job.id}
                 className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
@@ -90,7 +94,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recentPosts.map((post: (typeof recentPosts)[0]) => (
+          {recentPosts.map((post: RecentPost) => (
             <Link key={post.id} href={`/posts/${post.id}`}>
               <Card className="h-full cursor-pointer transition-shadow hover:shadow-md">
                 <CardContent className="pt-4">
@@ -105,7 +109,7 @@ export default async function DashboardPage() {
                   )}
                   {post.publishes.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1">
-                      {post.publishes.slice(0, 3).map((p: (typeof post.publishes)[0]) => (
+                      {post.publishes.slice(0, 3).map((p: Publish) => (
                         <Badge
                           key={p.platform}
                           variant={

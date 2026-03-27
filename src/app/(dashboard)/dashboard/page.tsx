@@ -61,7 +61,7 @@ export default async function DashboardPage() {
             Recent Imports
           </h2>
           <div className="space-y-2">
-            {recentJobs.map((job) => (
+            {recentJobs.map((job: (typeof recentJobs)[0]) => (
               <div
                 key={job.id}
                 className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3"
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recentPosts.map((post) => (
+          {recentPosts.map((post: (typeof recentPosts)[0]) => (
             <Link key={post.id} href={`/posts/${post.id}`}>
               <Card className="h-full cursor-pointer transition-shadow hover:shadow-md">
                 <CardContent className="pt-4">
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
                   )}
                   {post.publishes.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1">
-                      {post.publishes.slice(0, 3).map((p) => (
+                      {post.publishes.slice(0, 3).map((p: (typeof post.publishes)[0]) => (
                         <Badge
                           key={p.platform}
                           variant={

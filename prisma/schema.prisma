@@ -1,0 +1,216 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth (NextAuth.js required tables) ─────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String?
+  email          String?         @unique
+  emailVerified  DateTime?
+  image          String?
+  accounts       Account[]
+  sessions       Session[]
+  posts          Post[]
+  importJobs     ImportJob[]
+  platformTokens PlatformToken[]
+  driveSync      DriveSync?
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Core Content ────────────────────────────────────────────────────────────
+
+model Post {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  body         String
+  bodyHtml     String?
+
+  source       PostSource    @default(MANUAL)
+  sourceId     String?
+
+  originalDate DateTime
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  media        Media[]
+  publishes    PublishRecord[]
+
+  @@index([userId, originalDate])
+  @@index([sourceId])
+}
+
+enum PostSource {
+  FACEBOOK
+  MANUAL
+}
+
+model Media {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  storageKey  String
+  originalUri String?
+  mimeType    String
+  width       Int?
+  height      Int?
+  sizeBytes   Int?
+  altText     String?
+
+  createdAt   DateTime @default(now())
+}
+
+// ─── Social Platform Tokens ──────────────────────────────────────────────────
+
+model PlatformToken {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform         Platform
+
+  accessToken      String
+  refreshToken     String?
+  expiresAt        DateTime?
+
+  platformUserId   String?
+  platformUsername String?
+  scopes           String?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, platform])
+}
+
+enum Platform {
+  INSTAGRAM
+  LINKEDIN
+  YOUTUBE
+  TIKTOK
+}
+
+// ─── Publishing ──────────────────────────────────────────────────────────────
+
+model PublishRecord {
+  id             String        @id @default(cuid())
+  postId         String
+  post           Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  platform       Platform
+  status         PublishStatus @default(PENDING)
+
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+
+  platformPostId String?
+  platformUrl    String?
+  errorMessage   String?
+  retryCount     Int           @default(0)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([postId, platform])
+}
+
+enum PublishStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+// ─── Import Jobs ─────────────────────────────────────────────────────────────
+
+model ImportJob {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  source        ImportSource @default(UPLOAD)
+  filename      String
+  status        ImportStatus @default(PENDING)
+
+  totalPosts    Int          @default(0)
+  importedPosts Int          @default(0)
+  skippedPosts  Int          @default(0)
+  errorLog      String?
+
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+}
+
+enum ImportSource {
+  UPLOAD
+  GOOGLE_DRIVE
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Google Drive Sync ───────────────────────────────────────────────────────
+
+model DriveSync {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  folderId     String
+  folderName   String
+  enabled      Boolean   @default(true)
+  lastSyncedAt DateTime?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}

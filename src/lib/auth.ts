@@ -46,6 +46,7 @@ if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers,
+  trustHost: true,
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;

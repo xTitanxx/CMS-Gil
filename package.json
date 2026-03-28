@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",
-    "build": "prisma migrate deploy && next build",
+    "build": "node -e \"process.env.DATABASE_URL && require('child_process').execSync('prisma migrate deploy', {stdio:'inherit'})\" && next build",
     "start": "next start",
     "lint": "eslint"
   },

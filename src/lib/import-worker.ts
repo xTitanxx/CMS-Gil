@@ -1,19 +1,21 @@
 import { prisma } from "@/lib/prisma";
-import { parseFacebookExport, guessMimeType } from "@/lib/facebook-parser";
+import { parseFacebookFile, guessMimeType, ParsedPost } from "@/lib/facebook-parser";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { ImportSource } from "@prisma/client";
 
 interface ImportOptions {
   jobId: string;
   userId: string;
-  jsonContent: string;
+  // Either provide raw JSON string, or pre-parsed posts (e.g. merged from multiple files)
+  jsonContent?: string;
+  parsedPosts?: ParsedPost[];
   // Map of relative URI → Buffer (from ZIP extraction or Drive download)
   mediaFiles?: Map<string, Buffer>;
   source?: ImportSource;
 }
 
 export async function runImportJob(opts: ImportOptions): Promise<void> {
-  const { jobId, userId, jsonContent, mediaFiles = new Map(), source = "UPLOAD" } = opts;
+  const { jobId, userId, jsonContent, parsedPosts: preParsedPosts, mediaFiles = new Map(), source = "UPLOAD" } = opts;
 
   await prisma.importJob.update({
     where: { id: jobId },
@@ -23,14 +25,21 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
   const errors: string[] = [];
 
   try {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(jsonContent);
-    } catch {
-      throw new Error("Invalid JSON file");
-    }
+    let posts: ParsedPost[];
 
-    const posts = parseFacebookExport(raw);
+    if (preParsedPosts && preParsedPosts.length > 0) {
+      posts = preParsedPosts;
+    } else if (jsonContent) {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(jsonContent);
+      } catch {
+        throw new Error("Invalid JSON file");
+      }
+      posts = parseFacebookFile(raw);
+    } else {
+      throw new Error("No content provided to import");
+    }
 
     await prisma.importJob.update({
       where: { id: jobId },
@@ -42,7 +51,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
 
     for (const parsed of posts) {
       try {
-        // Skip duplicates by sourceId
         const existing = await prisma.post.findFirst({
           where: { userId, sourceId: parsed.sourceId },
         });
@@ -51,7 +59,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           continue;
         }
 
-        // Create the post
         const post = await prisma.post.create({
           data: {
             userId,
@@ -62,7 +69,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           },
         });
 
-        // Upload media files
         for (const uri of parsed.mediaUris) {
           try {
             const normalizedUri = uri.replace(/^\/+/, "");
@@ -91,7 +97,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
 
         imported++;
 
-        // Update progress every 10 posts
         if (imported % 10 === 0) {
           await prisma.importJob.update({
             where: { id: jobId },

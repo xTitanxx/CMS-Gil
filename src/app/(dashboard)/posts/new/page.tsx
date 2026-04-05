@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { upload } from "@vercel/blob/client";
@@ -40,6 +40,15 @@ export default function NewPostPage() {
   const [bodyError, setBodyError] = useState("");
   const [date, setDate] = useState(() => toDatetimeLocal(new Date()));
   const [files, setFiles] = useState<SelectedFile[]>([]);
+
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => {
+        if (f.preview) URL.revokeObjectURL(f.preview);
+      });
+    };
+  }, [files]);
+
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +158,8 @@ export default function NewPostPage() {
         setError(
           `${failedCount.value} file${failedCount.value === 1 ? "" : "s"} failed to upload. The post was still created.`
         );
+        setSubmitting(false);
+        return;
       }
     }
 

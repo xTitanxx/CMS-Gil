@@ -76,11 +76,14 @@ model Post {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  tags         String[]      @default([])
+
   media        Media[]
   publishes    PublishRecord[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
+  @@index([tags], type: Gin)
 }
 
 enum PostSource {

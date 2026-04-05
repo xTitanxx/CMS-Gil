@@ -121,54 +121,59 @@ export default function NewPostPage() {
     setSubmitting(true);
     setError(null);
 
-    // Phase 1: Create the post
-    const postRes = await fetch("/api/posts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: body.trim(),
-        originalDate: new Date(date).toISOString(),
-      }),
-    });
+    try {
+      // Phase 1: Create the post
+      const postRes = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: body.trim(),
+          originalDate: new Date(date).toISOString(),
+        }),
+      });
 
-    if (!postRes.ok) {
-      setError("Failed to create post. Please try again.");
-      setSubmitting(false);
-      return;
-    }
-
-    const post = await postRes.json();
-    const postId: string = post.id;
-
-    // Phase 2: Upload media files
-    if (files.length > 0) {
-      let completed = 0;
-      const failedCount = { value: 0 };
-      setProgress(`Uploading media (0/${files.length})...`);
-
-      await Promise.all(
-        files.map(async (selected) => {
-          try {
-            await uploadMediaFile(postId, selected);
-          } catch {
-            failedCount.value++;
-          } finally {
-            completed++;
-            setProgress(`Uploading media (${completed}/${files.length})...`);
-          }
-        })
-      );
-
-      if (failedCount.value > 0) {
-        setError(
-          `${failedCount.value} file${failedCount.value === 1 ? "" : "s"} failed to upload. The post was still created.`
-        );
+      if (!postRes.ok) {
+        setError("Failed to create post. Please try again.");
         setSubmitting(false);
         return;
       }
-    }
 
-    router.push(`/posts/${postId}`);
+      const post = await postRes.json();
+      const postId: string = post.id;
+
+      // Phase 2: Upload media files
+      if (files.length > 0) {
+        let completed = 0;
+        const failedCount = { value: 0 };
+        setProgress(`Uploading media (0/${files.length})...`);
+
+        await Promise.all(
+          files.map(async (selected) => {
+            try {
+              await uploadMediaFile(postId, selected);
+            } catch {
+              failedCount.value++;
+            } finally {
+              completed++;
+              setProgress(`Uploading media (${completed}/${files.length})...`);
+            }
+          })
+        );
+
+        if (failedCount.value > 0) {
+          setError(
+            `${failedCount.value} file${failedCount.value === 1 ? "" : "s"} failed to upload. The post was still created.`
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      router.push(`/posts/${postId}`);
+    } catch {
+      setError("An unexpected error occurred. Please try again.");
+      setSubmitting(false);
+    }
   }
 
   return (

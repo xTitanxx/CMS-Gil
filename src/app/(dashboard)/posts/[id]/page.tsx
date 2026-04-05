@@ -1,93 +1,58 @@
-"use client";
-
-import { use, useEffect, useState } from "react";
+import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { PublishPanel } from "@/components/posts/PublishPanel";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { getSignedDownloadUrl } from "@/lib/storage";
+import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
 
-interface Media {
-  id: string;
-  storageKey: string;
-  mimeType: string;
-  url: string | null;
-}
-
-interface PublishRecord {
-  id: string;
-  platform: string;
-  status: string;
-  platformUrl: string | null;
-  scheduledAt: string | null;
-  publishedAt: string | null;
-  errorMessage: string | null;
-}
-
-interface Post {
-  id: string;
-  body: string;
-  source: string;
-  originalDate: string;
-  media: Media[];
-  publishes: PublishRecord[];
-}
-
-export default function PostDetailPage({
+export default async function PostDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
-  const [post, setPost] = useState<Post | null>(null);
-  const [loading, setLoading] = useState(true);
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
 
-  const loadPost = async () => {
-    const res = await fetch(`/api/posts/${id}`);
-    if (res.ok) setPost(await res.json());
-    setLoading(false);
-  };
+  const { id } = await params;
 
-  useEffect(() => {
-    loadPost();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  const post = await prisma.post.findFirst({
+    where: { id, userId: session.user.id },
+    include: {
+      media: true,
+      publishes: { orderBy: { createdAt: "desc" } },
+    },
+  });
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
-        <div className="h-40 animate-pulse rounded-xl bg-gray-200" />
-      </div>
-    );
-  }
+  if (!post) notFound();
 
-  if (!post) {
-    return (
-      <div className="text-center py-20">
-        <p className="text-gray-500">Post not found.</p>
-        <Link href="/posts" className="mt-2 block text-sm text-blue-600">
-          Back to posts
-        </Link>
-      </div>
-    );
-  }
+  const mediaWithUrls = await Promise.all(
+    post.media.map(async (m) => ({
+      ...m,
+      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
+    }))
+  );
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center gap-3">
-        <Link href="/posts">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-        </Link>
-        <Badge variant="outline">{post.source}</Badge>
-        <span className="text-sm text-gray-500">
-          {format(new Date(post.originalDate), "MMMM d, yyyy · h:mm a")}
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/posts">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+          <Badge variant="outline">{post.source}</Badge>
+          <span className="text-sm text-gray-500">
+            {format(new Date(post.originalDate), "MMMM d, yyyy · h:mm a")}
+          </span>
+        </div>
+        <DeleteButton postId={id} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -102,17 +67,35 @@ export default function PostDetailPage({
             </CardContent>
           </Card>
 
+          {/* Tags */}
+          {post.tags.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Tags</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {post.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Media */}
-          {post.media.length > 0 && (
+          {mediaWithUrls.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  Media ({post.media.length})
+                  Media ({mediaWithUrls.length})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {post.media.map((m) =>
+                  {mediaWithUrls.map((m) =>
                     m.url ? (
                       m.mimeType.startsWith("video") ? (
                         // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -202,7 +185,7 @@ export default function PostDetailPage({
 
         {/* Publish Panel */}
         <div>
-          <PublishPanel postId={id} onPublished={loadPost} />
+          <PublishPanelWithRefresh postId={id} />
         </div>
       </div>
     </div>

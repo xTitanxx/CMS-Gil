@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { upload } from "@vercel/blob/client";
@@ -41,13 +41,18 @@ export default function NewPostPage() {
   const [date, setDate] = useState(() => toDatetimeLocal(new Date()));
   const [files, setFiles] = useState<SelectedFile[]>([]);
 
+  const filesRef = useRef(files);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   useEffect(() => {
     return () => {
-      files.forEach((f) => {
+      filesRef.current.forEach((f) => {
         if (f.preview) URL.revokeObjectURL(f.preview);
       });
     };
-  }, [files]);
+  }, []); // runs only on unmount
 
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);

@@ -40,7 +40,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
 
   const errors: string[] = [];
   const throttle = createSemaphore(5);
-  const tagPromises: Promise<void>[] = [];
+  const tagPromises: Promise<void | string[]>[] = [];
 
   try {
     let raw: unknown;

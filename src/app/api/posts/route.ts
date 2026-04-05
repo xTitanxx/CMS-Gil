@@ -19,7 +19,14 @@ export async function GET(req: NextRequest) {
 
   const where = {
     userId: session.user.id,
-    ...(search ? { body: { contains: search, mode: "insensitive" as const } } : {}),
+    ...(search
+      ? {
+          OR: [
+            { body: { contains: search, mode: "insensitive" as const } },
+            { tags: { has: search.toLowerCase() } },
+          ],
+        }
+      : {}),
     ...(from || to
       ? {
           originalDate: {
@@ -51,7 +58,7 @@ export async function GET(req: NextRequest) {
     posts.map(async (post) => {
       const firstMedia = post.media[0];
       const thumbUrl = firstMedia
-        ? await getSignedDownloadUrl(firstMedia.storageKey, 3600).catch(() => null)
+        ? await getSignedDownloadUrl(firstMedia.storageKey, 3600, firstMedia.mimeType).catch(() => null)
         : null;
       return { ...post, thumbUrl };
     })

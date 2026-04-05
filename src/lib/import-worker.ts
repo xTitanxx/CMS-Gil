@@ -2,6 +2,24 @@ import { prisma } from "@/lib/prisma";
 import { parseFacebookExport, guessMimeType } from "@/lib/facebook-parser";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { ImportSource } from "@prisma/client";
+import { analyzePost } from "@/lib/analyze-post";
+
+function createSemaphore(limit: number) {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  return async function run<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= limit) {
+      await new Promise<void>((resolve) => queue.push(resolve));
+    }
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      queue.shift()?.();
+    }
+  };
+}
 
 interface ImportOptions {
   jobId: string;
@@ -21,6 +39,8 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
   });
 
   const errors: string[] = [];
+  const throttle = createSemaphore(5);
+  const tagPromises: Promise<void>[] = [];
 
   try {
     let raw: unknown;
@@ -66,7 +86,11 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
         for (const uri of parsed.mediaUris) {
           try {
             const normalizedUri = uri.replace(/^\/+/, "");
-            const fileBuffer = mediaFiles.get(normalizedUri) ?? mediaFiles.get(uri);
+            const basename = uri.split("/").pop() ?? uri;
+            const fileBuffer =
+              mediaFiles.get(normalizedUri) ??
+              mediaFiles.get(uri) ??
+              mediaFiles.get(basename);
             if (!fileBuffer) continue;
 
             const filename = uri.split("/").pop() ?? "media";
@@ -91,18 +115,23 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
 
         imported++;
 
-        // Update progress every 10 posts
-        if (imported % 10 === 0) {
-          await prisma.importJob.update({
-            where: { id: jobId },
-            data: { importedPosts: imported, skippedPosts: skipped },
-          });
-        }
+        // Fire-and-forget tagging — does not block import progress
+        tagPromises.push(
+          throttle(() => analyzePost(post.id).catch(() => {}))
+        );
+
+        // Update progress every post so the UI counter stays live
+        await prisma.importJob.update({
+          where: { id: jobId },
+          data: { importedPosts: imported, skippedPosts: skipped },
+        });
       } catch (postErr) {
         errors.push(`Post error ${parsed.sourceId}: ${String(postErr)}`);
         skipped++;
       }
     }
+
+    await Promise.allSettled(tagPromises);
 
     await prisma.importJob.update({
       where: { id: jobId },

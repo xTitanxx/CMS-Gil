@@ -26,7 +26,7 @@ export async function GET(
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       ...m,
-      url: await getSignedDownloadUrl(m.storageKey, 3600).catch(() => null),
+      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
     }))
   );
 
@@ -80,7 +80,7 @@ export async function DELETE(
 
   // Delete media from storage
   for (const m of post.media) {
-    await deleteObject(m.storageKey).catch(() => {});
+    await deleteObject(m.storageKey, m.mimeType).catch(() => {});
   }
 
   await prisma.post.delete({ where: { id } });

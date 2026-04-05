@@ -1,42 +1,162 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useDropzone } from "react-dropzone";
+import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X, Film, Upload } from "lucide-react";
 import Link from "next/link";
+
+const ACCEPTED_MIME_TYPES = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/gif": [".gif"],
+  "image/webp": [".webp"],
+  "image/heic": [".heic"],
+  "image/heif": [".heif"],
+  "video/mp4": [".mp4"],
+  "video/quicktime": [".mov"],
+};
+
+const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
+
+interface SelectedFile {
+  file: File;
+  preview: string | null; // object URL for images, null for videos
+}
+
+function toDatetimeLocal(d: Date): string {
+  // Produces "YYYY-MM-DDTHH:mm" in local time for datetime-local input
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function NewPostPage() {
   const router = useRouter();
-  const [body, setBody] = useState("");
-  const [originalDate, setOriginalDate] = useState(
-    new Date().toISOString().slice(0, 16)
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const save = async () => {
-    if (!body.trim()) return;
-    setLoading(true);
-    setError("");
-    const res = await fetch("/api/posts", {
+  const [body, setBody] = useState("");
+  const [bodyError, setBodyError] = useState("");
+  const [date, setDate] = useState(() => toDatetimeLocal(new Date()));
+  const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onDrop = useCallback((accepted: File[]) => {
+    const next: SelectedFile[] = accepted.map((file) => ({
+      file,
+      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    }));
+    setFiles((prev) => [...prev, ...next]);
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_MIME_TYPES,
+    multiple: true,
+  });
+
+  function removeFile(index: number) {
+    setFiles((prev) => {
+      const copy = [...prev];
+      const removed = copy.splice(index, 1)[0];
+      if (removed.preview) URL.revokeObjectURL(removed.preview);
+      return copy;
+    });
+  }
+
+  async function uploadMediaFile(postId: string, selected: SelectedFile): Promise<void> {
+    const { file } = selected;
+
+    if (file.size < DIRECT_UPLOAD_LIMIT) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/posts/${postId}/media`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } else {
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob",
+      });
+      const res = await fetch(`/api/posts/${postId}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          filename: file.name,
+          mimeType: file.type,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!body.trim()) {
+      setBodyError("Post content is required.");
+      return;
+    }
+    setBodyError("");
+    setSubmitting(true);
+    setError(null);
+
+    // Phase 1: Create the post
+    const postRes = await fetch("/api/posts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: body, originalDate }),
+      body: JSON.stringify({
+        text: body.trim(),
+        originalDate: new Date(date).toISOString(),
+      }),
     });
-    if (res.ok) {
-      const post = await res.json();
-      router.push(`/posts/${post.id}`);
-    } else {
-      const data = await res.json();
-      setError(data.error ?? "Failed to create post");
-      setLoading(false);
+
+    if (!postRes.ok) {
+      setError("Failed to create post. Please try again.");
+      setSubmitting(false);
+      return;
     }
-  };
+
+    const post = await postRes.json();
+    const postId: string = post.id;
+
+    // Phase 2: Upload media files
+    if (files.length > 0) {
+      let completed = 0;
+      const failedCount = { value: 0 };
+      setProgress(`Uploading media (0/${files.length})...`);
+
+      await Promise.all(
+        files.map(async (selected) => {
+          try {
+            await uploadMediaFile(postId, selected);
+          } catch {
+            failedCount.value++;
+          } finally {
+            completed++;
+            setProgress(`Uploading media (${completed}/${files.length})...`);
+          }
+        })
+      );
+
+      if (failedCount.value > 0) {
+        setError(
+          `${failedCount.value} file${failedCount.value === 1 ? "" : "s"} failed to upload. The post was still created.`
+        );
+      }
+    }
+
+    router.push(`/posts/${postId}`);
+  }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-3">
         <Link href="/posts">
           <Button variant="ghost" size="sm">
@@ -47,44 +167,121 @@ export default function NewPostPage() {
         <h1 className="text-2xl font-bold text-gray-900">New Post</h1>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Compose</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Post date
-            </label>
-            <input
-              type="datetime-local"
-              value={originalDate}
-              onChange={(e) => setOriginalDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Content
-            </label>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Content */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Content</CardTitle>
+          </CardHeader>
+          <CardContent>
             <textarea
-              rows={8}
               value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your post..."
+              onChange={(e) => {
+                setBody(e.target.value);
+                setBodyError("");
+              }}
+              placeholder="What's on your mind?"
+              rows={5}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
             />
-            <p className="mt-1 text-xs text-gray-400">{body.length} characters</p>
-          </div>
+            {bodyError && (
+              <p className="mt-1 text-xs text-red-600">{bodyError}</p>
+            )}
+          </CardContent>
+        </Card>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+        {/* Media */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Media</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              {...getRootProps()}
+              className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 text-center transition-colors ${
+                isDragActive
+                  ? "border-blue-400 bg-blue-50"
+                  : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+              }`}
+            >
+              <input {...getInputProps()} />
+              <Upload className="h-6 w-6 text-gray-400 mb-2" />
+              <p className="text-sm text-gray-500">
+                {isDragActive ? "Drop files here" : "Click or drag files here"}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Images (JPG, PNG, GIF, WebP, HEIC) and videos (MP4, MOV)
+              </p>
+            </div>
 
-          <Button onClick={save} disabled={loading || !body.trim()}>
-            {loading ? "Saving..." : "Save Post"}
+            {files.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {files.map((selected, i) => (
+                  <div
+                    key={i}
+                    className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
+                  >
+                    {selected.preview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={selected.preview}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center p-2">
+                        <Film className="h-6 w-6 text-gray-400" />
+                        <span className="mt-1 text-center text-xs text-gray-500 line-clamp-2">
+                          {selected.file.name}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Date */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Date</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <input
+              type="datetime-local"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </CardContent>
+        </Card>
+
+        {error && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={submitting}>
+            {submitting ? (progress ?? "Creating...") : "Create Post"}
           </Button>
-        </CardContent>
-      </Card>
+          <Link href="/posts">
+            <Button type="button" variant="outline" disabled={submitting}>
+              Cancel
+            </Button>
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

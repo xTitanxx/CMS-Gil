@@ -93,6 +93,11 @@ export async function analyzePost(postId: string): Promise<string[]> {
     }
   }
 
+  if (contentBlocks.length === 0) {
+    await prisma.post.update({ where: { id: postId }, data: { tags: [] } });
+    return [];
+  }
+
   contentBlocks.push({ type: "text", text: PROMPT });
 
   const response = await client.messages.create({

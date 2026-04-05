@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { randomBytes } from "crypto";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY!;
-const REDIRECT_URI = `${process.env.NEXTAUTH_URL}/api/connections/tiktok/callback`;
+const REDIRECT_URI = `${process.env.APP_URL}/api/connections/tiktok/callback`;
 
 export async function GET(req: NextRequest) {
   const session = await auth();

@@ -4,7 +4,7 @@ import { encrypt } from "@/lib/encrypt";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY!;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET!;
-const REDIRECT_URI = `${process.env.NEXTAUTH_URL}/api/connections/tiktok/callback`;
+const REDIRECT_URI = `${process.env.APP_URL}/api/connections/tiktok/callback`;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

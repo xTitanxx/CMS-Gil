@@ -8,6 +8,8 @@ function toDateKey(date: Date): string {
 }
 
 export async function GET(req: NextRequest) {
+  // Dates are treated as UTC day boundaries. Callers should pass the user's
+  // local calendar date (YYYY-MM-DD) — posts near midnight may shift by timezone.
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,6 +23,9 @@ export async function GET(req: NextRequest) {
 
   const startDate = new Date(`${start}T00:00:00.000Z`);
   const endDate = new Date(`${end}T23:59:59.999Z`);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return NextResponse.json({ error: "start and end must be valid YYYY-MM-DD dates" }, { status: 400 });
+  }
   const userId = session.user.id;
 
   const [publishRecords, importedPosts] = await Promise.all([

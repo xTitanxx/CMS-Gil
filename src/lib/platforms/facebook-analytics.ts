@@ -16,6 +16,7 @@ export interface AnalyticsResult {
  * Finds the real Facebook post ID for an imported post by matching timestamp.
  * Facebook export sourceIds are synthetic (fb_{timestamp} or fb_photo_{filename})
  * and do not contain the actual Graph API post ID.
+ * Matches posts whose created_time differs from originalDate by strictly less than 60 seconds.
  */
 export async function discoverFacebookPostId(
   accessToken: string,
@@ -30,7 +31,8 @@ export async function discoverFacebookPostId(
     `${GRAPH_API}/${endpoint}?fields=id,created_time&limit=${PAGE_SIZE}&access_token=${accessToken}`;
 
   for (let page = 0; page < MAX_PAGES && url; page++) {
-    const res = await fetch(url);
+    const res: Response = await fetch(url);
+    if (!res.ok) throw new Error(`Facebook API HTTP ${res.status}`);
     const data = await res.json();
 
     if (data.error) throw new Error(`Facebook API error: ${data.error.message}`);

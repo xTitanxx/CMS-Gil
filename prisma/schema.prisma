@@ -80,6 +80,7 @@ model Post {
 
   media        Media[]
   publishes    PublishRecord[]
+  analytics    PostAnalytics[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -130,6 +131,7 @@ model PlatformToken {
 }
 
 enum Platform {
+  FACEBOOK
   INSTAGRAM
   LINKEDIN
   YOUTUBE
@@ -216,4 +218,26 @@ model DriveSync {
 
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+model PostAnalytics {
+  id             String   @id @default(cuid())
+  postId         String
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  platform       Platform
+
+  platformPostId String?
+  reactions      Int?
+  comments       Int?
+  shares         Int?
+  reach          Int?
+  impressions    Int?
+
+  fetchedAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([postId, platform])
+  @@index([postId])
 }

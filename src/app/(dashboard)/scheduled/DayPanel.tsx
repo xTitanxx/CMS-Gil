@@ -159,9 +159,9 @@ export function DayPanel({ day, entries, onClose, onScheduled }: Props) {
         {entries.length === 0 && mode === "default" && (
           <p className="text-sm text-gray-400">Nothing scheduled for this day.</p>
         )}
-        {entries.map((entry, i) => (
+        {entries.map((entry) => (
           <Link
-            key={i}
+            key={entry.postId}
             href={`/posts/${entry.postId}`}
             className="flex items-start gap-2.5 rounded-lg border border-gray-100 bg-gray-50 p-2 hover:bg-gray-100 transition-colors"
           >

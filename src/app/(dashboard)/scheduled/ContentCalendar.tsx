@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { format } from "date-fns";
+import { useCallback, useEffect, useState } from "react";
+import { addMonths, addWeeks, format, subMonths, subWeeks } from "date-fns";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayPanel } from "./DayPanel";
@@ -36,29 +36,24 @@ export function ContentCalendar() {
     }
   }, [view, cursor]);
 
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
+
   const handleViewChange = (newView: CalendarView) => {
     setView(newView);
   };
 
   const handleNavigate = (direction: "prev" | "next") => {
-    const newCursor = new Date(cursor);
     if (view === "month") {
-      newCursor.setMonth(newCursor.getMonth() + (direction === "next" ? 1 : -1));
+      setCursor(direction === "next" ? addMonths(cursor, 1) : subMonths(cursor, 1));
     } else {
-      newCursor.setDate(newCursor.getDate() + (direction === "next" ? 7 : -7));
+      setCursor(direction === "next" ? addWeeks(cursor, 1) : subWeeks(cursor, 1));
     }
-    setCursor(newCursor);
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Content Calendar</h1>
-        <p className="text-sm text-gray-500">
-          View and manage your scheduled posts
-        </p>
-      </div>
-
       <div className="flex gap-2">
         <button
           onClick={() => handleViewChange("month")}

@@ -5,23 +5,16 @@ import { format } from "date-fns";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayPanel } from "./DayPanel";
+import type { CalendarEntry } from "./types";
 
 type CalendarView = "month" | "week" | "day";
-
-interface CalendarEntry {
-  id: string;
-  postId: string;
-  platform: string;
-  status: string;
-  scheduledAt: string;
-  body: string;
-}
 
 export function ContentCalendar() {
   const [view, setView] = useState<CalendarView>("month");
   const [cursor, setCursor] = useState(new Date());
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -128,8 +121,22 @@ export function ContentCalendar() {
         </div>
       ) : (
         <>
-          {view === "month" && <MonthView entries={entries} cursor={cursor} />}
-          {view === "week" && <WeekView entries={entries} cursor={cursor} />}
+          {view === "month" && (
+            <MonthView
+              entries={entries}
+              cursor={cursor}
+              onDayClick={setSelectedDay}
+              selectedDay={selectedDay}
+            />
+          )}
+          {view === "week" && (
+            <WeekView
+              entries={entries}
+              cursor={cursor}
+              onDayClick={setSelectedDay}
+              selectedDay={selectedDay}
+            />
+          )}
           {view === "day" && <DayPanel entries={entries} cursor={cursor} />}
         </>
       )}

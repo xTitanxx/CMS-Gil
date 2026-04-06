@@ -130,6 +130,8 @@ export async function publishNow(
       case "TIKTOK":
         result = await postToTikTok({ accessToken }, post.body, mediaKeys);
         break;
+      default:
+        throw new Error(`Publishing to ${platform} is not supported`);
     }
 
     await prisma.publishRecord.update({

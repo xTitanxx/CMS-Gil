@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, BarChart2 } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
@@ -10,6 +10,15 @@ import { getSignedDownloadUrl } from "@/lib/storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
 import { PostEditor } from "./PostEditor";
+
+function MetricTile({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="rounded-lg bg-gray-50 px-4 py-3 text-center">
+      <p className="text-xl font-semibold text-gray-900">{value ?? "—"}</p>
+      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+    </div>
+  );
+}
 
 export default async function PostDetailPage({
   params,
@@ -26,6 +35,7 @@ export default async function PostDetailPage({
     include: {
       media: true,
       publishes: { orderBy: { createdAt: "desc" } },
+      analytics: { where: { platform: "FACEBOOK" } },
     },
   });
 
@@ -125,6 +135,44 @@ export default async function PostDetailPage({
               </CardContent>
             </Card>
           )}
+
+          {/* Facebook Analytics */}
+          {post.source === "FACEBOOK" && (() => {
+            const fbAnalytics = post.analytics[0] ?? null;
+            return (
+              <Card>
+                <CardHeader className="flex flex-row items-center gap-2 pb-3">
+                  <BarChart2 className="h-4 w-4 text-blue-600" />
+                  <CardTitle className="text-base">Facebook Analytics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!fbAnalytics ? (
+                    <p className="text-sm text-gray-400">Analytics pending — syncs nightly at 3am</p>
+                  ) : !fbAnalytics.platformPostId ? (
+                    <p className="text-sm text-gray-400">Post not yet matched — syncs nightly at 3am</p>
+                  ) : (
+                    <div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <MetricTile label="Reactions" value={fbAnalytics.reactions} />
+                        <MetricTile label="Comments" value={fbAnalytics.comments} />
+                        <MetricTile label="Shares" value={fbAnalytics.shares} />
+                        {fbAnalytics.reach !== null && (
+                          <MetricTile label="Reach" value={fbAnalytics.reach} />
+                        )}
+                        {fbAnalytics.impressions !== null && (
+                          <MetricTile label="Impressions" value={fbAnalytics.impressions} />
+                        )}
+                      </div>
+                      <p className="mt-3 text-xs text-gray-400">
+                        Last updated:{" "}
+                        {format(new Date(fbAnalytics.fetchedAt), "MMM d, yyyy 'at' h:mm a")}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         {/* Publish Panel */}

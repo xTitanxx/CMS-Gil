@@ -1,140 +1,135 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { addMonths, addWeeks, format, subMonths, subWeeks } from "date-fns";
+import { useState, useEffect, useCallback } from "react";
+import {
+  format,
+  addMonths,
+  subMonths,
+  addWeeks,
+  subWeeks,
+} from "date-fns";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayPanel } from "./DayPanel";
-import { getDateRange } from "./calendar-utils";
+import { getGridDays, getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
-type CalendarView = "month" | "week";
-
 export function ContentCalendar() {
-  const [view, setView] = useState<CalendarView>("month");
-  const [cursor, setCursor] = useState(new Date());
+  const [view, setView] = useState<"month" | "week">("month");
+  const [cursor, setCursor] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
-    try {
-      const { start, end } = getDateRange(view, cursor);
-      const params = new URLSearchParams({
-        start: format(start, "yyyy-MM-dd"),
-        end: format(end, "yyyy-MM-dd"),
-      });
-      const res = await fetch(`/api/calendar?${params}`);
-      if (!res.ok) throw new Error(`Calendar fetch failed: ${res.status}`);
-      const data = await res.json();
-      setEntries(data.entries ?? []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    const { start, end } = getDateRange(view, cursor);
+    const params = new URLSearchParams({
+      start: format(start, "yyyy-MM-dd"),
+      end: format(end, "yyyy-MM-dd"),
+    });
+    const res = await fetch(`/api/calendar?${params}`);
+    const data = await res.json();
+    setEntries(data.entries ?? []);
+    setLoading(false);
   }, [view, cursor]);
 
   useEffect(() => {
     fetchEntries();
   }, [fetchEntries]);
 
-  const handleViewChange = (newView: CalendarView) => {
-    setView(newView);
-  };
+  function navigate(dir: 1 | -1) {
+    setCursor((c) =>
+      view === "month"
+        ? dir === 1 ? addMonths(c, 1) : subMonths(c, 1)
+        : dir === 1 ? addWeeks(c, 1) : subWeeks(c, 1)
+    );
+  }
 
-  const handleNavigate = (direction: "prev" | "next") => {
-    if (view === "month") {
-      setCursor(direction === "next" ? addMonths(cursor, 1) : subMonths(cursor, 1));
-    } else {
-      setCursor(direction === "next" ? addWeeks(cursor, 1) : subWeeks(cursor, 1));
-    }
-  };
+  function periodLabel() {
+    if (view === "month") return format(cursor, "MMMM yyyy");
+    const days = getGridDays("week", cursor);
+    const start = days[0];
+    const end = days[6];
+    return format(start, "MMM d") + "–" + format(end, "d, yyyy");
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex gap-2">
-        <button
-          onClick={() => handleViewChange("month")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            view === "month"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-200 text-gray-900 hover:bg-gray-300"
-          }`}
-        >
-          Month
-        </button>
-        <button
-          onClick={() => handleViewChange("week")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            view === "week"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-200 text-gray-900 hover:bg-gray-300"
-          }`}
-        >
-          Week
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => handleNavigate("prev")}
-          className="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300"
-        >
-          ← Previous
-        </button>
-        <h2 className="text-lg font-semibold text-gray-900">
-          {view === "month" && format(cursor, "MMMM yyyy")}
-          {view === "week" && `Week of ${format(cursor, "MMM d, yyyy")}`}
-        </h2>
-        <button
-          onClick={() => handleNavigate("next")}
-          className="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300"
-        >
-          Next →
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-200" />
-          ))}
-        </div>
-      ) : (
-        <div className="flex gap-0">
-          <div className="flex-1 min-w-0">
-            {view === "month" && (
-              <MonthView
-                entries={entries}
-                cursor={cursor}
-                onDayClick={setSelectedDay}
-                selectedDay={selectedDay}
-              />
-            )}
-            {view === "week" && (
-              <WeekView
-                entries={entries}
-                cursor={cursor}
-                onDayClick={setSelectedDay}
-                selectedDay={selectedDay}
-              />
-            )}
+    <div className="flex h-full gap-0">
+      {/* Calendar area */}
+      <div className="flex-1 min-w-0 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-base font-semibold w-44 text-center">
+              {periodLabel()}
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => navigate(1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-          {selectedDay !== null && (
-            <DayPanel
-              day={selectedDay}
-              entries={entries.filter(
-                (e) => e.date === format(selectedDay, "yyyy-MM-dd")
-              )}
-              onClose={() => setSelectedDay(null)}
-              onScheduled={fetchEntries}
-            />
-          )}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setView("month")}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "month"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Month
+            </button>
+            <button
+              onClick={() => setView("week")}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                view === "week"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Week
+            </button>
+          </div>
         </div>
+
+        {/* Grid */}
+        {loading ? (
+          <div className="h-96 flex items-center justify-center text-gray-400 text-sm">
+            Loading…
+          </div>
+        ) : view === "month" ? (
+          <MonthView
+            cursor={cursor}
+            entries={entries}
+            onDayClick={setSelectedDay}
+            selectedDay={selectedDay}
+          />
+        ) : (
+          <WeekView
+            cursor={cursor}
+            entries={entries}
+            onDayClick={setSelectedDay}
+            selectedDay={selectedDay}
+          />
+        )}
+      </div>
+
+      {/* Day panel */}
+      {selectedDay && (
+        <DayPanel
+          day={selectedDay}
+          entries={entries.filter(
+            (e) => e.date === format(selectedDay, "yyyy-MM-dd")
+          )}
+          onClose={() => setSelectedDay(null)}
+          onScheduled={fetchEntries}
+        />
       )}
     </div>
   );
 }
-

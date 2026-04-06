@@ -22,7 +22,6 @@ const ACCEPTED_MIME_TYPES = {
 
 export interface MediaItem {
   id: string;
-  storageKey: string;
   mimeType: string;
   url: string | null;
 }
@@ -110,44 +109,47 @@ export function PostEditor({
     }
   }
 
+  async function uploadFile(file: File) {
+    try {
+      let newMedia: MediaItem;
+      if (file.size < DIRECT_UPLOAD_LIMIT) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`/api/posts/${postId}/media`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        newMedia = await res.json();
+      } else {
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/blob",
+        });
+        const res = await fetch(`/api/posts/${postId}/media`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            blobUrl: blob.url,
+            filename: file.name,
+            mimeType: file.type,
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        newMedia = await res.json();
+      }
+      setMedia((prev) => [...prev, { ...newMedia, url: null }]);
+    } catch {
+      setMediaError("Failed to upload file. Please try again.");
+    }
+  }
+
   const onDrop = useCallback(
     (accepted: File[]) => {
       setMediaError("");
-      accepted.forEach(async (file) => {
-        try {
-          let newMedia: MediaItem;
-          if (file.size < DIRECT_UPLOAD_LIMIT) {
-            const formData = new FormData();
-            formData.append("file", file);
-            const res = await fetch(`/api/posts/${postId}/media`, {
-              method: "POST",
-              body: formData,
-            });
-            if (!res.ok) throw new Error(await res.text());
-            newMedia = await res.json();
-          } else {
-            const blob = await upload(file.name, file, {
-              access: "public",
-              handleUploadUrl: "/api/blob",
-            });
-            const res = await fetch(`/api/posts/${postId}/media`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                blobUrl: blob.url,
-                filename: file.name,
-                mimeType: file.type,
-              }),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            newMedia = await res.json();
-          }
-          setMedia((prev) => [...prev, { ...newMedia, url: null }]);
-        } catch {
-          setMediaError("Failed to upload file. Please try again.");
-        }
-      });
+      accepted.forEach((file) => void uploadFile(file));
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [postId]
   );
 

@@ -52,6 +52,7 @@ export async function PATCH(
       ...(body.originalDate !== undefined
         ? { originalDate: new Date(body.originalDate) }
         : {}),
+      ...(body.tags !== undefined ? { tags: body.tags } : {}),
     },
   });
 

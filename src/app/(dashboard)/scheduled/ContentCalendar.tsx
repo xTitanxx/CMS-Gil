@@ -137,7 +137,14 @@ export function ContentCalendar() {
               selectedDay={selectedDay}
             />
           )}
-          {view === "day" && <DayPanel entries={entries} cursor={cursor} />}
+          {view === "day" && (
+            <DayPanel
+              day={cursor}
+              entries={entries}
+              onClose={() => handleViewChange("month")}
+              onScheduled={fetchEntries}
+            />
+          )}
         </>
       )}
     </div>

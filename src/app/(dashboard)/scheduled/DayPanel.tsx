@@ -73,22 +73,26 @@ export function DayPanel({ day, entries, onClose, onScheduled }: Props) {
     if (!aiQuery.trim()) return;
     setAiSearching(true);
     setSearchResults([]);
+    try {
+      const searchRes = await fetch("/api/posts/ai-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: aiQuery }),
+      });
+      const { tags, keywords } = await searchRes.json();
 
-    const searchRes = await fetch("/api/posts/ai-search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: aiQuery }),
-    });
-    const { tags, keywords } = await searchRes.json();
+      const params = new URLSearchParams({ limit: "10" });
+      if (tags?.length) params.set("tags", (tags as string[]).join(","));
+      if (keywords?.length) params.set("keywords", (keywords as string[]).join(","));
 
-    const params = new URLSearchParams({ limit: "10" });
-    if (tags?.length) params.set("tags", (tags as string[]).join(","));
-    if (keywords?.length) params.set("keywords", (keywords as string[]).join(","));
-
-    const postsRes = await fetch(`/api/posts?${params}`);
-    const postsData = await postsRes.json();
-    setSearchResults(postsData.posts ?? []);
-    setAiSearching(false);
+      const postsRes = await fetch(`/api/posts?${params}`);
+      const postsData = await postsRes.json();
+      setSearchResults(postsData.posts ?? []);
+    } catch (err) {
+      console.error("AI search failed:", err);
+    } finally {
+      setAiSearching(false);
+    }
   }
 
   function selectPost(post: SearchPost) {
@@ -100,21 +104,30 @@ export function DayPanel({ day, entries, onClose, onScheduled }: Props) {
   async function handleSchedule() {
     if (!selectedPost || !selectedPlatforms.length) return;
     setScheduling(true);
-    await fetch(`/api/posts/${selectedPost.id}/publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        platforms: selectedPlatforms,
-        scheduledAt: day.toISOString(),
-      }),
-    });
-    setScheduling(false);
-    setMode("default");
-    setSelectedPost(null);
-    setSelectedPlatforms([]);
-    setAiQuery("");
-    setSearchResults([]);
-    onScheduled();
+    try {
+      const res = await fetch(`/api/posts/${selectedPost.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platforms: selectedPlatforms,
+          scheduledAt: day.toISOString(),
+        }),
+      });
+      if (!res.ok) {
+        console.error("Scheduling failed:", res.status);
+        return;
+      }
+      setMode("default");
+      setSelectedPost(null);
+      setSelectedPlatforms([]);
+      setAiQuery("");
+      setSearchResults([]);
+      onScheduled();
+    } catch (err) {
+      console.error("Scheduling error:", err);
+    } finally {
+      setScheduling(false);
+    }
   }
 
   function resetToDefault() {

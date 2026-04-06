@@ -5,9 +5,10 @@ import { format } from "date-fns";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayPanel } from "./DayPanel";
+import { getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
-type CalendarView = "month" | "week" | "day";
+type CalendarView = "month" | "week";
 
 export function ContentCalendar() {
   const [view, setView] = useState<CalendarView>("month");
@@ -43,10 +44,8 @@ export function ContentCalendar() {
     const newCursor = new Date(cursor);
     if (view === "month") {
       newCursor.setMonth(newCursor.getMonth() + (direction === "next" ? 1 : -1));
-    } else if (view === "week") {
-      newCursor.setDate(newCursor.getDate() + (direction === "next" ? 7 : -7));
     } else {
-      newCursor.setDate(newCursor.getDate() + (direction === "next" ? 1 : -1));
+      newCursor.setDate(newCursor.getDate() + (direction === "next" ? 7 : -7));
     }
     setCursor(newCursor);
   };
@@ -81,16 +80,6 @@ export function ContentCalendar() {
         >
           Week
         </button>
-        <button
-          onClick={() => handleViewChange("day")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            view === "day"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-200 text-gray-900 hover:bg-gray-300"
-          }`}
-        >
-          Day
-        </button>
       </div>
 
       <div className="flex items-center justify-between">
@@ -103,7 +92,6 @@ export function ContentCalendar() {
         <h2 className="text-lg font-semibold text-gray-900">
           {view === "month" && format(cursor, "MMMM yyyy")}
           {view === "week" && `Week of ${format(cursor, "MMM d, yyyy")}`}
-          {view === "day" && format(cursor, "MMMM d, yyyy")}
         </h2>
         <button
           onClick={() => handleNavigate("next")}
@@ -120,55 +108,38 @@ export function ContentCalendar() {
           ))}
         </div>
       ) : (
-        <>
-          {view === "month" && (
-            <MonthView
-              entries={entries}
-              cursor={cursor}
-              onDayClick={setSelectedDay}
-              selectedDay={selectedDay}
-            />
-          )}
-          {view === "week" && (
-            <WeekView
-              entries={entries}
-              cursor={cursor}
-              onDayClick={setSelectedDay}
-              selectedDay={selectedDay}
-            />
-          )}
-          {view === "day" && (
+        <div className="flex gap-0">
+          <div className="flex-1 min-w-0">
+            {view === "month" && (
+              <MonthView
+                entries={entries}
+                cursor={cursor}
+                onDayClick={setSelectedDay}
+                selectedDay={selectedDay}
+              />
+            )}
+            {view === "week" && (
+              <WeekView
+                entries={entries}
+                cursor={cursor}
+                onDayClick={setSelectedDay}
+                selectedDay={selectedDay}
+              />
+            )}
+          </div>
+          {selectedDay !== null && (
             <DayPanel
-              day={cursor}
-              entries={entries}
-              onClose={() => handleViewChange("month")}
+              day={selectedDay}
+              entries={entries.filter(
+                (e) => e.date === format(selectedDay, "yyyy-MM-dd")
+              )}
+              onClose={() => setSelectedDay(null)}
               onScheduled={fetchEntries}
             />
           )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function getDateRange(
-  view: CalendarView,
-  cursor: Date
-): { start: Date; end: Date } {
-  const start = new Date(cursor);
-  const end = new Date(cursor);
-
-  if (view === "month") {
-    start.setDate(1);
-    end.setMonth(end.getMonth() + 1);
-    end.setDate(0);
-  } else if (view === "week") {
-    const day = start.getDay();
-    start.setDate(start.getDate() - day);
-    end.setDate(start.getDate() + 6);
-  } else {
-    end.setDate(end.getDate() + 1);
-  }
-
-  return { start, end };
-}

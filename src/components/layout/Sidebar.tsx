@@ -10,6 +10,7 @@ import {
   Link2,
   CalendarClock,
   LogOut,
+  CheckSquare,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -19,6 +20,7 @@ const nav = [
   { href: "/import", label: "Import", icon: Upload },
   { href: "/connections", label: "Connections", icon: Link2 },
   { href: "/scheduled", label: "Scheduled", icon: CalendarClock },
+  { href: "/todo", label: "To-Do", icon: CheckSquare },
 ];
 
 export function Sidebar() {

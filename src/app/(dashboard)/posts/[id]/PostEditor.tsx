@@ -1,0 +1,318 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { X, Upload, Film, Check, AlertCircle } from "lucide-react";
+import { useDropzone } from "react-dropzone";
+import { ReanalyzeButton } from "./PostInteractions";
+
+const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
+
+const ACCEPTED_MIME_TYPES = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/gif": [".gif"],
+  "image/webp": [".webp"],
+  "image/heic": [".heic"],
+  "image/heif": [".heif"],
+  "video/mp4": [".mp4"],
+  "video/quicktime": [".mov"],
+};
+
+export interface MediaItem {
+  id: string;
+  storageKey: string;
+  mimeType: string;
+  url: string | null;
+}
+
+interface PostEditorProps {
+  postId: string;
+  initialBody: string;
+  initialOriginalDate: Date;
+  initialTags: string[];
+  initialMedia: MediaItem[];
+}
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+function toDatetimeLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function PostEditor({
+  postId,
+  initialBody,
+  initialOriginalDate,
+  initialTags,
+  initialMedia,
+}: PostEditorProps) {
+  const [body, setBody] = useState(initialBody);
+  const [date, setDate] = useState(() => toDatetimeLocal(new Date(initialOriginalDate)));
+  const [tags, setTags] = useState<string[]>(initialTags);
+  const [media, setMedia] = useState<MediaItem[]>(initialMedia);
+  const [tagInput, setTagInput] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [mediaError, setMediaError] = useState("");
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [body]);
+
+  // Auto-save body, date, tags — skip on initial mount
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const res = await fetch(`/api/posts/${postId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body,
+            originalDate: new Date(date).toISOString(),
+            tags,
+          }),
+        });
+        setSaveStatus(res.ok ? "saved" : "error");
+      } catch {
+        setSaveStatus("error");
+      }
+    }, 800);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [body, date, tags, postId]);
+
+  async function deleteMedia(mediaId: string) {
+    setMediaError("");
+    const res = await fetch(`/api/posts/${postId}/media/${mediaId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setMedia((prev) => prev.filter((m) => m.id !== mediaId));
+    } else {
+      setMediaError("Failed to delete media. Please try again.");
+    }
+  }
+
+  const onDrop = useCallback(
+    (accepted: File[]) => {
+      setMediaError("");
+      accepted.forEach(async (file) => {
+        try {
+          let newMedia: MediaItem;
+          if (file.size < DIRECT_UPLOAD_LIMIT) {
+            const formData = new FormData();
+            formData.append("file", file);
+            const res = await fetch(`/api/posts/${postId}/media`, {
+              method: "POST",
+              body: formData,
+            });
+            if (!res.ok) throw new Error(await res.text());
+            newMedia = await res.json();
+          } else {
+            const blob = await upload(file.name, file, {
+              access: "public",
+              handleUploadUrl: "/api/blob",
+            });
+            const res = await fetch(`/api/posts/${postId}/media`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                blobUrl: blob.url,
+                filename: file.name,
+                mimeType: file.type,
+              }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            newMedia = await res.json();
+          }
+          setMedia((prev) => [...prev, { ...newMedia, url: null }]);
+        } catch {
+          setMediaError("Failed to upload file. Please try again.");
+        }
+      });
+    },
+    [postId]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_MIME_TYPES,
+    multiple: true,
+  });
+
+  function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const trimmed = tagInput.trim().toLowerCase();
+    if (trimmed && !tags.includes(trimmed)) {
+      setTags((prev) => [...prev, trimmed]);
+    }
+    setTagInput("");
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Date */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Date</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <input
+            type="datetime-local"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Content */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Content</CardTitle>
+          <span className="flex items-center gap-1 text-xs text-gray-400">
+            {saveStatus === "saving" && "Saving…"}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="h-3 w-3 text-green-500" />
+                Saved
+              </>
+            )}
+            {saveStatus === "error" && (
+              <>
+                <AlertCircle className="h-3 w-3 text-red-500" />
+                Error saving
+              </>
+            )}
+          </span>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={4}
+            className="w-full resize-none overflow-hidden rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Tags */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Tags</CardTitle>
+          <ReanalyzeButton postId={postId} />
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-700"
+              >
+                {tag}
+                <button
+                  onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                  className="text-gray-400 hover:text-gray-700"
+                  aria-label={`Remove tag ${tag}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              placeholder="Add tag…"
+              className="w-24 rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs focus:border-blue-400 focus:outline-none"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Media */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Media ({media.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {media.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {media.map((m) => (
+                <div key={m.id} className="relative">
+                  {m.url ? (
+                    m.mimeType.startsWith("video") ? (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      <video
+                        src={m.url}
+                        controls
+                        className="rounded-lg w-full"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={m.url}
+                        alt=""
+                        className="rounded-lg w-full object-cover aspect-square"
+                      />
+                    )
+                  ) : (
+                    <div className="flex aspect-square items-center justify-center rounded-lg bg-gray-100">
+                      <Film className="h-6 w-6 text-gray-400" />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => deleteMedia(m.id)}
+                    className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    aria-label="Delete media"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            {...getRootProps()}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-6 text-center transition-colors ${
+              isDragActive
+                ? "border-blue-400 bg-blue-50"
+                : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+            }`}
+          >
+            <input {...getInputProps()} />
+            <Upload className="h-5 w-5 text-gray-400 mb-1" />
+            <p className="text-xs text-gray-500">
+              {isDragActive ? "Drop here" : "Click or drag to add media"}
+            </p>
+          </div>
+
+          {mediaError && (
+            <p className="text-xs text-red-600">{mediaError}</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

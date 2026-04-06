@@ -1,3 +1,6 @@
+// Facebook OAuth — Authorization Code Flow (Personal Profile / Professional Mode)
+// Docs: https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 

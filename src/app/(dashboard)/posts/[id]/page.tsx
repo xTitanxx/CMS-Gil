@@ -1,14 +1,15 @@
 import { notFound, redirect } from "next/navigation";
-import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, ExternalLink } from "lucide-react";
+import { format } from "date-fns";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
+import { PostEditor } from "./PostEditor";
 
 export default async function PostDetailPage({
   params,
@@ -32,7 +33,8 @@ export default async function PostDetailPage({
 
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
-      ...m,
+      id: m.id,
+      mimeType: m.mimeType,
       url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
     }))
   );
@@ -48,78 +50,20 @@ export default async function PostDetailPage({
             </Button>
           </Link>
           <Badge variant="outline">{post.source}</Badge>
-          <span className="text-sm text-gray-500">
-            {format(new Date(post.originalDate), "MMMM d, yyyy · h:mm a")}
-          </span>
         </div>
         <DeleteButton postId={id} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Post content */}
+        {/* Editable post content */}
         <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Content</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap text-sm text-gray-700">{post.body}</p>
-            </CardContent>
-          </Card>
-
-          {/* Tags */}
-          {post.tags.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Tags</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {post.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Media */}
-          {mediaWithUrls.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Media ({mediaWithUrls.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {mediaWithUrls.map((m) =>
-                    m.url ? (
-                      m.mimeType.startsWith("video") ? (
-                        // eslint-disable-next-line jsx-a11y/media-has-caption
-                        <video
-                          key={m.id}
-                          src={m.url}
-                          controls
-                          className="rounded-lg w-full"
-                        />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={m.id}
-                          src={m.url}
-                          alt=""
-                          className="rounded-lg w-full object-cover aspect-square"
-                        />
-                      )
-                    ) : null
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <PostEditor
+            postId={id}
+            initialBody={post.body}
+            initialOriginalDate={post.originalDate}
+            initialTags={post.tags}
+            initialMedia={mediaWithUrls}
+          />
 
           {/* Publish history */}
           {post.publishes.length > 0 && (

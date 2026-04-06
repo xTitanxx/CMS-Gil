@@ -52,7 +52,9 @@ export async function PATCH(
       ...(body.originalDate !== undefined
         ? { originalDate: new Date(body.originalDate) }
         : {}),
-      ...(body.tags !== undefined ? { tags: body.tags } : {}),
+      ...(body.tags !== undefined && Array.isArray(body.tags)
+        ? { tags: (body.tags as unknown[]).filter((t): t is string => typeof t === "string").slice(0, 50) }
+        : {}),
     },
   });
 

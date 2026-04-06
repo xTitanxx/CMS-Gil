@@ -138,7 +138,8 @@ export function PostEditor({
         if (!res.ok) throw new Error(await res.text());
         newMedia = await res.json();
       }
-      setMedia((prev) => [...prev, { ...newMedia, url: null }]);
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+      setMedia((prev) => [...prev, { ...newMedia, url: previewUrl }]);
     } catch {
       setMediaError("Failed to upload file. Please try again.");
     }

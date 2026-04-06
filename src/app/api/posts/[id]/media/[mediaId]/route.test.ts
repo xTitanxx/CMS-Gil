@@ -59,6 +59,7 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
   });
 
   it("still deletes DB record if storage delete fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockAuth.mockResolvedValue({ user: { id: "user1" } } as never);
     mockFindFirst.mockResolvedValue({
       id: "media1",
@@ -71,5 +72,6 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
     const res = await DELETE({} as Request, makeParams("post1", "media1"));
     expect(res.status).toBe(200);
     expect(mockDeleteRecord).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });

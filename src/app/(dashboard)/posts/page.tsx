@@ -16,6 +16,12 @@ interface Post {
   tags: string[];
   media: { id: string; mimeType: string }[];
   publishes: { platform: string; status: string }[];
+  analytics: {
+    reactions: number | null;
+    comments: number | null;
+    shares: number | null;
+    platformPostId: string | null;
+  }[];
 }
 
 export default function PostsPage() {
@@ -253,6 +259,20 @@ export default function PostsPage() {
                         )}
                       </div>
                     )}
+                    {post.source === "FACEBOOK" &&
+                      post.analytics?.[0]?.platformPostId && (
+                        <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-400">
+                          {post.analytics[0].reactions !== null && (
+                            <span>❤ {post.analytics[0].reactions}</span>
+                          )}
+                          {post.analytics[0].comments !== null && (
+                            <span>💬 {post.analytics[0].comments}</span>
+                          )}
+                          {post.analytics[0].shares !== null && (
+                            <span>↗ {post.analytics[0].shares}</span>
+                          )}
+                        </div>
+                      )}
                   </div>
 
                   {/* Publish status */}

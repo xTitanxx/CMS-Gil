@@ -49,6 +49,10 @@ export async function GET(req: NextRequest) {
         publishes: {
           select: { platform: true, status: true, platformUrl: true, scheduledAt: true },
         },
+        analytics: {
+          where: { platform: "FACEBOOK" },
+          select: { reactions: true, comments: true, shares: true, platformPostId: true },
+        },
       },
     }),
   ]);

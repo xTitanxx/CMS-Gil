@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { parseFacebookExport, guessMimeType } from "@/lib/facebook-parser";
+import { parseFacebookFile, guessMimeType, ParsedPost } from "@/lib/facebook-parser";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { ImportSource } from "@prisma/client";
 import { analyzePost } from "@/lib/analyze-post";
@@ -24,14 +24,32 @@ function createSemaphore(limit: number) {
 interface ImportOptions {
   jobId: string;
   userId: string;
-  jsonContent: string;
-  // Map of relative URI → Buffer (from ZIP extraction or Drive download)
+  jsonContent?: string;
+  parsedPosts?: ParsedPost[];
+  // Lazy media loader — reads one file at a time (preferred, avoids loading all into memory)
+  getMedia?: (uri: string) => Promise<Buffer | null>;
+  // Legacy: pre-loaded map (still supported for Drive sync)
   mediaFiles?: Map<string, Buffer>;
   source?: ImportSource;
 }
 
+function isStorageConfigured(): boolean {
+  return !!(
+    process.env.S3_BUCKET &&
+    process.env.S3_ACCESS_KEY_ID &&
+    process.env.S3_SECRET_ACCESS_KEY
+  );
+}
+
 export async function runImportJob(opts: ImportOptions): Promise<void> {
-  const { jobId, userId, jsonContent, mediaFiles = new Map(), source = "UPLOAD" } = opts;
+  const {
+    jobId,
+    userId,
+    jsonContent,
+    parsedPosts: preParsedPosts,
+    getMedia,
+    mediaFiles = new Map(),
+  } = opts;
 
   await prisma.importJob.update({
     where: { id: jobId },
@@ -41,16 +59,24 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
   const errors: string[] = [];
   const throttle = createSemaphore(5);
   const tagPromises: Promise<void | string[]>[] = [];
+  const storageEnabled = isStorageConfigured();
 
   try {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(jsonContent);
-    } catch {
-      throw new Error("Invalid JSON file");
-    }
+    let posts: ParsedPost[];
 
-    const posts = parseFacebookExport(raw);
+    if (preParsedPosts && preParsedPosts.length > 0) {
+      posts = preParsedPosts;
+    } else if (jsonContent) {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(jsonContent);
+      } catch {
+        throw new Error("Invalid JSON file");
+      }
+      posts = parseFacebookFile(raw);
+    } else {
+      throw new Error("No content provided to import");
+    }
 
     await prisma.importJob.update({
       where: { id: jobId },
@@ -62,7 +88,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
 
     for (const parsed of posts) {
       try {
-        // Skip duplicates by sourceId
         const existing = await prisma.post.findFirst({
           where: { userId, sourceId: parsed.sourceId },
         });
@@ -71,7 +96,6 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           continue;
         }
 
-        // Create the post
         const post = await prisma.post.create({
           data: {
             userId,
@@ -82,34 +106,40 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           },
         });
 
-        // Upload media files
-        for (const uri of parsed.mediaUris) {
-          try {
-            const normalizedUri = uri.replace(/^\/+/, "");
-            const basename = uri.split("/").pop() ?? uri;
-            const fileBuffer =
-              mediaFiles.get(normalizedUri) ??
-              mediaFiles.get(uri) ??
-              mediaFiles.get(basename);
-            if (!fileBuffer) continue;
+        // Only attempt media upload if storage is configured
+        if (storageEnabled) {
+          for (const uri of parsed.mediaUris) {
+            try {
+              // Try lazy loader first, fall back to pre-loaded map
+              const normalizedUri = uri.replace(/^\/+/, "");
+              let fileBuffer: Buffer | null = null;
 
-            const filename = uri.split("/").pop() ?? "media";
-            const mimeType = guessMimeType(filename);
-            const key = mediaKey(userId, filename);
+              if (getMedia) {
+                fileBuffer = await getMedia(uri);
+              } else {
+                fileBuffer = mediaFiles.get(normalizedUri) ?? mediaFiles.get(uri) ?? null;
+              }
 
-            await uploadBuffer(key, fileBuffer, mimeType);
+              if (!fileBuffer) continue;
 
-            await prisma.media.create({
-              data: {
-                postId: post.id,
-                storageKey: key,
-                originalUri: uri,
-                mimeType,
-                sizeBytes: fileBuffer.length,
-              },
-            });
-          } catch (mediaErr) {
-            errors.push(`Media error for post ${parsed.sourceId}: ${String(mediaErr)}`);
+              const filename = uri.split("/").pop() ?? "media";
+              const mimeType = guessMimeType(filename);
+              const key = mediaKey(userId, filename);
+
+              await uploadBuffer(key, fileBuffer, mimeType);
+
+              await prisma.media.create({
+                data: {
+                  postId: post.id,
+                  storageKey: key,
+                  originalUri: uri,
+                  mimeType,
+                  sizeBytes: fileBuffer.length,
+                },
+              });
+            } catch (mediaErr) {
+              errors.push(`Media error for post ${parsed.sourceId}: ${String(mediaErr)}`);
+            }
           }
         }
 

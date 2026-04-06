@@ -17,6 +17,13 @@ interface PlatformInfo {
 
 const PLATFORMS: PlatformInfo[] = [
   {
+    id: "FACEBOOK",
+    label: "Facebook",
+    description: "Connect your Facebook profile to enable analytics (reactions, comments, shares, and Professional Mode reach).",
+    color: "text-blue-700",
+    connectUrl: "/api/connections/facebook",
+  },
+  {
     id: "INSTAGRAM",
     label: "Instagram",
     description: "Post photos, videos and Reels via Meta Graph API. Requires a Professional account.",
@@ -28,14 +35,14 @@ const PLATFORMS: PlatformInfo[] = [
     label: "LinkedIn",
     description: "Share posts to your LinkedIn profile or company page.",
     color: "text-blue-600",
-    connectUrl: "/api/auth/signin/linkedin",
+    connectUrl: "/api/connections/linkedin",
   },
   {
     id: "YOUTUBE",
-    label: "YouTube",
-    description: "Upload videos to your YouTube channel. Connected via your Google account.",
+    label: "YouTube / Google Drive",
+    description: "Upload videos to YouTube and import from Google Drive. Click Connect to authorize both.",
     color: "text-red-600",
-    connectUrl: "/api/auth/signin/google",
+    connectUrl: "/api/connections/google?from=connections",
   },
   {
     id: "TIKTOK",
@@ -62,6 +69,7 @@ export default function ConnectionsPage() {
 
   const successPlatform = searchParams.get("success");
   const errorPlatform = searchParams.get("error");
+  const errorDetail = searchParams.get("detail");
 
   const load = async () => {
     const res = await fetch("/api/connections");
@@ -116,6 +124,7 @@ export default function ConnectionsPage() {
           <XCircle className="h-4 w-4 text-red-500" />
           <p className="text-sm text-red-700">
             Failed to connect {errorPlatform.split("_")[0]}. Please try again.
+            {errorDetail && <span className="block text-xs mt-1 font-mono">{decodeURIComponent(errorDetail)}</span>}
           </p>
         </div>
       )}

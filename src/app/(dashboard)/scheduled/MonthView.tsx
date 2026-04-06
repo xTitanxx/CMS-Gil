@@ -50,13 +50,16 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
 
           return (
             <button
-              key={i}
+              key={key}
               onClick={() => onDayClick(day)}
               className={[
                 "min-h-[80px] p-1.5 border-b border-r border-gray-100 text-left",
                 "hover:bg-blue-50 transition-colors",
-                !isCurrentMonth ? "bg-gray-50" : "bg-white",
-                isSelected ? "bg-blue-50" : "",
+                isSelected
+                  ? "bg-blue-50"
+                  : !isCurrentMonth
+                  ? "bg-gray-50"
+                  : "bg-white",
               ].join(" ")}
             >
               {/* Date number */}
@@ -75,9 +78,9 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
 
               {/* Thumbnails */}
               <div className="flex flex-wrap gap-0.5">
-                {dayEntries.slice(0, 3).map((entry, idx) => (
+                {dayEntries.slice(0, 3).map((entry) => (
                   <div
-                    key={idx}
+                    key={entry.postId}
                     className={`w-7 h-7 rounded overflow-hidden flex-shrink-0 ${STATUS_RING[entry.status] ?? ""}`}
                   >
                     {entry.thumbUrl ? (

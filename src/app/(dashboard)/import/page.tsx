@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { upload } from "@vercel/blob/client";
 import { useDropzone } from "react-dropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ export default function ImportPage() {
   const [activeJob, setActiveJob] = useState<ImportJob | null>(null);
   const [polling, setPolling] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [fileProgress, setFileProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
   // Drive sync state
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
@@ -102,35 +105,95 @@ export default function ImportPage() {
   }, [activeJob]);
 
   const onDrop = useCallback(async (files: File[]) => {
-    const file = files[0];
-    if (!file) return;
+    if (files.length === 0) return;
     setUploadError("");
 
-    const form = new FormData();
-    form.append("file", file);
-
-    const res = await fetch("/api/import/upload", {
-      method: "POST",
-      body: form,
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setUploadError(data.error ?? "Upload failed");
+    // Single JSON file — use the existing direct upload endpoint
+    if (files.length === 1 && files[0].name.endsWith(".json")) {
+      const form = new FormData();
+      form.append("file", files[0]);
+      const res = await fetch("/api/import/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+        return;
+      }
+      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: files[0].name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
       return;
     }
-    // Start polling
-    const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: file.name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
-    setActiveJob(newJob);
-    sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+
+    // Single small ZIP — use existing direct upload endpoint
+    if (files.length === 1 && files[0].size < 4 * 1024 * 1024) {
+      const form = new FormData();
+      form.append("file", files[0]);
+      const res = await fetch("/api/import/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+        return;
+      }
+      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: files[0].name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+      return;
+    }
+
+    // Multiple files or large ZIP — upload to Blob, then process
+    setUploadingFiles(true);
+    const blobUrls: string[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+        const blob = await upload(files[i].name, files[i], {
+          access: "public",
+          handleUploadUrl: "/api/blob",
+        });
+        blobUrls.push(blob.url);
+      }
+
+      setFileProgress(null);
+
+      // Trigger processing
+      const res = await fetch("/api/import/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blobUrls }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Processing failed");
+        return;
+      }
+
+      const label = files.length === 1 ? files[0].name : `${files.length} ZIP files`;
+      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: label, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+    } catch (err) {
+      setUploadError(String(err));
+    } finally {
+      setUploadingFiles(false);
+      setFileProgress(null);
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/zip": [".zip"],
+      "application/x-zip-compressed": [".zip"],
       "application/json": [".json"],
     },
-    maxFiles: 1,
+    disabled: uploadingFiles,
   });
 
   const loadDriveFolders = async () => {
@@ -224,14 +287,26 @@ export default function ImportPage() {
                   Drag & drop your Facebook export
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Supports .zip (full export) or .json (your_posts_1.json)
+                  Supports multiple .zip files (Meta split exports) or a single .json
                 </p>
-                <Button variant="outline" size="sm" className="mt-3">
+                <Button variant="outline" size="sm" className="mt-3" disabled={uploadingFiles}>
                   Browse files
                 </Button>
               </>
             )}
           </div>
+
+          {uploadingFiles && fileProgress && (
+            <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+              <div className="text-sm">
+                <p className="font-medium text-blue-800">
+                  Uploading file {fileProgress.current} of {fileProgress.total}
+                </p>
+                <p className="text-blue-600 text-xs">{fileProgress.name}</p>
+              </div>
+            </div>
+          )}
 
           {uploadError && (
             <p className="text-sm text-red-600">{uploadError}</p>

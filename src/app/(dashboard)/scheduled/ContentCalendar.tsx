@@ -10,6 +10,7 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { MonthView } from "./MonthView";
 import { WeekView } from "./WeekView";
 import { DayPanel } from "./DayPanel";
@@ -98,25 +99,28 @@ export function ContentCalendar() {
         </div>
 
         {/* Grid */}
-        {loading ? (
-          <div className="h-96 flex items-center justify-center text-gray-400 text-sm">
-            Loading…
-          </div>
-        ) : view === "month" ? (
-          <MonthView
-            cursor={cursor}
-            entries={entries}
-            onDayClick={setSelectedDay}
-            selectedDay={selectedDay}
-          />
-        ) : (
-          <WeekView
-            cursor={cursor}
-            entries={entries}
-            onDayClick={setSelectedDay}
-            selectedDay={selectedDay}
-          />
-        )}
+        <div className="relative">
+          {loading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/60">
+              <Spinner className="h-6 w-6 text-gray-400" />
+            </div>
+          )}
+          {view === "month" ? (
+            <MonthView
+              cursor={cursor}
+              entries={entries}
+              onDayClick={setSelectedDay}
+              selectedDay={selectedDay}
+            />
+          ) : (
+            <WeekView
+              cursor={cursor}
+              entries={entries}
+              onDayClick={setSelectedDay}
+              selectedDay={selectedDay}
+            />
+          )}
+        </div>
       </div>
 
       {/* Day panel */}

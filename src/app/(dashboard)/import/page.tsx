@@ -146,36 +146,65 @@ export default function ImportPage() {
       return;
     }
 
-    // Multiple files or large ZIP — upload to Blob, then process
+    // Multiple files or large ZIP — try Blob staging first, fall back to direct FormData
     setUploadingFiles(true);
-    const blobUrls: string[] = [];
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
-        const blob = await upload(files[i].name, files[i], {
-          access: "public",
-          handleUploadUrl: "/api/blob",
-        });
-        blobUrls.push(blob.url);
+      let jobId: string;
+
+      // Try Blob upload first (works on Vercel with BLOB_READ_WRITE_TOKEN)
+      let usedBlob = false;
+      const blobUrls: string[] = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+          const blob = await upload(files[i].name, files[i], {
+            access: "public",
+            handleUploadUrl: "/api/blob",
+          });
+          blobUrls.push(blob.url);
+        }
+        usedBlob = true;
+      } catch {
+        // Blob not available (no token / local dev) — fall back to direct upload
+        blobUrls.length = 0;
       }
 
-      setFileProgress(null);
-
-      // Trigger processing
-      const res = await fetch("/api/import/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrls }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setUploadError(data.error ?? "Processing failed");
-        return;
+      if (usedBlob) {
+        setFileProgress(null);
+        const res = await fetch("/api/import/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ blobUrls }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error ?? "Processing failed");
+          return;
+        }
+        jobId = data.jobId;
+      } else {
+        // Direct FormData upload (local dev / no Blob token)
+        const form = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+          form.append("files", files[i]);
+        }
+        setFileProgress(null);
+        const res = await fetch("/api/import/process", {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error ?? "Processing failed");
+          return;
+        }
+        jobId = data.jobId;
       }
 
       const label = files.length === 1 ? files[0].name : `${files.length} ZIP files`;
-      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: label, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      const newJob: ImportJob = { id: jobId, status: "PENDING", filename: label, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
       setActiveJob(newJob);
       sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
     } catch (err) {

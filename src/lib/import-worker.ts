@@ -35,9 +35,9 @@ interface ImportOptions {
 
 function isStorageConfigured(): boolean {
   return !!(
-    process.env.S3_BUCKET &&
-    process.env.S3_ACCESS_KEY_ID &&
-    process.env.S3_SECRET_ACCESS_KEY
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
   );
 }
 

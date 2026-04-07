@@ -15,7 +15,19 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") ?? "";
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const sort = searchParams.get("sort") ?? "originalDate_desc";
+  const tagsParam = searchParams.get("tags"); // comma-separated tag list (OR match)
+
+  const sortMap: Record<string, { field: string; dir: "asc" | "desc" }> = {
+    originalDate_desc: { field: "originalDate", dir: "desc" },
+    originalDate_asc:  { field: "originalDate", dir: "asc" },
+    createdAt_desc:    { field: "createdAt",    dir: "desc" },
+    createdAt_asc:     { field: "createdAt",    dir: "asc" },
+  };
+  const { field: sortField, dir: sortDir } = sortMap[sort] ?? sortMap["originalDate_desc"];
   const skip = (page - 1) * limit;
+
+  const tagList = tagsParam ? tagsParam.split(",").map((t) => t.trim()).filter(Boolean) : [];
 
   const where = {
     userId: session.user.id,
@@ -26,6 +38,9 @@ export async function GET(req: NextRequest) {
             { tags: { has: search.toLowerCase() } },
           ],
         }
+      : {}),
+    ...(tagList.length > 0
+      ? { tags: { hasSome: tagList } }
       : {}),
     ...(from || to
       ? {
@@ -41,7 +56,7 @@ export async function GET(req: NextRequest) {
     prisma.post.count({ where }),
     prisma.post.findMany({
       where,
-      orderBy: { originalDate: "desc" },
+      orderBy: { [sortField]: sortDir },
       skip,
       take: limit,
       include: {
@@ -74,6 +89,39 @@ export async function GET(req: NextRequest) {
     page,
     pages: Math.ceil(total / limit),
   });
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = session.user.id;
+  const body = await req.json().catch(() => ({}));
+  const { ids, all, search } = body as { ids?: string[]; all?: boolean; search?: string };
+
+  if (all) {
+    const where = {
+      userId,
+      ...(search ? {
+        OR: [
+          { body: { contains: search, mode: "insensitive" as const } },
+          { tags: { has: search.toLowerCase() } },
+        ],
+      } : {}),
+    };
+    const { count } = await prisma.post.deleteMany({ where });
+    return NextResponse.json({ deleted: count });
+  }
+
+  if (Array.isArray(ids) && ids.length > 0) {
+    const { count } = await prisma.post.deleteMany({
+      where: { userId, id: { in: ids } },
+    });
+    return NextResponse.json({ deleted: count });
+  }
+
+  return NextResponse.json({ error: "Provide ids or all:true" }, { status: 400 });
 }
 
 export async function POST(req: NextRequest) {

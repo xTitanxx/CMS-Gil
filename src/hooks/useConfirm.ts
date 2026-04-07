@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export function useConfirm(onConfirm: () => void): {
   confirming: boolean;
@@ -6,6 +6,12 @@ export function useConfirm(onConfirm: () => void): {
 } {
   const [confirming, setConfirming] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const trigger = useCallback(() => {
     if (confirming) {

@@ -54,7 +54,8 @@ export function ReanalyzeButton({ postId }: { postId: string }) {
         disabled={isLoading}
         onClick={() =>
           run(async () => {
-            await fetch(`/api/posts/${postId}/analyze`, { method: "POST" });
+            const res = await fetch(`/api/posts/${postId}/analyze`, { method: "POST" });
+            if (!res.ok) throw new Error("Re-analysis failed");
             router.refresh();
           }, "Re-analysis complete")
         }

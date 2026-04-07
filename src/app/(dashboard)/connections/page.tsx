@@ -147,9 +147,7 @@ export default function ConnectionsPage() {
                   <CardTitle className={`text-base ${platform.color}`}>
                     {platform.label}
                   </CardTitle>
-                  {loading ? (
-                    <div className="h-6 w-20 animate-pulse rounded bg-gray-200" />
-                  ) : connected ? (
+                  {connected ? (
                     <Badge variant="success">Connected</Badge>
                   ) : (
                     <Badge variant="secondary">Not connected</Badge>

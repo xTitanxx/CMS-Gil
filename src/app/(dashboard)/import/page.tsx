@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FolderOpen, RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { Upload, FolderOpen, RefreshCw, CheckCircle, XCircle, Info } from "lucide-react";
+import { useAsync } from "@/hooks/useAsync";
+import { useConfirm } from "@/hooks/useConfirm";
+import { Spinner } from "@/components/ui/spinner";
 
 interface ImportJob {
   id: string;
@@ -40,8 +43,40 @@ export default function ImportPage() {
     lastSyncedAt?: string;
   } | null>(null);
   const [driveLoading, setDriveLoading] = useState(false);
-  const [driveSyncing, setDriveSyncing] = useState(false);
   const [driveError, setDriveError] = useState("");
+  const syncNow = useAsync();
+  const resetHistory = useAsync();
+  const [lastSyncCount, setLastSyncCount] = useState<number | null>(null);
+
+  // Load saved DriveSync config on mount
+  useEffect(() => {
+    fetch("/api/drive/sync")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.driveSync) {
+          setDriveSync({
+            folderId: data.driveSync.folderId,
+            folderName: data.driveSync.folderName,
+            lastSyncedAt: data.driveSync.lastSyncedAt ?? undefined,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Rehydrate active job from sessionStorage on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem("activeImportJob");
+    if (!stored) return;
+    try {
+      const job = JSON.parse(stored);
+      if (job.status !== "COMPLETED" && job.status !== "FAILED") {
+        setActiveJob(job);
+      }
+    } catch {
+      sessionStorage.removeItem("activeImportJob");
+    }
+  }, []);
 
   // Poll active job
   useEffect(() => {
@@ -55,9 +90,11 @@ export default function ImportPage() {
       if (res.ok) {
         const data = await res.json();
         setActiveJob(data);
+        sessionStorage.setItem("activeImportJob", JSON.stringify(data));
         if (data.status === "COMPLETED" || data.status === "FAILED") {
           clearInterval(interval);
           setPolling(false);
+          sessionStorage.removeItem("activeImportJob");
         }
       }
     }, 2000);
@@ -82,7 +119,9 @@ export default function ImportPage() {
       return;
     }
     // Start polling
-    setActiveJob({ id: data.jobId, status: "PENDING", filename: file.name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null });
+    const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: file.name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+    setActiveJob(newJob);
+    sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -122,16 +161,26 @@ export default function ImportPage() {
     }
   };
 
+  const resetDriveSyncHistory = async () => {
+    await resetHistory.run(async () => {
+      const res = await fetch("/api/drive/sync", { method: "DELETE" });
+      if (!res.ok) throw new Error("Reset failed");
+    }, "Import history cleared. You can now sync again.");
+  };
+
+  const { confirming: resetConfirming, trigger: triggerReset } = useConfirm(resetDriveSyncHistory);
+
   const triggerDriveSync = async () => {
-    setDriveSyncing(true);
-    const res = await fetch("/api/drive/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-    const data = await res.json();
-    setDriveSyncing(false);
-    if (res.ok) {
-      alert(`Sync complete: ${data.jobsCreated} job(s) created`);
-    } else {
-      setDriveError(data.error ?? "Sync failed");
-    }
+    await syncNow.run(async () => {
+      const res = await fetch("/api/drive/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Sync failed");
+      const data: { jobsCreated: number } = await res.json();
+      setLastSyncCount(data.jobsCreated ?? 0);
+    }, "sync_done");
   };
 
   const progress =
@@ -283,17 +332,54 @@ export default function ImportPage() {
             </Button>
 
             {driveSync?.folderId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={triggerDriveSync}
-                disabled={driveSyncing}
-              >
-                <RefreshCw className={`h-4 w-4 ${driveSyncing ? "animate-spin" : ""}`} />
-                Sync Now
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={triggerDriveSync}
+                  disabled={syncNow.isLoading}
+                >
+                  {syncNow.isLoading ? <Spinner /> : <RefreshCw className="h-4 w-4" />}
+                  {syncNow.isLoading ? "Syncing..." : "Sync Now"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={triggerReset}
+                  disabled={resetHistory.isLoading}
+                  className={resetConfirming ? "border-amber-400 text-amber-700 hover:bg-amber-50" : ""}
+                >
+                  {resetHistory.isLoading ? <Spinner /> : null}
+                  {resetHistory.isLoading
+                    ? "Resetting..."
+                    : resetConfirming
+                    ? "Are you sure?"
+                    : "Reset sync history"}
+                </Button>
+              </>
             )}
           </div>
+
+          {syncNow.status === "success" && (
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-800">
+              <CheckCircle className="h-4 w-4 shrink-0 text-green-500" />
+              {lastSyncCount && lastSyncCount > 0
+                ? `Sync started: ${lastSyncCount} job(s) queued for import.`
+                : "Sync complete: no new files found."}
+            </div>
+          )}
+          {syncNow.status === "error" && (
+            <p className="text-sm text-red-600">{syncNow.message}</p>
+          )}
+          {resetHistory.status === "success" && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-800">
+              <Info className="h-4 w-4 shrink-0 text-blue-500" />
+              {resetHistory.message}
+            </div>
+          )}
+          {resetHistory.status === "error" && (
+            <p className="text-sm text-red-600">{resetHistory.message}</p>
+          )}
 
           {driveError && <p className="text-sm text-red-600">{driveError}</p>}
 

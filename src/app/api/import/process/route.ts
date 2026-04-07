@@ -1,4 +1,3 @@
-// src/app/api/import/process/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { auth } from "@/lib/auth";
@@ -7,6 +6,8 @@ import { runImportJob } from "@/lib/import-worker";
 import { parseFacebookFile, ParsedPost } from "@/lib/facebook-parser";
 import { del } from "@vercel/blob";
 import unzipper from "unzipper";
+import { readdir } from "fs/promises";
+import { join } from "path";
 
 export const maxDuration = 300;
 
@@ -19,35 +20,25 @@ export async function POST(req: NextRequest) {
 
   const contentType = req.headers.get("content-type") ?? "";
   let blobUrls: string[] = [];
-  let directBuffers: { name: string; buffer: Buffer }[] = [];
+  let localPath = "";
 
-  if (contentType.includes("multipart/form-data")) {
-    // Direct FormData upload (works without Blob token, good for local dev)
-    const formData = await req.formData();
-    const files = formData.getAll("files") as File[];
-    if (files.length === 0) {
+  if (contentType.includes("application/json")) {
+    const body = await req.json();
+    if (body.localPath) {
+      localPath = body.localPath;
+    } else if (Array.isArray(body.blobUrls) && body.blobUrls.length > 0) {
+      blobUrls = body.blobUrls;
+    } else {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
-    }
-    for (const file of files) {
-      directBuffers.push({
-        name: file.name,
-        buffer: Buffer.from(await file.arrayBuffer()),
-      });
     }
   } else {
-    // JSON body with Blob URLs (for Vercel production with Blob storage)
-    const body = await req.json();
-    blobUrls = body.blobUrls;
-    if (!Array.isArray(blobUrls) || blobUrls.length === 0) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 });
-    }
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const fileCount = directBuffers.length || blobUrls.length;
   const job = await prisma.importJob.create({
     data: {
       userId,
-      filename: `${fileCount} ZIP files`,
+      filename: localPath ? `Local: ${localPath.split("/").pop()}` : `${blobUrls.length} ZIP files`,
       source: "UPLOAD",
       status: "PENDING",
     },
@@ -55,8 +46,8 @@ export async function POST(req: NextRequest) {
 
   after(async () => {
     try {
-      if (directBuffers.length > 0) {
-        await processMultiZipFromBuffers(job.id, userId, directBuffers);
+      if (localPath) {
+        await processLocalFolder(job.id, userId, localPath);
       } else {
         await processMultiZipFromBlob(job.id, userId, blobUrls);
       }
@@ -82,24 +73,20 @@ export async function POST(req: NextRequest) {
 
 type ZipEntry = unzipper.File;
 
-interface MediaRef { entry: ZipEntry; dir: unzipper.CentralDirectory }
+interface MediaRef { entry: ZipEntry }
 
-function indexZipMedia(
+function indexZipEntries(
   directory: unzipper.CentralDirectory,
   mediaEntries: Map<string, MediaRef>,
-  jsonContents: string[]
 ) {
   for (const entry of directory.files) {
     if (entry.path.includes("__MACOSX") || entry.path.endsWith("/")) continue;
 
     const filename = entry.path.split("/").pop() ?? "";
 
-    if (entry.path.match(/\.json$/i)) {
-      // JSON files are read synchronously during indexing
-      jsonContents.push("__DEFERRED__" + entry.path);
-    } else if (entry.path.match(/\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|webm|heic)$/i)) {
+    if (entry.path.match(/\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|webm|heic)$/i)) {
       const normalized = entry.path.replace(/^\/+/, "");
-      const ref = { entry, dir: directory };
+      const ref = { entry };
       mediaEntries.set(entry.path, ref);
       mediaEntries.set(normalized, ref);
       // Strip the top-level facebook folder prefix to match JSON URI format
@@ -129,25 +116,96 @@ async function readJsonEntries(directory: unzipper.CentralDirectory): Promise<st
   return results;
 }
 
-async function processZipBuffers(
+// Process ZIPs from a local folder — uses unzipper.Open.file() which reads
+// only the central directory (~KB), not the full file (~GB). Individual media
+// files are extracted on demand during import.
+async function processLocalFolder(
   jobId: string,
   userId: string,
-  buffers: Buffer[]
+  folderPath: string,
 ): Promise<void> {
+  const entries = await readdir(folderPath);
+  const zipFiles = entries
+    .filter((f) => f.match(/\.zip$/i))
+    .map((f) => join(folderPath, f))
+    .sort();
+
+  if (zipFiles.length === 0) {
+    throw new Error("No .zip files found in the specified folder.");
+  }
+
   const mediaEntries = new Map<string, MediaRef>();
   const jsonContents: string[] = [];
+  // Keep directory refs alive so entries stay readable
   const directories: unzipper.CentralDirectory[] = [];
 
-  for (const buffer of buffers) {
-    const directory = await unzipper.Open.buffer(buffer);
+  for (const zipPath of zipFiles) {
+    // Open.file reads only the central directory from disk, not the whole ZIP
+    const directory = await unzipper.Open.file(zipPath);
     directories.push(directory);
-    indexZipMedia(directory, mediaEntries, []);
+    indexZipEntries(directory, mediaEntries);
     const jsons = await readJsonEntries(directory);
     jsonContents.push(...jsons);
   }
 
   if (jsonContents.length === 0) {
-    throw new Error("No JSON files found in the uploaded ZIPs. Make sure you're uploading Facebook data exports.");
+    throw new Error("No JSON files found in the ZIPs. Make sure the folder contains Facebook data exports.");
+  }
+
+  const allPosts: ParsedPost[] = [];
+  for (const jsonContent of jsonContents) {
+    try {
+      const raw = JSON.parse(jsonContent);
+      const posts = parseFacebookFile(raw);
+      allPosts.push(...posts);
+    } catch {
+      // Skip unparseable JSON files
+    }
+  }
+
+  if (allPosts.length === 0) {
+    throw new Error("No posts found in the exported JSON files.");
+  }
+
+  // Lazy media loader — extracts one file at a time from the ZIP on disk
+  const getMedia = async (uri: string): Promise<Buffer | null> => {
+    const normalized = uri.replace(/^\/+/, "");
+    const filename = uri.split("/").pop() ?? "";
+    const ref =
+      mediaEntries.get(normalized) ??
+      mediaEntries.get(uri) ??
+      mediaEntries.get(filename);
+    if (!ref) return null;
+    return ref.entry.buffer();
+  };
+
+  await runImportJob({ jobId, userId, parsedPosts: allPosts, getMedia });
+}
+
+async function processMultiZipFromBlob(
+  jobId: string,
+  userId: string,
+  blobUrls: string[],
+): Promise<void> {
+  const mediaEntries = new Map<string, MediaRef>();
+  const jsonContents: string[] = [];
+  const directories: unzipper.CentralDirectory[] = [];
+
+  for (const blobUrl of blobUrls) {
+    const res = await fetch(blobUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to download ZIP from Blob: ${res.status}`);
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const directory = await unzipper.Open.buffer(buffer);
+    directories.push(directory);
+    indexZipEntries(directory, mediaEntries);
+    const jsons = await readJsonEntries(directory);
+    jsonContents.push(...jsons);
+  }
+
+  if (jsonContents.length === 0) {
+    throw new Error("No JSON files found in the uploaded ZIPs.");
   }
 
   const allPosts: ParsedPost[] = [];
@@ -177,28 +235,4 @@ async function processZipBuffers(
   };
 
   await runImportJob({ jobId, userId, parsedPosts: allPosts, getMedia });
-}
-
-async function processMultiZipFromBuffers(
-  jobId: string,
-  userId: string,
-  files: { name: string; buffer: Buffer }[]
-): Promise<void> {
-  await processZipBuffers(jobId, userId, files.map(f => f.buffer));
-}
-
-async function processMultiZipFromBlob(
-  jobId: string,
-  userId: string,
-  blobUrls: string[]
-): Promise<void> {
-  const buffers: Buffer[] = [];
-  for (const blobUrl of blobUrls) {
-    const res = await fetch(blobUrl);
-    if (!res.ok) {
-      throw new Error(`Failed to download ZIP from Blob: ${res.status}`);
-    }
-    buffers.push(Buffer.from(await res.arrayBuffer()));
-  }
-  await processZipBuffers(jobId, userId, buffers);
 }

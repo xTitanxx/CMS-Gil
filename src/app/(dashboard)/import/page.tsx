@@ -36,6 +36,8 @@ export default function ImportPage() {
   const [uploadError, setUploadError] = useState("");
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [fileProgress, setFileProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [localPath, setLocalPath] = useState("");
+  const [localImporting, setLocalImporting] = useState(false);
 
   // Drive sync state
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
@@ -386,6 +388,69 @@ export default function ImportPage() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Local Folder Import (for large exports) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FolderOpen className="h-4 w-4" />
+            Local Folder Import
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-600">
+            For large Facebook exports (multiple GBs), paste the path to a folder
+            containing the .zip files on your computer. The server reads them
+            directly from disk without uploading.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={localPath}
+              onChange={(e) => setLocalPath(e.target.value)}
+              placeholder="/path/to/folder/with/zips"
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              disabled={localImporting}
+            />
+            <Button
+              size="sm"
+              disabled={!localPath.trim() || localImporting}
+              onClick={async () => {
+                setUploadError("");
+                setLocalImporting(true);
+                try {
+                  const res = await fetch("/api/import/process", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ localPath: localPath.trim() }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    setUploadError(data.error ?? "Import failed");
+                    return;
+                  }
+                  const newJob: ImportJob = {
+                    id: data.jobId, status: "PENDING",
+                    filename: `Local: ${localPath.trim().split("/").pop()}`,
+                    source: "UPLOAD", totalPosts: 0, importedPosts: 0,
+                    skippedPosts: 0, errorLog: null, startedAt: null,
+                    completedAt: null,
+                  };
+                  setActiveJob(newJob);
+                  sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+                } catch (err) {
+                  setUploadError(String(err));
+                } finally {
+                  setLocalImporting(false);
+                }
+              }}
+            >
+              {localImporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+              {localImporting ? "Starting..." : "Import"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

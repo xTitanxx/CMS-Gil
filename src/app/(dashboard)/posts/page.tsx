@@ -85,6 +85,8 @@ export default function PostsPage() {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const bulkDelete = useAsync();
   const [lastBulkCount, setLastBulkCount] = useState(0);
+  const bulkAnalyze = useAsync();
+  const [analyzeQueued, setAnalyzeQueued] = useState<number | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
 
   async function runAiSearch() {
@@ -206,13 +208,40 @@ export default function PostsPage() {
           <h1 className="text-2xl font-bold text-gray-900">All Posts</h1>
           <p className="text-sm text-gray-500">{total} posts total</p>
         </div>
-        <Link href="/posts/new">
-          <Button size="sm">
-            <Plus className="h-4 w-4" />
-            New Post
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkAnalyze.isLoading}
+            onClick={async () => {
+              await bulkAnalyze.run(async () => {
+                const res = await fetch("/api/posts/bulk-analyze", { method: "POST" });
+                if (!res.ok) throw new Error("Failed to start analysis");
+                const data = await res.json();
+                setAnalyzeQueued(data.queued);
+              });
+            }}
+          >
+            {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}
           </Button>
-        </Link>
+          <Link href="/posts/new">
+            <Button size="sm">
+              <Plus className="h-4 w-4" />
+              New Post
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {analyzeQueued !== null && (
+        <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-800">
+          <Sparkles className="h-4 w-4 shrink-0 text-purple-500" />
+          {analyzeQueued > 0
+            ? `AI tagging started for ${analyzeQueued} untagged posts. Tags will appear as they're processed.`
+            : "All posts already have tags."}
+        </div>
+      )}
 
       {/* Search + Sort */}
       <div className="space-y-2">

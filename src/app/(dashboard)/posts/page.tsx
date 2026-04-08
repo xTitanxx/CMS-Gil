@@ -5,7 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Image as ImageIcon, Trash2, Sparkles, X, RefreshCw } from "lucide-react";
+import { Search, Plus, Image as ImageIcon, Trash2, Sparkles, X, RefreshCw, Play } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -16,6 +16,7 @@ interface Post {
   source: string;
   originalDate: string;
   thumbUrl: string | null;
+  isVideo: boolean;
   tags: string[];
   media: { id: string; mimeType: string }[];
   publishes: { platform: string; status: string }[];
@@ -407,7 +408,7 @@ export default function PostsPage() {
 
                 <Link href={`/posts/${post.id}`} className="flex items-start gap-4 flex-1 min-w-0">
                   {/* Thumbnail */}
-                  <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
+                  <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
                     {post.thumbUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -418,6 +419,11 @@ export default function PostsPage() {
                     ) : (
                       <div className="flex h-full items-center justify-center">
                         <ImageIcon className="h-6 w-6 text-gray-300" />
+                      </div>
+                    )}
+                    {post.isVideo && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Play className="h-5 w-5 fill-white text-white" />
                       </div>
                     )}
                   </div>

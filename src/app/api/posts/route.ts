@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getThumbnailUrl } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -77,9 +77,10 @@ export async function GET(req: NextRequest) {
     posts.map(async (post) => {
       const firstMedia = post.media[0];
       const thumbUrl = firstMedia
-        ? await getSignedDownloadUrl(firstMedia.storageKey, 3600, firstMedia.mimeType).catch(() => null)
+        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
         : null;
-      return { ...post, thumbUrl };
+      const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
+      return { ...post, thumbUrl, isVideo };
     })
   );
 

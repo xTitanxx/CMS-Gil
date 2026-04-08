@@ -29,11 +29,30 @@ export async function getSignedDownloadUrl(
   _expiresIn = 3600,
   mimeType?: string
 ): Promise<string> {
-  const resourceType = mimeType?.startsWith("video") ? "video" : "image";
+  const isVideo = mimeType?.startsWith("video");
+  const resourceType = isVideo ? "video" : "image";
   // Strip extension — Cloudinary appends the format automatically; including it in
   // the public_id would produce a double-extension URL (e.g. file.jpg.jpg).
   const publicId = key.replace(/\.[^/.]+$/, "");
   return cloudinary.url(publicId, { resource_type: resourceType, type: "upload" });
+}
+
+// Returns a jpg poster frame for videos, or the image URL for images
+export async function getThumbnailUrl(
+  key: string,
+  mimeType?: string
+): Promise<string> {
+  const isVideo = mimeType?.startsWith("video");
+  const publicId = key.replace(/\.[^/.]+$/, "");
+  if (isVideo) {
+    // Cloudinary auto-generates a jpg thumbnail for videos
+    return cloudinary.url(publicId, {
+      resource_type: "video",
+      type: "upload",
+      format: "jpg",
+    });
+  }
+  return cloudinary.url(publicId, { resource_type: "image", type: "upload" });
 }
 
 export async function getObject(key: string): Promise<Buffer> {

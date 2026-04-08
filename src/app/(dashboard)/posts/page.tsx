@@ -344,6 +344,26 @@ export default function PostsPage() {
                 ? "Are you sure?"
                 : "Delete selected"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkAnalyze.isLoading}
+              onClick={async () => {
+                await bulkAnalyze.run(async () => {
+                  const res = await fetch("/api/posts/bulk-analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ postIds: [...selectedIds] }),
+                  });
+                  if (!res.ok) throw new Error("Failed to start analysis");
+                  const data = await res.json();
+                  setAnalyzeQueued(data.queued);
+                });
+              }}
+            >
+              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {bulkAnalyze.isLoading ? "Starting..." : "Tag selected"}
+            </Button>
             <button
               className="ml-auto text-sm text-blue-600 hover:underline"
               onClick={() => { setSelectedIds(new Set()); setSelectAllMode(false); setLastSelectedIndex(null); lastSelectedIndexRef.current = null; }}

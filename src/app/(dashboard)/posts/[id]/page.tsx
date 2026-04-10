@@ -1,15 +1,43 @@
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, ExternalLink, BarChart2 } from "lucide-react";
+import { BarChart2, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
 import { PostEditor } from "./PostEditor";
+import { PostNavBar } from "./PostNavBar";
+import { PostNavKeys } from "./PostNavKeys";
+import {
+  buildNeighborQueries,
+  buildPostsQuery,
+  parsePostsFilters,
+} from "@/lib/posts-query";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+function serializeListQuery(sp: SearchParams): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (key === "from") continue;
+    if (value == null) continue;
+    const v = Array.isArray(value) ? value[0] : value;
+    if (v) qs.set(key, v);
+  }
+  return qs.toString();
+}
+
+function serializeNeighborQuery(sp: SearchParams): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (value == null) continue;
+    const v = Array.isArray(value) ? value[0] : value;
+    if (v) qs.set(key, v);
+  }
+  return qs.toString();
+}
 
 function MetricTile({ label, value }: { label: string; value: number | null }) {
   return (
@@ -22,13 +50,15 @@ function MetricTile({ label, value }: { label: string; value: number | null }) {
 
 export default async function PostDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
 
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
@@ -41,27 +71,64 @@ export default async function PostDetailPage({
 
   if (!post) notFound();
 
+  const filters = parsePostsFilters(sp);
+  const { where: baseWhere } = buildPostsQuery(filters, session.user.id);
+  const neighbors = buildNeighborQueries(filters.sort, {
+    id: post.id,
+    originalDate: post.originalDate,
+    createdAt: post.createdAt,
+  });
+
+  const [prev, next] = await Promise.all([
+    prisma.post.findFirst({
+      where: { AND: [baseWhere, neighbors.prevWhere] },
+      orderBy: neighbors.prevOrderBy,
+      select: { id: true },
+    }),
+    prisma.post.findFirst({
+      where: { AND: [baseWhere, neighbors.nextWhere] },
+      orderBy: neighbors.nextOrderBy,
+      select: { id: true },
+    }),
+  ]);
+
+  const neighborQuery = serializeNeighborQuery(sp);
+  const listQuery = serializeListQuery(sp);
+
+  const prevHref = prev
+    ? `/posts/${prev.id}${neighborQuery ? `?${neighborQuery}` : ""}`
+    : null;
+  const nextHref = next
+    ? `/posts/${next.id}${neighborQuery ? `?${neighborQuery}` : ""}`
+    : null;
+  const listHref = `/posts${listQuery ? `?${listQuery}` : ""}`;
+
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       id: m.id,
       mimeType: m.mimeType,
       hasAudio: m.hasAudio,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
-    }))
+      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
+        () => null,
+      ),
+    })),
   );
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/posts">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-          <Badge variant="outline">{post.source}</Badge>
-        </div>
+      <PostNavBar
+        prevHref={prevHref}
+        nextHref={nextHref}
+        listHref={listHref}
+        source={post.source}
+      />
+      <PostNavKeys
+        prevHref={prevHref}
+        nextHref={nextHref}
+        listHref={listHref}
+      />
+
+      <div className="flex items-center justify-end">
         <DeleteButton postId={id} />
       </div>
 

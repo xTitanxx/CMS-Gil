@@ -35,9 +35,9 @@ interface ImportOptions {
 
 function isStorageConfigured(): boolean {
   return !!(
-    process.env.S3_BUCKET &&
-    process.env.S3_ACCESS_KEY_ID &&
-    process.env.S3_SECRET_ACCESS_KEY
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
   );
 }
 
@@ -126,7 +126,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
               const mimeType = guessMimeType(filename);
               const key = mediaKey(userId, filename);
 
-              await uploadBuffer(key, fileBuffer, mimeType);
+              const { hasAudio } = await uploadBuffer(key, fileBuffer);
 
               await prisma.media.create({
                 data: {
@@ -135,6 +135,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                   originalUri: uri,
                   mimeType,
                   sizeBytes: fileBuffer.length,
+                  hasAudio,
                 },
               });
             } catch (mediaErr) {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { Spinner } from "@/components/ui/spinner";
 
 interface PlatformInfo {
   id: string;
@@ -129,6 +130,11 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Spinner className="h-6 w-6 text-gray-400" />
+        </div>
+      ) : (
       <div className="space-y-4">
         {PLATFORMS.map((platform) => {
           const connected = isConnected(platform.id);
@@ -141,9 +147,7 @@ export default function ConnectionsPage() {
                   <CardTitle className={`text-base ${platform.color}`}>
                     {platform.label}
                   </CardTitle>
-                  {loading ? (
-                    <div className="h-6 w-20 animate-pulse rounded bg-gray-200" />
-                  ) : connected ? (
+                  {connected ? (
                     <Badge variant="success">Connected</Badge>
                   ) : (
                     <Badge variant="secondary">Not connected</Badge>
@@ -196,9 +200,14 @@ export default function ConnectionsPage() {
                           disabled={disconnecting === platform.id}
                           onClick={() => disconnect(platform.id)}
                         >
-                          {disconnecting === platform.id
-                            ? "Disconnecting..."
-                            : "Disconnect"}
+                          {disconnecting === platform.id ? (
+                            <>
+                              <Spinner />
+                              Disconnecting...
+                            </>
+                          ) : (
+                            "Disconnect"
+                          )}
                         </Button>
                       )}
                     </>
@@ -209,6 +218,7 @@ export default function ConnectionsPage() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

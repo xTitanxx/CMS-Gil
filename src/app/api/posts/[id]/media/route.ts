@@ -73,7 +73,7 @@ export async function POST(
   }
 
   const storageKey = mediaKey(session.user.id, filename);
-  await uploadBuffer(storageKey, buffer, mimeType);
+  const { hasAudio } = await uploadBuffer(storageKey, buffer);
 
   const media = await prisma.media.create({
     data: {
@@ -81,6 +81,7 @@ export async function POST(
       storageKey,
       mimeType,
       sizeBytes: buffer.length,
+      hasAudio,
     },
   });
 

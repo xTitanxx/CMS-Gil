@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { upload } from "@vercel/blob/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, Upload, Film, Check, AlertCircle } from "lucide-react";
+import { X, Upload, Film, Check, AlertCircle, VolumeX } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
 
@@ -24,6 +24,7 @@ export interface MediaItem {
   id: string;
   mimeType: string;
   url: string | null;
+  hasAudio?: boolean | null;
 }
 
 interface PostEditorProps {
@@ -261,7 +262,10 @@ export function PostEditor({
         <CardContent className="space-y-3">
           {media.length > 0 && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {media.map((m) => (
+              {media.map((m) => {
+                const isSilentVideo =
+                  m.mimeType.startsWith("video") && m.hasAudio === false;
+                return (
                 <div key={m.id} className="relative">
                   {m.url ? (
                     m.mimeType.startsWith("video") ? (
@@ -284,6 +288,15 @@ export function PostEditor({
                       <Film className="h-6 w-6 text-gray-400" />
                     </div>
                   )}
+                  {isSilentVideo && (
+                    <div
+                      className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white"
+                      title="No audio track"
+                    >
+                      <VolumeX className="h-3 w-3" />
+                      <span>silent</span>
+                    </div>
+                  )}
                   <button
                     onClick={() => deleteMedia(m.id)}
                     className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
@@ -292,7 +305,8 @@ export function PostEditor({
                     <X className="h-3 w-3" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

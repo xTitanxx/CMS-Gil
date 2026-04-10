@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { upload } from "@vercel/blob/client";
 import { useDropzone } from "react-dropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FolderOpen, RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { Upload, FolderOpen, RefreshCw, CheckCircle, XCircle, Info } from "lucide-react";
+import { useAsync } from "@/hooks/useAsync";
+import { useConfirm } from "@/hooks/useConfirm";
+import { Spinner } from "@/components/ui/spinner";
 
 interface ImportJob {
   id: string;
@@ -30,6 +34,10 @@ export default function ImportPage() {
   const [activeJob, setActiveJob] = useState<ImportJob | null>(null);
   const [polling, setPolling] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [fileProgress, setFileProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [localPath, setLocalPath] = useState("");
+  const [localImporting, setLocalImporting] = useState(false);
 
   // Drive sync state
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
@@ -40,8 +48,40 @@ export default function ImportPage() {
     lastSyncedAt?: string;
   } | null>(null);
   const [driveLoading, setDriveLoading] = useState(false);
-  const [driveSyncing, setDriveSyncing] = useState(false);
   const [driveError, setDriveError] = useState("");
+  const syncNow = useAsync();
+  const resetHistory = useAsync();
+  const [lastSyncCount, setLastSyncCount] = useState<number | null>(null);
+
+  // Load saved DriveSync config on mount
+  useEffect(() => {
+    fetch("/api/drive/sync")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.driveSync) {
+          setDriveSync({
+            folderId: data.driveSync.folderId,
+            folderName: data.driveSync.folderName,
+            lastSyncedAt: data.driveSync.lastSyncedAt ?? undefined,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Rehydrate active job from sessionStorage on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem("activeImportJob");
+    if (!stored) return;
+    try {
+      const job = JSON.parse(stored);
+      if (job.status !== "COMPLETED" && job.status !== "FAILED") {
+        setActiveJob(job);
+      }
+    } catch {
+      sessionStorage.removeItem("activeImportJob");
+    }
+  }, []);
 
   // Poll active job
   useEffect(() => {
@@ -55,9 +95,11 @@ export default function ImportPage() {
       if (res.ok) {
         const data = await res.json();
         setActiveJob(data);
+        sessionStorage.setItem("activeImportJob", JSON.stringify(data));
         if (data.status === "COMPLETED" || data.status === "FAILED") {
           clearInterval(interval);
           setPolling(false);
+          sessionStorage.removeItem("activeImportJob");
         }
       }
     }, 2000);
@@ -65,33 +107,124 @@ export default function ImportPage() {
   }, [activeJob]);
 
   const onDrop = useCallback(async (files: File[]) => {
-    const file = files[0];
-    if (!file) return;
+    if (files.length === 0) return;
     setUploadError("");
 
-    const form = new FormData();
-    form.append("file", file);
-
-    const res = await fetch("/api/import/upload", {
-      method: "POST",
-      body: form,
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setUploadError(data.error ?? "Upload failed");
+    // Single JSON file — use the existing direct upload endpoint
+    if (files.length === 1 && files[0].name.endsWith(".json")) {
+      const form = new FormData();
+      form.append("file", files[0]);
+      const res = await fetch("/api/import/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+        return;
+      }
+      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: files[0].name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
       return;
     }
-    // Start polling
-    setActiveJob({ id: data.jobId, status: "PENDING", filename: file.name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null });
+
+    // Single small ZIP — use existing direct upload endpoint
+    if (files.length === 1 && files[0].size < 4 * 1024 * 1024) {
+      const form = new FormData();
+      form.append("file", files[0]);
+      const res = await fetch("/api/import/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+        return;
+      }
+      const newJob: ImportJob = { id: data.jobId, status: "PENDING", filename: files[0].name, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+      return;
+    }
+
+    // Multiple files or large ZIP — try Blob staging first, fall back to direct FormData
+    setUploadingFiles(true);
+
+    try {
+      let jobId: string;
+
+      // Try Blob upload first (works on Vercel with BLOB_READ_WRITE_TOKEN)
+      let usedBlob = false;
+      const blobUrls: string[] = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+          const blob = await upload(files[i].name, files[i], {
+            access: "public",
+            handleUploadUrl: "/api/blob",
+          });
+          blobUrls.push(blob.url);
+        }
+        usedBlob = true;
+      } catch {
+        // Blob not available (no token / local dev) — fall back to direct upload
+        blobUrls.length = 0;
+      }
+
+      if (usedBlob) {
+        setFileProgress(null);
+        const res = await fetch("/api/import/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ blobUrls }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error ?? "Processing failed");
+          return;
+        }
+        jobId = data.jobId;
+      } else {
+        // Direct FormData upload (local dev / no Blob token)
+        const form = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+          form.append("files", files[i]);
+        }
+        setFileProgress(null);
+        const res = await fetch("/api/import/process", {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error ?? "Processing failed");
+          return;
+        }
+        jobId = data.jobId;
+      }
+
+      const label = files.length === 1 ? files[0].name : `${files.length} ZIP files`;
+      const newJob: ImportJob = { id: jobId, status: "PENDING", filename: label, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };
+      setActiveJob(newJob);
+      sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+    } catch (err) {
+      setUploadError(String(err));
+    } finally {
+      setUploadingFiles(false);
+      setFileProgress(null);
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/zip": [".zip"],
+      "application/x-zip-compressed": [".zip"],
       "application/json": [".json"],
     },
-    maxFiles: 1,
+    disabled: uploadingFiles,
   });
 
   const loadDriveFolders = async () => {
@@ -122,16 +255,26 @@ export default function ImportPage() {
     }
   };
 
+  const resetDriveSyncHistory = async () => {
+    await resetHistory.run(async () => {
+      const res = await fetch("/api/drive/sync", { method: "DELETE" });
+      if (!res.ok) throw new Error("Reset failed");
+    }, "Import history cleared. You can now sync again.");
+  };
+
+  const { confirming: resetConfirming, trigger: triggerReset } = useConfirm(resetDriveSyncHistory);
+
   const triggerDriveSync = async () => {
-    setDriveSyncing(true);
-    const res = await fetch("/api/drive/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-    const data = await res.json();
-    setDriveSyncing(false);
-    if (res.ok) {
-      alert(`Sync complete: ${data.jobsCreated} job(s) created`);
-    } else {
-      setDriveError(data.error ?? "Sync failed");
-    }
+    await syncNow.run(async () => {
+      const res = await fetch("/api/drive/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Sync failed");
+      const data: { jobsCreated: number } = await res.json();
+      setLastSyncCount(data.jobsCreated ?? 0);
+    }, "sync_done");
   };
 
   const progress =
@@ -175,14 +318,26 @@ export default function ImportPage() {
                   Drag & drop your Facebook export
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Supports .zip (full export) or .json (your_posts_1.json)
+                  Supports multiple .zip files (Meta split exports) or a single .json
                 </p>
-                <Button variant="outline" size="sm" className="mt-3">
+                <Button variant="outline" size="sm" className="mt-3" disabled={uploadingFiles}>
                   Browse files
                 </Button>
               </>
             )}
           </div>
+
+          {uploadingFiles && fileProgress && (
+            <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+              <div className="text-sm">
+                <p className="font-medium text-blue-800">
+                  Uploading file {fileProgress.current} of {fileProgress.total}
+                </p>
+                <p className="text-blue-600 text-xs">{fileProgress.name}</p>
+              </div>
+            </div>
+          )}
 
           {uploadError && (
             <p className="text-sm text-red-600">{uploadError}</p>
@@ -236,6 +391,69 @@ export default function ImportPage() {
         </CardContent>
       </Card>
 
+      {/* Local Folder Import (for large exports) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FolderOpen className="h-4 w-4" />
+            Local Folder Import
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-600">
+            For large Facebook exports (multiple GBs), paste the path to a folder
+            containing the .zip files on your computer. The server reads them
+            directly from disk without uploading.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={localPath}
+              onChange={(e) => setLocalPath(e.target.value)}
+              placeholder="/path/to/folder/with/zips"
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              disabled={localImporting}
+            />
+            <Button
+              size="sm"
+              disabled={!localPath.trim() || localImporting}
+              onClick={async () => {
+                setUploadError("");
+                setLocalImporting(true);
+                try {
+                  const res = await fetch("/api/import/process", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ localPath: localPath.trim() }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    setUploadError(data.error ?? "Import failed");
+                    return;
+                  }
+                  const newJob: ImportJob = {
+                    id: data.jobId, status: "PENDING",
+                    filename: `Local: ${localPath.trim().split("/").pop()}`,
+                    source: "UPLOAD", totalPosts: 0, importedPosts: 0,
+                    skippedPosts: 0, errorLog: null, startedAt: null,
+                    completedAt: null,
+                  };
+                  setActiveJob(newJob);
+                  sessionStorage.setItem("activeImportJob", JSON.stringify(newJob));
+                } catch (err) {
+                  setUploadError(String(err));
+                } finally {
+                  setLocalImporting(false);
+                }
+              }}
+            >
+              {localImporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+              {localImporting ? "Starting..." : "Import"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Google Drive Sync */}
       <Card>
         <CardHeader>
@@ -283,17 +501,54 @@ export default function ImportPage() {
             </Button>
 
             {driveSync?.folderId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={triggerDriveSync}
-                disabled={driveSyncing}
-              >
-                <RefreshCw className={`h-4 w-4 ${driveSyncing ? "animate-spin" : ""}`} />
-                Sync Now
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={triggerDriveSync}
+                  disabled={syncNow.isLoading}
+                >
+                  {syncNow.isLoading ? <Spinner /> : <RefreshCw className="h-4 w-4" />}
+                  {syncNow.isLoading ? "Syncing..." : "Sync Now"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={triggerReset}
+                  disabled={resetHistory.isLoading}
+                  className={resetConfirming ? "border-amber-400 text-amber-700 hover:bg-amber-50" : ""}
+                >
+                  {resetHistory.isLoading ? <Spinner /> : null}
+                  {resetHistory.isLoading
+                    ? "Resetting..."
+                    : resetConfirming
+                    ? "Are you sure?"
+                    : "Reset sync history"}
+                </Button>
+              </>
             )}
           </div>
+
+          {syncNow.status === "success" && (
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-800">
+              <CheckCircle className="h-4 w-4 shrink-0 text-green-500" />
+              {lastSyncCount && lastSyncCount > 0
+                ? `Sync started: ${lastSyncCount} job(s) queued for import.`
+                : "Sync complete: no new files found."}
+            </div>
+          )}
+          {syncNow.status === "error" && (
+            <p className="text-sm text-red-600">{syncNow.message}</p>
+          )}
+          {resetHistory.status === "success" && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-800">
+              <Info className="h-4 w-4 shrink-0 text-blue-500" />
+              {resetHistory.message}
+            </div>
+          )}
+          {resetHistory.status === "error" && (
+            <p className="text-sm text-red-600">{resetHistory.message}</p>
+          )}
 
           {driveError && <p className="text-sm text-red-600">{driveError}</p>}
 

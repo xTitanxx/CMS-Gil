@@ -2,8 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { upload } from "@vercel/blob/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, Upload, Film, Check, AlertCircle, VolumeX } from "lucide-react";
+import {
+  X,
+  Upload,
+  Film,
+  Check,
+  AlertCircle,
+  VolumeX,
+  Calendar,
+} from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
 
@@ -42,6 +49,18 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatDatePretty(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function PostEditor({
   postId,
   initialBody,
@@ -56,12 +75,12 @@ export function PostEditor({
   const [tagInput, setTagInput] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [mediaError, setMediaError] = useState("");
+  const [editingDate, setEditingDate] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -69,7 +88,6 @@ export function PostEditor({
     ta.style.height = `${ta.scrollHeight}px`;
   }, [body]);
 
-  // Auto-save body, date, tags — skip on initial mount
   useEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true;
@@ -159,6 +177,7 @@ export function PostEditor({
     onDrop,
     accept: ACCEPTED_MIME_TYPES,
     multiple: true,
+    noClick: true,
   });
 
   function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -171,66 +190,61 @@ export function PostEditor({
     setTagInput("");
   }
 
-  return (
-    <div className="space-y-4">
-      {/* Date */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Date</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <input
-            type="datetime-local"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-        </CardContent>
-      </Card>
+  const hasMedia = media.length > 0;
+  const primaryMedia = media[0];
+  const restMedia = media.slice(1);
 
-      {/* Content */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Content</CardTitle>
-          <span className="flex items-center gap-1 text-xs text-gray-400">
-            {saveStatus === "saving" && "Saving…"}
-            {saveStatus === "saved" && (
-              <>
-                <Check className="h-3 w-3 text-green-500" />
-                Saved
-              </>
+  return (
+    <div {...getRootProps()} className="relative">
+      <input {...getInputProps()} />
+
+      {isDragActive && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/90">
+          <div className="flex flex-col items-center gap-2 text-blue-600">
+            <Upload className="h-8 w-8" />
+            <p className="text-sm font-medium">Drop to upload</p>
+          </div>
+        </div>
+      )}
+
+      <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        {/* Media hero */}
+        {hasMedia && (
+          <div className="bg-gray-50">
+            <MediaHero media={primaryMedia} onDelete={() => deleteMedia(primaryMedia.id)} />
+            {restMedia.length > 0 && (
+              <div className="grid grid-cols-3 gap-1 p-1 sm:grid-cols-4">
+                {restMedia.map((m) => (
+                  <MediaTile
+                    key={m.id}
+                    media={m}
+                    onDelete={() => deleteMedia(m.id)}
+                  />
+                ))}
+              </div>
             )}
-            {saveStatus === "error" && (
-              <>
-                <AlertCircle className="h-3 w-3 text-red-500" />
-                Error saving
-              </>
-            )}
-          </span>
-        </CardHeader>
-        <CardContent>
+          </div>
+        )}
+
+        {/* Body */}
+        <div className="px-6 pt-6">
           <textarea
             ref={textareaRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            rows={4}
-            className="w-full resize-none overflow-hidden rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            placeholder="Write a caption…"
+            rows={1}
+            className="w-full resize-none overflow-hidden border-0 bg-transparent text-[17px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
           />
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Tags */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Tags</CardTitle>
-          <ReanalyzeButton postId={postId} />
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
+        {/* Tags */}
+        <div className="px-6 pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-700"
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
               >
                 {tag}
                 <button
@@ -247,89 +261,198 @@ export function PostEditor({
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleTagKeyDown}
-              placeholder="Add tag…"
-              className="w-24 rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs focus:border-blue-400 focus:outline-none"
+              placeholder={tags.length === 0 ? "Add tags…" : "+ tag"}
+              className="min-w-[4rem] rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-xs focus:border-blue-400 focus:outline-none"
             />
+            <ReanalyzeButton postId={postId} />
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Media */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Media ({media.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {media.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {media.map((m) => {
-                const isSilentVideo =
-                  m.mimeType.startsWith("video") && m.hasAudio === false;
-                return (
-                <div key={m.id} className="relative">
-                  {m.url ? (
-                    m.mimeType.startsWith("video") ? (
-                      // eslint-disable-next-line jsx-a11y/media-has-caption
-                      <video
-                        src={m.url}
-                        controls
-                        className="rounded-lg w-full"
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={m.url}
-                        alt=""
-                        className="rounded-lg w-full object-cover aspect-square"
-                      />
-                    )
-                  ) : (
-                    <div className="flex aspect-square items-center justify-center rounded-lg bg-gray-100">
-                      <Film className="h-6 w-6 text-gray-400" />
-                    </div>
-                  )}
-                  {isSilentVideo && (
-                    <div
-                      className="absolute bottom-1 left-1 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white"
-                      title="No audio track"
-                    >
-                      <VolumeX className="h-3 w-3" />
-                      <span>silent</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => deleteMedia(m.id)}
-                    className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
-                    aria-label="Delete media"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div
-            {...getRootProps()}
-            className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-6 text-center transition-colors ${
-              isDragActive
-                ? "border-blue-400 bg-blue-50"
-                : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-            }`}
-          >
-            <input {...getInputProps()} />
-            <Upload className="h-5 w-5 text-gray-400 mb-1" />
-            <p className="text-xs text-gray-500">
-              {isDragActive ? "Drop here" : "Click or drag to add media"}
-            </p>
+        {/* Metadata footer */}
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-gray-400" />
+            {editingDate ? (
+              <input
+                type="datetime-local"
+                value={date}
+                autoFocus
+                onBlur={() => setEditingDate(false)}
+                onChange={(e) => setDate(e.target.value)}
+                className="rounded border border-gray-300 px-1.5 py-0.5 text-xs focus:border-blue-500 focus:outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingDate(true)}
+                className="rounded hover:bg-gray-100 px-1 py-0.5 text-gray-500"
+                title="Edit date"
+              >
+                {formatDatePretty(date) || "Set date"}
+              </button>
+            )}
           </div>
+          <span className="flex items-center gap-1">
+            {saveStatus === "saving" && "Saving…"}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="h-3 w-3 text-green-500" />
+                Saved
+              </>
+            )}
+            {saveStatus === "error" && (
+              <>
+                <AlertCircle className="h-3 w-3 text-red-500" />
+                Error saving
+              </>
+            )}
+          </span>
+        </div>
+      </article>
 
-          {mediaError && (
-            <p className="text-xs text-red-600">{mediaError}</p>
-          )}
-        </CardContent>
-      </Card>
+      {/* Upload hint below the card */}
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-200 px-4 py-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2">
+          <Upload className="h-3.5 w-3.5 text-gray-400" />
+          <span>Drag files onto the post or</span>
+          <UploadButton onSelect={(files) => onDrop(Array.from(files))} />
+        </div>
+        {mediaError && <span className="text-red-600">{mediaError}</span>}
+      </div>
     </div>
+  );
+}
+
+function MediaHero({
+  media,
+  onDelete,
+}: {
+  media: MediaItem;
+  onDelete: () => void;
+}) {
+  const isVideo = media.mimeType.startsWith("video");
+  const isSilentVideo = isVideo && media.hasAudio === false;
+
+  return (
+    <div className="relative">
+      {media.url ? (
+        isVideo ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video
+            src={media.url}
+            controls
+            playsInline
+            className="mx-auto max-h-[70vh] w-full object-contain bg-black"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.url}
+            alt=""
+            className="mx-auto max-h-[70vh] w-full object-contain"
+          />
+        )
+      ) : (
+        <div className="flex aspect-video items-center justify-center bg-gray-100">
+          <Film className="h-8 w-8 text-gray-400" />
+        </div>
+      )}
+      {isSilentVideo && (
+        <div
+          className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] text-white"
+          title="No audio track"
+        >
+          <VolumeX className="h-3 w-3" />
+          <span>silent</span>
+        </div>
+      )}
+      <button
+        onClick={onDelete}
+        className="absolute right-3 top-3 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+        aria-label="Delete media"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function MediaTile({
+  media,
+  onDelete,
+}: {
+  media: MediaItem;
+  onDelete: () => void;
+}) {
+  const isVideo = media.mimeType.startsWith("video");
+  const isSilentVideo = isVideo && media.hasAudio === false;
+
+  return (
+    <div className="relative aspect-square overflow-hidden rounded-md">
+      {media.url ? (
+        isVideo ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video
+            src={media.url}
+            className="h-full w-full object-cover"
+            muted
+            playsInline
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.url}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        )
+      ) : (
+        <div className="flex h-full items-center justify-center bg-gray-100">
+          <Film className="h-5 w-5 text-gray-400" />
+        </div>
+      )}
+      {isSilentVideo && (
+        <div className="absolute bottom-1 left-1 rounded-full bg-black/60 p-0.5">
+          <VolumeX className="h-3 w-3 text-white" />
+        </div>
+      )}
+      <button
+        onClick={onDelete}
+        className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+        aria-label="Delete media"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+function UploadButton({
+  onSelect,
+}: {
+  onSelect: (files: FileList) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => ref.current?.click()}
+        className="font-medium text-blue-600 hover:text-blue-800"
+      >
+        choose files
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        multiple
+        accept={Object.keys(ACCEPTED_MIME_TYPES).join(",")}
+        onChange={(e) => {
+          if (e.target.files) onSelect(e.target.files);
+          e.target.value = "";
+        }}
+        className="hidden"
+      />
+    </>
   );
 }

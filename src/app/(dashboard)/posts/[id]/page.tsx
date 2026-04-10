@@ -114,7 +114,7 @@ export default async function PostDetailPage({
   );
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div>
       <PostNavBar
         prevHref={prevHref}
         nextHref={nextHref}
@@ -127,22 +127,22 @@ export default async function PostDetailPage({
         listHref={listHref}
       />
 
-      <div className="flex items-center justify-end">
-        <DeleteButton postId={id} />
-      </div>
+      <div className="mx-auto mt-4 w-full max-w-2xl space-y-6">
+        <div className="flex items-center justify-end">
+          <DeleteButton postId={id} />
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Editable post content */}
-        <div className="lg:col-span-2 space-y-4">
-          <PostEditor
-            postId={id}
-            initialBody={post.body}
-            initialOriginalDate={post.originalDate}
-            initialTags={post.tags}
-            initialMedia={mediaWithUrls}
-          />
+        <PostEditor
+          postId={id}
+          initialBody={post.body}
+          initialOriginalDate={post.originalDate}
+          initialTags={post.tags}
+          initialMedia={mediaWithUrls}
+        />
 
-          {/* Publish history */}
+        <PublishPanelWithRefresh postId={id} />
+
+        {/* Publish history */}
           {post.publishes.length > 0 && (
             <Card>
               <CardHeader>
@@ -240,12 +240,6 @@ export default async function PostDetailPage({
               </Card>
             );
           })()}
-        </div>
-
-        {/* Publish Panel */}
-        <div>
-          <PublishPanelWithRefresh postId={id} />
-        </div>
       </div>
     </div>
   );

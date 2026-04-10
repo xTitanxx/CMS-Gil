@@ -16,7 +16,7 @@ export function PostNavBar({
   source,
 }: PostNavBarProps) {
   return (
-    <div className="sticky top-0 z-20 -mx-6 flex items-center justify-between gap-3 border-b border-gray-200 bg-white/90 px-6 py-3 backdrop-blur">
+    <div className="sticky top-0 z-20 -mx-6 flex items-center justify-between gap-3 border-b border-gray-200 bg-white/90 px-6 py-2 backdrop-blur">
       <div className="flex items-center gap-3">
         <Link
           href={listHref}

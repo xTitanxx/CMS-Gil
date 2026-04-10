@@ -113,6 +113,8 @@ export default async function PostDetailPage({
     })),
   );
 
+  const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+
   return (
     <div>
       <PostNavBar
@@ -127,22 +129,26 @@ export default async function PostDetailPage({
         listHref={listHref}
       />
 
-      <div className="mx-auto mt-4 w-full max-w-2xl space-y-6">
+      <div className="mx-auto mt-3 w-full max-w-6xl space-y-3">
         <div className="flex items-center justify-end">
           <DeleteButton postId={id} />
         </div>
 
-        <PostEditor
-          postId={id}
-          initialBody={post.body}
-          initialOriginalDate={post.originalDate}
-          initialTags={post.tags}
-          initialMedia={mediaWithUrls}
-        />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0">
+            <PostEditor
+              postId={id}
+              initialBody={post.body}
+              initialOriginalDate={post.originalDate}
+              initialTags={post.tags}
+              initialMedia={mediaWithUrls}
+            />
+          </div>
 
-        <PublishPanelWithRefresh postId={id} />
+          <div className="space-y-3">
+            <PublishPanelWithRefresh postId={id} hasVideo={hasVideo} />
 
-        {/* Publish history */}
+          {/* Publish history */}
           {post.publishes.length > 0 && (
             <Card>
               <CardHeader>
@@ -239,7 +245,9 @@ export default async function PostDetailPage({
                 </CardContent>
               </Card>
             );
-          })()}
+            })()}
+          </div>
+        </div>
       </div>
     </div>
   );

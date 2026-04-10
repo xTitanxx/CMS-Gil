@@ -19,14 +19,20 @@ function getParam(sp: SearchParamsLike, key: string): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+function validDate(s: string | undefined): string | undefined {
+  if (!s) return undefined;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? undefined : s;
+}
+
 export function parsePostsFilters(sp: SearchParamsLike): PostsFilters {
   return {
     search: getParam(sp, "search") || undefined,
     sort: getParam(sp, "sort") || undefined,
     tags: getParam(sp, "tags") || undefined,
     audio: getParam(sp, "audio") || undefined,
-    from: getParam(sp, "from") || undefined,
-    to: getParam(sp, "to") || undefined,
+    from: validDate(getParam(sp, "from")),
+    to: validDate(getParam(sp, "to")),
   };
 }
 

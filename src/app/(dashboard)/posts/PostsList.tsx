@@ -162,7 +162,6 @@ export function PostsList({
     if (sort && sort !== "originalDate_desc") qs.set("sort", sort);
     if (audio !== "all") qs.set("audio", audio);
     if (aiTags.length > 0) qs.set("tags", aiTags.join(","));
-    qs.set("from", "list");
     return qs.toString();
   }, [search, sort, audio, aiTags]);
 

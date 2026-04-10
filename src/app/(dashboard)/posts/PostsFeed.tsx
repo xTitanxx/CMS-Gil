@@ -67,7 +67,6 @@ export function PostsFeed() {
 
   const detailQueryString = useMemo(() => {
     const qs = buildFilterQuery(new URLSearchParams(searchParams.toString()));
-    qs.set("from", "list");
     qs.set("view", "feed");
     return qs.toString();
   }, [searchParams]);

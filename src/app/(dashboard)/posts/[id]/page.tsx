@@ -21,7 +21,6 @@ type SearchParams = { [key: string]: string | string[] | undefined };
 function serializeListQuery(sp: SearchParams): string {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(sp)) {
-    if (key === "from") continue;
     if (value == null) continue;
     const v = Array.isArray(value) ? value[0] : value;
     if (v) qs.set(key, v);

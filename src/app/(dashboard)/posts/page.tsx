@@ -79,6 +79,7 @@ export default function PostsPage() {
   const [sort, setSort] = useState("originalDate_desc");
   const [audio, setAudio] = useState<AudioFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // AI search
   const [aiQuery, setAiQuery] = useState("");
   const [aiSearching, setAiSearching] = useState(false);
@@ -119,6 +120,7 @@ export default function PostsPage() {
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = new URLSearchParams({
       page: String(page),
       limit: "20",
@@ -127,16 +129,30 @@ export default function PostsPage() {
       ...(aiTags.length > 0 ? { tags: aiTags.join(",") } : {}),
       ...(audio !== "all" ? { audio } : {}),
     });
-    const res = await fetch(`/api/posts?${params}`);
-    const data = await res.json();
-    setPosts(data.posts ?? []);
-    setTotal(data.total ?? 0);
-    setPages(data.pages ?? 1);
-    setLoading(false);
-    setSelectedIds(new Set());
-    setSelectAllMode(false);
-    setLastSelectedIndex(null);
-    lastSelectedIndexRef.current = null;
+    try {
+      const res = await fetch(`/api/posts?${params}`);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(
+          `Posts API returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
+        );
+      }
+      const data = await res.json();
+      setPosts(data.posts ?? []);
+      setTotal(data.total ?? 0);
+      setPages(data.pages ?? 1);
+    } catch (err) {
+      setPosts([]);
+      setTotal(0);
+      setPages(1);
+      setLoadError(err instanceof Error ? err.message : "Failed to load posts");
+    } finally {
+      setLoading(false);
+      setSelectedIds(new Set());
+      setSelectAllMode(false);
+      setLastSelectedIndex(null);
+      lastSelectedIndexRef.current = null;
+    }
   }, [page, search, sort, aiTags, audio]);
 
   useEffect(() => {
@@ -419,13 +435,26 @@ export default function PostsPage() {
       )}
 
       {/* Posts list */}
+      {loadError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="min-w-0">
+            <p className="font-medium">Couldn&apos;t load posts</p>
+            <p className="mt-0.5 break-words text-xs text-red-600">{loadError}</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={fetchPosts}>
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      )}
+
       {loading && posts.length === 0 ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-200" />
           ))}
         </div>
-      ) : !loading && posts.length === 0 ? (
+      ) : !loading && posts.length === 0 && !loadError ? (
         <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
           <p className="text-gray-500">No posts found.</p>
           <Link href="/import" className="mt-2 block text-sm text-blue-600 hover:underline">

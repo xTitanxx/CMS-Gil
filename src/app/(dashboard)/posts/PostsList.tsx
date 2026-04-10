@@ -10,6 +10,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
 import { ViewToggle } from "./ViewToggle";
+import { displayBody } from "@/lib/post-body";
 
 interface Post {
   id: string;
@@ -544,7 +545,13 @@ export function PostsList({
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-gray-700">{post.body}</p>
+                    {displayBody(post.body) ? (
+                      <p className="mt-1 line-clamp-2 text-sm text-gray-700">
+                        {displayBody(post.body)}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm italic text-gray-400">No caption</p>
+                    )}
                     {post.tags.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {post.tags.slice(0, 5).map((tag) => (

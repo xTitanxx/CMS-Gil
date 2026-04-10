@@ -99,7 +99,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
         const post = await prisma.post.create({
           data: {
             userId,
-            body: parsed.body || "(no text)",
+            body: parsed.body ?? "",
             source: "FACEBOOK",
             sourceId: parsed.sourceId,
             originalDate: parsed.originalDate,

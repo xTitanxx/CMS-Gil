@@ -15,6 +15,7 @@ import {
   buildPostsQuery,
   parsePostsFilters,
 } from "@/lib/posts-query";
+import { displayBody } from "@/lib/post-body";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -138,7 +139,7 @@ export default async function PostDetailPage({
           <div className="min-w-0">
             <PostEditor
               postId={id}
-              initialBody={post.body}
+              initialBody={displayBody(post.body)}
               initialOriginalDate={post.originalDate}
               initialTags={post.tags}
               initialMedia={mediaWithUrls}

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Image as ImageIcon, Pencil, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
+import { displayBody } from "@/lib/post-body";
 
 interface FeedPost {
   id: string;
@@ -263,9 +264,9 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
         </Link>
       </header>
 
-      {post.body && (
+      {displayBody(post.body) && (
         <div className="whitespace-pre-wrap px-5 py-4 text-[15px] leading-relaxed text-gray-800">
-          {post.body}
+          {displayBody(post.body)}
         </div>
       )}
 
@@ -303,7 +304,7 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
         </Link>
       )}
 
-      {!post.thumbUrl && post.media.length === 0 && !post.body && (
+      {!post.thumbUrl && post.media.length === 0 && !displayBody(post.body) && (
         <div className="flex items-center justify-center px-5 py-10 text-gray-300">
           <ImageIcon className="h-8 w-8" />
         </div>

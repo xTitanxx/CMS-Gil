@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Send, Clock } from "lucide-react";
+import { SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
+import { FaLinkedin } from "react-icons/fa6";
 
 const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
 type Platform = (typeof PLATFORMS)[number];
@@ -14,6 +16,13 @@ const PLATFORM_COLORS: Record<Platform, string> = {
   LINKEDIN: "bg-blue-50 border-blue-200 text-blue-700",
   YOUTUBE: "bg-red-50 border-red-200 text-red-700",
   TIKTOK: "bg-gray-900 border-gray-700 text-white",
+};
+
+const PLATFORM_ICONS: Record<Platform, React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>> = {
+  INSTAGRAM: SiInstagram,
+  LINKEDIN: FaLinkedin,
+  YOUTUBE: SiYoutube,
+  TIKTOK: SiTiktok,
 };
 
 interface PublishPanelProps {
@@ -85,26 +94,35 @@ export function PublishPanel({ postId, onPublished }: PublishPanelProps) {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             Select Platforms
           </p>
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              onClick={() => toggle(p)}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
-                selected.has(p)
-                  ? PLATFORM_COLORS[p] + " ring-2 ring-offset-1 ring-current"
-                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                {p}
-                {selected.has(p) && (
-                  <Badge variant="success" className="text-xs">
-                    Selected
-                  </Badge>
-                )}
-              </div>
-            </button>
-          ))}
+          {PLATFORMS.map((p) => {
+            const Icon = PLATFORM_ICONS[p];
+            return (
+              <button
+                key={p}
+                type="button"
+                aria-label={p}
+                aria-pressed={selected.has(p)}
+                onClick={() => toggle(p)}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
+                  selected.has(p)
+                    ? PLATFORM_COLORS[p] + " ring-2 ring-offset-1 ring-current"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Icon size={16} aria-hidden />
+                    <span>{p}</span>
+                  </span>
+                  {selected.has(p) && (
+                    <Badge variant="success" className="text-xs">
+                      Selected
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Schedule */}

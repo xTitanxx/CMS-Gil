@@ -14,10 +14,8 @@
  *   npx tsx scripts/backfill-audio.ts --limit=500
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../src/lib/prisma";
 import { fetchVideoAudioStatus } from "../src/lib/storage";
-
-const prisma = new PrismaClient();
 
 const BATCH_SIZE = 100;
 // Cloudinary's admin API is stingier than the delivery API — keep it modest.

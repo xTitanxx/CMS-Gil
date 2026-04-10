@@ -9,21 +9,31 @@ cloudinary.config({
 /**
  * Determines whether a Cloudinary video resource has an audio track.
  *
- * Cloudinary's upload and admin resource responses include an `audio` object
- * for videos ({ codec, frequency, channels, bit_rate, ... }) when an audio
- * track is present. When the video is silent, the `audio` field is either
- * missing or an empty object. This helper normalizes that into a tri-state:
- *   - true:  audio track is present
- *   - false: resource is a video with no audio track
- *   - null:  resource is not a video, or we can't tell
+ * Shape of Cloudinary's actual response (verified against live admin API):
+ *   - Audible video: { resource_type: "video", has_audio: true, audio_codec: "aac", ... }
+ *   - Silent video:  { resource_type: "video" }  — has_audio and all audio_* fields omitted
+ *
+ * Silent videos don't get `has_audio: false`; the fields are simply absent.
+ * This helper treats an absent `has_audio` on a known video as "silent," with
+ * `audio_codec` as a secondary signal for robustness across API versions.
+ *
+ * Returns:
+ *   - true:  video has an audio track
+ *   - false: video is silent (no audio track)
+ *   - null:  not a video (field doesn't apply)
  */
 export function hasAudioFromResource(
-  resource: { resource_type?: string; audio?: unknown } | null | undefined
+  resource:
+    | { resource_type?: string; has_audio?: boolean; audio_codec?: string }
+    | null
+    | undefined
 ): boolean | null {
   if (!resource) return null;
   if (resource.resource_type !== "video") return null;
-  const audio = resource.audio;
-  if (audio && typeof audio === "object" && Object.keys(audio).length > 0) {
+  if (resource.has_audio === true) return true;
+  if (resource.has_audio === false) return false;
+  // has_audio omitted — fall back to audio_codec presence
+  if (typeof resource.audio_codec === "string" && resource.audio_codec.length > 0) {
     return true;
   }
   return false;

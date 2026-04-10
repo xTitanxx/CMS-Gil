@@ -105,6 +105,12 @@ model Media {
   sizeBytes   Int?
   altText     String?
 
+  // Whether the video media has an audio track. NULL = unknown / not checked yet
+  // (also the resting state for image media, since the field is only meaningful
+  // for videos). Populated by the Cloudinary upload response on new uploads and
+  // by scripts/backfill-audio.ts for historical rows.
+  hasAudio    Boolean?
+
   createdAt   DateTime @default(now())
 }
 

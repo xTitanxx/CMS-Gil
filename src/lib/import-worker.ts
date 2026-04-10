@@ -126,7 +126,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
               const mimeType = guessMimeType(filename);
               const key = mediaKey(userId, filename);
 
-              await uploadBuffer(key, fileBuffer, mimeType);
+              const { hasAudio } = await uploadBuffer(key, fileBuffer);
 
               await prisma.media.create({
                 data: {
@@ -135,6 +135,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                   originalUri: uri,
                   mimeType,
                   sizeBytes: fileBuffer.length,
+                  hasAudio,
                 },
               });
             } catch (mediaErr) {

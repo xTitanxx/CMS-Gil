@@ -17,6 +17,12 @@ export async function GET(req: NextRequest) {
   const to = searchParams.get("to");
   const sort = searchParams.get("sort") ?? "originalDate_desc";
   const tagsParam = searchParams.get("tags"); // comma-separated tag list (OR match)
+  // Audio filter: "all" (default) | "audible" | "silent" | "hide-silent"
+  //   silent      = every video media has hasAudio=false AND post has ≥1 video
+  //   audible     = post has ≥1 video media with hasAudio=true
+  //   hide-silent = exclude posts where every video media is silent (i.e. keep
+  //                 posts with at least one audible video OR no videos at all)
+  const audio = searchParams.get("audio") ?? "all";
 
   const sortMap: Record<string, { field: string; dir: "asc" | "desc" }> = {
     originalDate_desc: { field: "originalDate", dir: "desc" },
@@ -28,6 +34,55 @@ export async function GET(req: NextRequest) {
   const skip = (page - 1) * limit;
 
   const tagList = tagsParam ? tagsParam.split(",").map((t) => t.trim()).filter(Boolean) : [];
+
+  // Build the audio-filter clause. Key definitions:
+  //   "silent"      = the post has ≥1 video Media AND every video Media on it
+  //                   has hasAudio=false. Matches the common "I posted a muted
+  //                   video and didn't notice" case. A post with one silent
+  //                   clip and one audible clip is considered audible.
+  //   "audible"     = the post has ≥1 video Media with hasAudio=true.
+  //   "hide-silent" = not silent (i.e. anything that's not an all-silent-video
+  //                   post; posts with no videos pass through).
+  // Rows with hasAudio=null are treated as unknown and don't contribute to
+  // "silent" classification (so un-backfilled videos won't be flagged).
+  let audioClause: Record<string, unknown> = {};
+  if (audio === "silent") {
+    audioClause = {
+      media: {
+        some: { mimeType: { startsWith: "video/" }, hasAudio: false },
+      },
+      AND: [
+        {
+          media: {
+            none: { mimeType: { startsWith: "video/" }, hasAudio: true },
+          },
+        },
+      ],
+    };
+  } else if (audio === "audible") {
+    audioClause = {
+      media: {
+        some: { mimeType: { startsWith: "video/" }, hasAudio: true },
+      },
+    };
+  } else if (audio === "hide-silent") {
+    audioClause = {
+      NOT: {
+        AND: [
+          {
+            media: {
+              some: { mimeType: { startsWith: "video/" }, hasAudio: false },
+            },
+          },
+          {
+            media: {
+              none: { mimeType: { startsWith: "video/" }, hasAudio: true },
+            },
+          },
+        ],
+      },
+    };
+  }
 
   const where = {
     userId: session.user.id,
@@ -50,6 +105,7 @@ export async function GET(req: NextRequest) {
           },
         }
       : {}),
+    ...audioClause,
   };
 
   const [total, posts] = await Promise.all([
@@ -60,7 +116,7 @@ export async function GET(req: NextRequest) {
       skip,
       take: limit,
       include: {
-        media: { select: { id: true, storageKey: true, mimeType: true } },
+        media: { select: { id: true, storageKey: true, mimeType: true, hasAudio: true } },
         publishes: {
           select: { platform: true, status: true, platformUrl: true, scheduledAt: true },
         },
@@ -72,7 +128,8 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  // Add signed URLs for first media of each post
+  // Add signed URLs for first media of each post, and derive post-level silence:
+  // a post is "silent" iff it has ≥1 video Media and every video Media is muted.
   const postsWithUrls = await Promise.all(
     posts.map(async (post) => {
       const firstMedia = post.media[0];
@@ -80,7 +137,10 @@ export async function GET(req: NextRequest) {
         ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
         : null;
       const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
-      return { ...post, thumbUrl, isVideo };
+      const videoMedia = post.media.filter((m) => m.mimeType.startsWith("video/"));
+      const isSilent =
+        videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
+      return { ...post, thumbUrl, isVideo, isSilent };
     })
   );
 

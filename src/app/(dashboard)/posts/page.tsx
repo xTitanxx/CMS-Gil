@@ -5,7 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Image as ImageIcon, Trash2, Sparkles, X, RefreshCw, Play } from "lucide-react";
+import { Search, Plus, Image as ImageIcon, Trash2, Sparkles, X, RefreshCw, Play, VolumeX } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,8 +17,9 @@ interface Post {
   originalDate: string;
   thumbUrl: string | null;
   isVideo: boolean;
+  isSilent: boolean;
   tags: string[];
-  media: { id: string; mimeType: string }[];
+  media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
   analytics: {
     reactions: number | null;
@@ -27,6 +28,8 @@ interface Post {
     platformPostId: string | null;
   }[];
 }
+
+type AudioFilter = "all" | "audible" | "silent" | "hide-silent";
 
 function RowDeleteButton({
   postId,
@@ -74,6 +77,7 @@ export default function PostsPage() {
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("originalDate_desc");
+  const [audio, setAudio] = useState<AudioFilter>("all");
   const [loading, setLoading] = useState(true);
   // AI search
   const [aiQuery, setAiQuery] = useState("");
@@ -121,6 +125,7 @@ export default function PostsPage() {
       sort,
       ...(search ? { search } : {}),
       ...(aiTags.length > 0 ? { tags: aiTags.join(",") } : {}),
+      ...(audio !== "all" ? { audio } : {}),
     });
     const res = await fetch(`/api/posts?${params}`);
     const data = await res.json();
@@ -132,7 +137,7 @@ export default function PostsPage() {
     setSelectAllMode(false);
     setLastSelectedIndex(null);
     lastSelectedIndexRef.current = null;
-  }, [page, search, sort, aiTags]);
+  }, [page, search, sort, aiTags, audio]);
 
   useEffect(() => {
     fetchPosts();
@@ -270,6 +275,17 @@ export default function PostsPage() {
             <option value="originalDate_asc">Post date (oldest)</option>
             <option value="createdAt_desc">Import date (newest)</option>
             <option value="createdAt_asc">Import date (oldest)</option>
+          </select>
+          <select
+            value={audio}
+            onChange={(e) => { setAudio(e.target.value as AudioFilter); setPage(1); }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            title="Filter by audio track"
+          >
+            <option value="all">All posts</option>
+            <option value="audible">Has audio</option>
+            <option value="silent">Silent videos only</option>
+            <option value="hide-silent">Hide silent</option>
           </select>
         </div>
 
@@ -473,6 +489,14 @@ export default function PostsPage() {
                     {post.isVideo && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                         <Play className="h-5 w-5 fill-white text-white" />
+                      </div>
+                    )}
+                    {post.isSilent && (
+                      <div
+                        className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 p-0.5"
+                        title="Silent video — no audio track"
+                      >
+                        <VolumeX className="h-3 w-3 text-white" />
                       </div>
                     )}
                   </div>

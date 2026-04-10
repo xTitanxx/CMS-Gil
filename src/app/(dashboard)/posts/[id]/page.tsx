@@ -45,6 +45,7 @@ export default async function PostDetailPage({
     post.media.map(async (m) => ({
       id: m.id,
       mimeType: m.mimeType,
+      hasAudio: m.hasAudio,
       url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
     }))
   );

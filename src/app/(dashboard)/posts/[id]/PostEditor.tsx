@@ -207,129 +207,109 @@ export function PostEditor({
         </div>
       )}
 
-      <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:grid lg:grid-cols-12">
-        {/* Media column */}
-        <div
-          className={`bg-gray-50 ${
-            hasMedia ? "lg:col-span-7" : "lg:col-span-5"
-          } flex flex-col`}
-        >
-          {hasMedia ? (
-            <>
-              <MediaHero
-                media={primaryMedia}
-                onDelete={() => deleteMedia(primaryMedia.id)}
-              />
-              {restMedia.length > 0 && (
-                <div className="grid grid-cols-4 gap-1 p-1">
-                  {restMedia.map((m) => (
-                    <MediaTile
-                      key={m.id}
-                      media={m}
-                      onDelete={() => deleteMedia(m.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex min-h-[200px] flex-1 items-center justify-center p-6 text-gray-400">
-              <div className="flex flex-col items-center gap-2">
-                <Film className="h-8 w-8" />
-                <p className="text-xs">No media</p>
-              </div>
-            </div>
-          )}
+      <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        {/* Caption — above the media, Facebook-style */}
+        <div className="px-5 pt-4">
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Write a caption…"
+            rows={1}
+            className="w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
+          />
         </div>
 
-        {/* Text column */}
-        <div
-          className={`flex flex-col ${
-            hasMedia ? "lg:col-span-5" : "lg:col-span-7"
-          }`}
-        >
-          {/* Body */}
-          <div className="flex-1 px-4 pt-4 lg:px-5 lg:pt-5">
-            <textarea
-              ref={textareaRef}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write a caption…"
-              rows={1}
-              className="w-full resize-none overflow-hidden border-0 bg-transparent text-sm leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
+        {/* Media hero */}
+        {hasMedia ? (
+          <div className="mt-3 bg-gray-50">
+            <MediaHero
+              media={primaryMedia}
+              onDelete={() => deleteMedia(primaryMedia.id)}
             />
+            {restMedia.length > 0 && (
+              <div className="grid grid-cols-4 gap-1 p-1">
+                {restMedia.map((m) => (
+                  <MediaTile
+                    key={m.id}
+                    media={m}
+                    onDelete={() => deleteMedia(m.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
+        ) : null}
 
-          {/* Tags */}
-          <div className="px-4 pt-2 lg:px-5">
-            <div className="flex flex-wrap items-center gap-1">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700"
-                >
-                  {tag}
-                  <button
-                    onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                    className="text-gray-400 hover:text-gray-700"
-                    aria-label={`Remove tag ${tag}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder={tags.length === 0 ? "Add tags…" : "+"}
-                className="min-w-[3rem] rounded-full border border-dashed border-gray-300 bg-transparent px-2 py-0.5 text-[11px] focus:border-blue-400 focus:outline-none"
-              />
-              <ReanalyzeButton postId={postId} />
-            </div>
-          </div>
-
-          {/* Metadata footer */}
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-2 text-[11px] text-gray-500 lg:px-5">
-            <div className="flex items-center gap-1">
-              <Calendar className="h-3 w-3 text-gray-400" />
-              {editingDate ? (
-                <input
-                  type="datetime-local"
-                  value={date}
-                  autoFocus
-                  onBlur={() => setEditingDate(false)}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="rounded border border-gray-300 px-1 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none"
-                />
-              ) : (
+        {/* Tags */}
+        <div className="px-5 pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
+              >
+                {tag}
                 <button
-                  type="button"
-                  onClick={() => setEditingDate(true)}
-                  className="rounded px-1 py-0.5 text-gray-500 hover:bg-gray-100"
-                  title="Edit date"
+                  onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                  className="text-gray-400 hover:text-gray-700"
+                  aria-label={`Remove tag ${tag}`}
                 >
-                  {formatDatePretty(date) || "Set date"}
+                  <X className="h-3 w-3" />
                 </button>
-              )}
-            </div>
-            <span className="flex items-center gap-1">
-              {saveStatus === "saving" && "Saving…"}
-              {saveStatus === "saved" && (
-                <>
-                  <Check className="h-3 w-3 text-green-500" />
-                  Saved
-                </>
-              )}
-              {saveStatus === "error" && (
-                <>
-                  <AlertCircle className="h-3 w-3 text-red-500" />
-                  Error
-                </>
-              )}
-            </span>
+              </span>
+            ))}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              placeholder={tags.length === 0 ? "Add tags…" : "+ tag"}
+              className="min-w-[4rem] rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-xs focus:border-blue-400 focus:outline-none"
+            />
+            <ReanalyzeButton postId={postId} />
           </div>
+        </div>
+
+        {/* Metadata footer */}
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 px-5 py-2 text-[11px] text-gray-500">
+          <div className="flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-gray-400" />
+            {editingDate ? (
+              <input
+                type="datetime-local"
+                value={date}
+                autoFocus
+                onBlur={() => setEditingDate(false)}
+                onChange={(e) => setDate(e.target.value)}
+                className="rounded border border-gray-300 px-1 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingDate(true)}
+                className="rounded px-1 py-0.5 text-gray-500 hover:bg-gray-100"
+                title="Edit date"
+              >
+                {formatDatePretty(date) || "Set date"}
+              </button>
+            )}
+          </div>
+          <span className="flex items-center gap-1">
+            {saveStatus === "saving" && "Saving…"}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="h-3 w-3 text-green-500" />
+                Saved
+              </>
+            )}
+            {saveStatus === "error" && (
+              <>
+                <AlertCircle className="h-3 w-3 text-red-500" />
+                Error
+              </>
+            )}
+          </span>
         </div>
       </article>
 
@@ -365,14 +345,14 @@ function MediaHero({
             src={media.url}
             controls
             playsInline
-            className="mx-auto h-full max-h-[60vh] w-full object-contain bg-black"
+            className="mx-auto max-h-[50vh] w-full object-contain bg-black"
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={media.url}
             alt=""
-            className="mx-auto h-full max-h-[60vh] w-full object-contain"
+            className="mx-auto max-h-[50vh] w-full object-contain"
           />
         )
       ) : (

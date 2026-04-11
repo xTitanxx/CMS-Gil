@@ -37,9 +37,9 @@ describe("getDateRange", () => {
 describe("groupEntriesByDate", () => {
   it("groups entries by date key", () => {
     const entries: CalendarEntry[] = [
-      { postId: "a", date: "2026-04-06", status: "PENDING", thumbUrl: null, body: "foo" },
-      { postId: "b", date: "2026-04-06", status: "PUBLISHED", thumbUrl: null, body: "bar" },
-      { postId: "c", date: "2026-04-07", status: "IMPORTED", thumbUrl: null, body: "baz" },
+      { postId: "a", date: "2026-04-06", status: "PENDING", platforms: ["INSTAGRAM"], thumbUrl: null, body: "foo" },
+      { postId: "b", date: "2026-04-06", status: "PUBLISHED", platforms: ["LINKEDIN"], thumbUrl: null, body: "bar" },
+      { postId: "c", date: "2026-04-07", status: "IMPORTED", platforms: [], thumbUrl: null, body: "baz" },
     ];
     const grouped = groupEntriesByDate(entries);
     expect(grouped["2026-04-06"]).toHaveLength(2);

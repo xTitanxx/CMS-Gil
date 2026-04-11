@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getThumbnailUrl } from "@/lib/storage";
 
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -52,37 +52,78 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const entries = await Promise.all([
-    ...publishRecords.map(async (r) => {
+  // Group publish records by postId+date+status so a post published to
+  // multiple platforms the same day collapses into one entry with a
+  // platforms[] array.
+  type GroupedEntry = {
+    postId: string;
+    date: string;
+    status: "PENDING" | "PUBLISHED" | "IMPORTED";
+    platforms: string[];
+    thumbUrl: string | null;
+    body: string;
+    _storageKey?: string;
+    _mimeType?: string;
+  };
+
+  const groups = new Map<string, GroupedEntry>();
+
+  for (const r of publishRecords) {
+    const date = r.status === "PUBLISHED" ? r.publishedAt! : r.scheduledAt!;
+    const dateKey = toDateKey(date);
+    const status = r.status as "PENDING" | "PUBLISHED";
+    const groupKey = `${r.postId}|${dateKey}|${status}`;
+    const existing = groups.get(groupKey);
+    if (existing) {
+      if (!existing.platforms.includes(r.platform)) {
+        existing.platforms.push(r.platform);
+      }
+    } else {
       const media = r.post.media[0];
-      const thumbUrl = media
-        ? await getSignedDownloadUrl(media.storageKey, 3600, media.mimeType).catch(() => null)
-        : null;
-      const date = r.status === "PUBLISHED" ? r.publishedAt! : r.scheduledAt!;
-      return {
+      groups.set(groupKey, {
         postId: r.postId,
-        date: toDateKey(date),
-        status: r.status as "PENDING" | "PUBLISHED",
-        platform: r.platform as string,
-        thumbUrl,
+        date: dateKey,
+        status,
+        platforms: [r.platform],
+        thumbUrl: null,
         body: r.post.body,
-      };
-    }),
-    ...importedPosts.map(async (p) => {
-      const media = p.media[0];
-      const thumbUrl = media
-        ? await getSignedDownloadUrl(media.storageKey, 3600, media.mimeType).catch(() => null)
+        _storageKey: media?.storageKey,
+        _mimeType: media?.mimeType,
+      });
+    }
+  }
+
+  for (const p of importedPosts) {
+    const dateKey = toDateKey(p.originalDate);
+    const groupKey = `${p.id}|${dateKey}|IMPORTED`;
+    const media = p.media[0];
+    groups.set(groupKey, {
+      postId: p.id,
+      date: dateKey,
+      status: "IMPORTED",
+      platforms: [],
+      thumbUrl: null,
+      body: p.body,
+      _storageKey: media?.storageKey,
+      _mimeType: media?.mimeType,
+    });
+  }
+
+  const entries = await Promise.all(
+    Array.from(groups.values()).map(async (g) => {
+      const thumbUrl = g._storageKey
+        ? await getThumbnailUrl(g._storageKey, g._mimeType).catch(() => null)
         : null;
       return {
-        postId: p.id,
-        date: toDateKey(p.originalDate),
-        status: "IMPORTED" as const,
-        platform: undefined as string | undefined,
+        postId: g.postId,
+        date: g.date,
+        status: g.status,
+        platforms: g.platforms,
         thumbUrl,
-        body: p.body,
+        body: g.body,
       };
-    }),
-  ]);
+    })
+  );
 
   return NextResponse.json({ entries });
 }

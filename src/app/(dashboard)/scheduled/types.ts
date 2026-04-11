@@ -2,7 +2,7 @@ export interface CalendarEntry {
   postId: string;
   date: string; // YYYY-MM-DD
   status: "PENDING" | "PUBLISHED" | "IMPORTED";
-  platform?: string;
+  platforms: string[]; // empty for IMPORTED
   thumbUrl: string | null;
   body: string;
 }

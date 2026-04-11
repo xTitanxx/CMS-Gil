@@ -18,7 +18,7 @@ import { getGridDays, getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
 export function ContentCalendar() {
-  const [view, setView] = useState<"month" | "week">("month");
+  const [view, setView] = useState<"month" | "week">("week");
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [entries, setEntries] = useState<CalendarEntry[]>([]);

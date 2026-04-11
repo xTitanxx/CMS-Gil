@@ -75,15 +75,18 @@ export function ReanalyzeButton({ postId }: { postId: string }) {
 
 export function PublishPanelWithRefresh({
   postId,
+  body,
   hasVideo,
 }: {
   postId: string;
+  body: string;
   hasVideo: boolean;
 }) {
   const router = useRouter();
   return (
     <PublishPanel
       postId={postId}
+      body={body}
       hasVideo={hasVideo}
       onPublished={() => router.refresh()}
     />

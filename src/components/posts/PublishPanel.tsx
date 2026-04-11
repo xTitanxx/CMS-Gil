@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Send, Clock, Video } from "lucide-react";
+import { Send, Clock, Video, Copy, Check, HelpCircle } from "lucide-react";
 
 const PLATFORMS = ["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
 type Platform = (typeof PLATFORMS)[number];
@@ -29,16 +29,20 @@ const PLATFORM_COLORS: Record<Platform, string> = {
 
 interface PublishPanelProps {
   postId: string;
+  body: string;
   hasVideo: boolean;
   onPublished?: () => void;
 }
 
-export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProps) {
+export function PublishPanel({ postId, body, hasVideo, onPublished }: PublishPanelProps) {
   const [selected, setSelected] = useState<Set<Platform>>(new Set());
   const [scheduledAt, setScheduledAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isDisabled = (p: Platform) => VIDEO_ONLY_PLATFORMS.has(p) && !hasVideo;
 
@@ -89,6 +93,23 @@ export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProp
     onPublished?.();
   };
 
+  const copyCaption = async () => {
+    if (!body) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyError("Copy not supported in this browser");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopied(true);
+      setCopyError("");
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyError("Copy failed — try again");
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -135,6 +156,61 @@ export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProp
               </button>
             );
           })}
+
+          {/* Manual Facebook (Personal) action row — not a toggle */}
+          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-blue-700">
+                <span className="font-medium">Facebook (Personal)</span>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                  Manual
+                </span>
+                <span className="group relative inline-flex focus-within:outline-none">
+                  <button
+                    type="button"
+                    aria-label="Why is Facebook manual?"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:text-gray-600 focus:text-gray-600 focus:outline-none"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-64 -translate-x-1/2 rounded-md bg-gray-900 px-3 py-2 text-[11px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  >
+                    Meta&apos;s Graph API doesn&apos;t allow publishing to personal
+                    Facebook profiles, even in Professional Mode. Copy the caption and
+                    paste it into the Facebook app to post.
+                  </span>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={copyCaption}
+                disabled={!body}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-3 w-3" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3 w-3" />
+                    Copy caption
+                  </>
+                )}
+              </button>
+            </div>
+            {!body && (
+              <p className="mt-1 text-[11px] text-gray-400">
+                No caption — this post has no text.
+              </p>
+            )}
+            {copyError && (
+              <p className="mt-1 text-[11px] text-red-600">{copyError}</p>
+            )}
+          </div>
         </div>
 
         {/* Schedule */}

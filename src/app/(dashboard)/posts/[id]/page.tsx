@@ -147,7 +147,7 @@ export default async function PostDetailPage({
           </div>
 
           <div className="space-y-3">
-            <PublishPanelWithRefresh postId={id} hasVideo={hasVideo} />
+            <PublishPanelWithRefresh postId={id} body={post.body} hasVideo={hasVideo} />
 
           {/* Publish history */}
           {post.publishes.length > 0 && (

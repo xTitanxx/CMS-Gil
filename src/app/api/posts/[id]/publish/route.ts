@@ -78,31 +78,34 @@ export async function publishNow(
     data: { status: "PROCESSING" },
   });
 
-  const token = await prisma.platformToken.findUnique({
-    where: { userId_platform: { userId, platform } },
-  });
-
-  // For YouTube/Drive the token is in the Account table (NextAuth)
-  let accessToken: string;
-  let refreshToken: string | undefined;
-  let platformUserId: string | undefined;
-
-  if (platform === "YOUTUBE") {
-    const account = await prisma.account.findFirst({
-      where: { userId, provider: "google" },
-    });
-    accessToken = account?.access_token ?? "";
-    refreshToken = account?.refresh_token ?? undefined;
-  } else {
-    if (!token) throw new Error(`No ${platform} token found`);
-    accessToken = decrypt(token.accessToken);
-    refreshToken = token.refreshToken ? decrypt(token.refreshToken) : undefined;
-    platformUserId = token.platformUserId ?? undefined;
-  }
-
-  const mediaKeys = post.media.map((m) => m.storageKey);
-
+  // Everything after this point is wrapped in try/catch so that ANY failure
+  // (missing token, decrypt error, provider error) transitions the record to
+  // FAILED instead of leaving it orphaned in PROCESSING forever.
   try {
+    const token = await prisma.platformToken.findUnique({
+      where: { userId_platform: { userId, platform } },
+    });
+
+    // For YouTube/Drive the token is in the Account table (NextAuth)
+    let accessToken: string;
+    let refreshToken: string | undefined;
+    let platformUserId: string | undefined;
+
+    if (platform === "YOUTUBE") {
+      const account = await prisma.account.findFirst({
+        where: { userId, provider: "google" },
+      });
+      accessToken = account?.access_token ?? "";
+      refreshToken = account?.refresh_token ?? undefined;
+    } else {
+      if (!token) throw new Error(`No ${platform} token found`);
+      accessToken = decrypt(token.accessToken);
+      refreshToken = token.refreshToken ? decrypt(token.refreshToken) : undefined;
+      platformUserId = token.platformUserId ?? undefined;
+    }
+
+    const mediaKeys = post.media.map((m) => m.storageKey);
+
     let result: { platformPostId: string; platformUrl?: string };
 
     switch (platform) {

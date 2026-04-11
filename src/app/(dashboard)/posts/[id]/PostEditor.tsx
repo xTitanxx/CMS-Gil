@@ -10,6 +10,7 @@ import {
   AlertCircle,
   VolumeX,
   Calendar,
+  ExternalLink,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
@@ -40,6 +41,8 @@ interface PostEditorProps {
   initialOriginalDate: Date;
   initialTags: string[];
   initialMedia: MediaItem[];
+  source: string;
+  platformUrl: string | null;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -67,6 +70,8 @@ export function PostEditor({
   initialOriginalDate,
   initialTags,
   initialMedia,
+  source,
+  platformUrl,
 }: PostEditorProps) {
   const [body, setBody] = useState(initialBody);
   const [date, setDate] = useState(() => toDatetimeLocal(new Date(initialOriginalDate)));
@@ -273,26 +278,44 @@ export function PostEditor({
 
         {/* Metadata footer */}
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 px-5 py-2 text-[11px] text-gray-500">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3 text-gray-400" />
-            {editingDate ? (
-              <input
-                type="datetime-local"
-                value={date}
-                autoFocus
-                onBlur={() => setEditingDate(false)}
-                onChange={(e) => setDate(e.target.value)}
-                className="rounded border border-gray-300 px-1 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditingDate(true)}
-                className="rounded px-1 py-0.5 text-gray-500 hover:bg-gray-100"
-                title="Edit date"
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <Calendar className="h-3 w-3 text-gray-400" />
+              {editingDate ? (
+                <input
+                  type="datetime-local"
+                  value={date}
+                  autoFocus
+                  onBlur={() => setEditingDate(false)}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded border border-gray-300 px-1 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingDate(true)}
+                  className="rounded px-1 py-0.5 text-gray-500 hover:bg-gray-100"
+                  title="Edit date"
+                >
+                  {formatDatePretty(date) || "Set date"}
+                </button>
+              )}
+            </div>
+            <span className="text-gray-300">·</span>
+            <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              {source}
+            </span>
+            {platformUrl && (
+              <a
+                href={platformUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-600 hover:bg-blue-50"
+                title="Open the original post on Facebook"
               >
-                {formatDatePretty(date) || "Set date"}
-              </button>
+                View original
+                <ExternalLink className="h-3 w-3" />
+              </a>
             )}
           </div>
           <span className="flex items-center gap-1">

@@ -122,8 +122,6 @@ export default async function PostDetailPage({
         prevHref={prevHref}
         nextHref={nextHref}
         listHref={listHref}
-        source={post.source}
-        platformUrl={post.platformUrl}
       />
       <PostNavKeys
         prevHref={prevHref}
@@ -144,6 +142,8 @@ export default async function PostDetailPage({
               initialOriginalDate={post.originalDate}
               initialTags={post.tags}
               initialMedia={mediaWithUrls}
+              source={post.source}
+              platformUrl={post.platformUrl}
             />
           </div>
 

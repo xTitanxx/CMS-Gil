@@ -9,9 +9,12 @@ import { auth } from "@/lib/auth";
 const META_APP_ID = process.env.META_APP_ID!;
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/facebook/callback`;
 
+// user_posts was deprecated by Meta in 2024 and now causes "Invalid Scopes"
+// errors on OAuth dialog. The analytics cron that used /me/posts is broken
+// for new connections as a result — out of scope for this feature; revisit
+// when analytics is rewritten to read from Page endpoints instead.
 const SCOPES = [
   "public_profile",
-  "user_posts",
   "read_insights",
   "pages_show_list",
   "pages_read_engagement",

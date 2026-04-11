@@ -7,7 +7,7 @@ const META_APP_SECRET = process.env.META_APP_SECRET!;
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/facebook/callback`;
 
 const USER_SCOPES =
-  "public_profile,user_posts,read_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement";
+  "public_profile,read_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement";
 
 interface PageAccount {
   id: string;

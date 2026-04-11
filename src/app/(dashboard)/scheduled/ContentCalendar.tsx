@@ -7,6 +7,10 @@ import {
   subMonths,
   addWeeks,
   subWeeks,
+  addDays,
+  isSameMonth,
+  isSameWeek,
+  startOfDay,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +52,52 @@ export function ContentCalendar() {
         : dir === 1 ? addWeeks(c, 1) : subWeeks(c, 1)
     );
   }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      const key = e.key;
+      if (
+        key !== "ArrowLeft" &&
+        key !== "ArrowRight" &&
+        key !== "ArrowUp" &&
+        key !== "ArrowDown"
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const delta =
+        key === "ArrowLeft"
+          ? -1
+          : key === "ArrowRight"
+            ? 1
+            : key === "ArrowUp"
+              ? -7
+              : 7;
+      setSelectedDay((prev) => {
+        const base = prev ?? startOfDay(cursor);
+        const next = addDays(base, delta);
+        // Keep cursor in sync so the grid follows the selection
+        if (view === "month") {
+          if (!isSameMonth(next, cursor)) setCursor(next);
+        } else {
+          if (!isSameWeek(next, cursor)) setCursor(next);
+        }
+        return next;
+      });
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, cursor]);
 
   function periodLabel() {
     if (view === "month") return format(cursor, "MMMM yyyy");

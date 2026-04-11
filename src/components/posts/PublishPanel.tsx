@@ -4,10 +4,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Send, Clock } from "lucide-react";
+import { Send, Clock, Video } from "lucide-react";
 
 const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
 type Platform = (typeof PLATFORMS)[number];
+
+const VIDEO_ONLY_PLATFORMS: ReadonlySet<Platform> = new Set(["YOUTUBE", "TIKTOK"]);
 
 const PLATFORM_COLORS: Record<Platform, string> = {
   INSTAGRAM: "bg-pink-50 border-pink-200 text-pink-700",
@@ -18,17 +20,21 @@ const PLATFORM_COLORS: Record<Platform, string> = {
 
 interface PublishPanelProps {
   postId: string;
+  hasVideo: boolean;
   onPublished?: () => void;
 }
 
-export function PublishPanel({ postId, onPublished }: PublishPanelProps) {
+export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProps) {
   const [selected, setSelected] = useState<Set<Platform>>(new Set());
   const [scheduledAt, setScheduledAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const isDisabled = (p: Platform) => VIDEO_ONLY_PLATFORMS.has(p) && !hasVideo;
+
   const toggle = (p: Platform) => {
+    if (isDisabled(p)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(p)) next.delete(p);
@@ -85,26 +91,41 @@ export function PublishPanel({ postId, onPublished }: PublishPanelProps) {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             Select Platforms
           </p>
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              onClick={() => toggle(p)}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
-                selected.has(p)
-                  ? PLATFORM_COLORS[p] + " ring-2 ring-offset-1 ring-current"
-                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                {p}
-                {selected.has(p) && (
-                  <Badge variant="success" className="text-xs">
-                    Selected
-                  </Badge>
-                )}
-              </div>
-            </button>
-          ))}
+          {PLATFORMS.map((p) => {
+            const disabled = isDisabled(p);
+            return (
+              <button
+                key={p}
+                onClick={() => toggle(p)}
+                disabled={disabled}
+                title={disabled ? `${p} requires a video — this post has no video` : undefined}
+                aria-disabled={disabled}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
+                  disabled
+                    ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                    : selected.has(p)
+                    ? PLATFORM_COLORS[p] + " ring-2 ring-offset-1 ring-current"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span>{p}</span>
+                  {disabled ? (
+                    <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                      <Video className="h-3 w-3" />
+                      Video only
+                    </span>
+                  ) : (
+                    selected.has(p) && (
+                      <Badge variant="success" className="text-xs">
+                        Selected
+                      </Badge>
+                    )
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Schedule */}

@@ -138,6 +138,7 @@ model PlatformToken {
 
 enum Platform {
   FACEBOOK
+  FACEBOOK_PAGE
   INSTAGRAM
   LINKEDIN
   YOUTUBE

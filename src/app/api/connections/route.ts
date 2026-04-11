@@ -104,8 +104,14 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Platform required" }, { status: 400 });
   }
 
+  // Disconnecting FACEBOOK cascades to FACEBOOK_PAGE — both are granted by
+  // the same OAuth consent, so removing one without the other leaves the user
+  // in an inconsistent state.
+  const platforms: Platform[] =
+    platform === "FACEBOOK" ? ["FACEBOOK", "FACEBOOK_PAGE"] : [platform];
+
   await prisma.platformToken.deleteMany({
-    where: { userId: session.user.id, platform },
+    where: { userId: session.user.id, platform: { in: platforms } },
   });
 
   return NextResponse.json({ ok: true });

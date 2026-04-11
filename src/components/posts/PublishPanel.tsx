@@ -6,14 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Send, Clock, Video } from "lucide-react";
 
-const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
+const PLATFORMS = ["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
 type Platform = (typeof PLATFORMS)[number];
 
 const VIDEO_ONLY_PLATFORMS: ReadonlySet<Platform> = new Set(["YOUTUBE", "TIKTOK"]);
 
+const PLATFORM_LABELS: Record<Platform, string> = {
+  FACEBOOK_PAGE: "Facebook Page",
+  INSTAGRAM: "Instagram",
+  LINKEDIN: "LinkedIn",
+  YOUTUBE: "YouTube",
+  TIKTOK: "TikTok",
+};
+
 const PLATFORM_COLORS: Record<Platform, string> = {
+  FACEBOOK_PAGE: "bg-blue-50 border-blue-200 text-blue-700",
   INSTAGRAM: "bg-pink-50 border-pink-200 text-pink-700",
-  LINKEDIN: "bg-blue-50 border-blue-200 text-blue-700",
+  LINKEDIN: "bg-blue-50 border-blue-200 text-blue-800",
   YOUTUBE: "bg-red-50 border-red-200 text-red-700",
   TIKTOK: "bg-gray-900 border-gray-700 text-white",
 };
@@ -98,7 +107,7 @@ export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProp
                 key={p}
                 onClick={() => toggle(p)}
                 disabled={disabled}
-                title={disabled ? `${p} requires a video — this post has no video` : undefined}
+                title={disabled ? `${PLATFORM_LABELS[p]} requires a video — this post has no video` : undefined}
                 aria-disabled={disabled}
                 className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
                   disabled
@@ -109,7 +118,7 @@ export function PublishPanel({ postId, hasVideo, onPublished }: PublishPanelProp
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span>{p}</span>
+                  <span>{PLATFORM_LABELS[p]}</span>
                   {disabled ? (
                     <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
                       <Video className="h-3 w-3" />

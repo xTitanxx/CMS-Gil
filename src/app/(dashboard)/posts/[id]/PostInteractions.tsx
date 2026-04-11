@@ -5,7 +5,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Trash2, RefreshCw } from "lucide-react";
-import { PublishPanel } from "@/components/posts/PublishPanel";
+import { PublishPanel, type PublishPanelMedia } from "@/components/posts/PublishPanel";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -77,10 +77,12 @@ export function PublishPanelWithRefresh({
   postId,
   body,
   hasVideo,
+  media,
 }: {
   postId: string;
   body: string;
   hasVideo: boolean;
+  media: PublishPanelMedia[];
 }) {
   const router = useRouter();
   return (
@@ -88,6 +90,7 @@ export function PublishPanelWithRefresh({
       postId={postId}
       body={body}
       hasVideo={hasVideo}
+      media={media}
       onPublished={() => router.refresh()}
     />
   );

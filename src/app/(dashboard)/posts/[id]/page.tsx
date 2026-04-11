@@ -123,6 +123,7 @@ export default async function PostDetailPage({
         nextHref={nextHref}
         listHref={listHref}
         source={post.source}
+        platformUrl={post.platformUrl}
       />
       <PostNavKeys
         prevHref={prevHref}
@@ -147,7 +148,12 @@ export default async function PostDetailPage({
           </div>
 
           <div className="space-y-3">
-            <PublishPanelWithRefresh postId={id} body={post.body} hasVideo={hasVideo} />
+            <PublishPanelWithRefresh
+              postId={id}
+              body={post.body}
+              hasVideo={hasVideo}
+              media={mediaWithUrls.map((m) => ({ url: m.url, mimeType: m.mimeType }))}
+            />
 
           {/* Publish history */}
           {post.publishes.length > 0 && (

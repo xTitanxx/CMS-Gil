@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Send, Clock, Video, Copy, Check, HelpCircle } from "lucide-react";
+import { Send, Clock, Video, Copy, Check, HelpCircle, Download } from "lucide-react";
 
 const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK", "FACEBOOK_PAGE"] as const;
 type Platform = (typeof PLATFORMS)[number];
@@ -29,14 +29,35 @@ const PLATFORM_COLORS: Record<Platform, string> = {
   FACEBOOK_PAGE: "bg-blue-50 border-blue-200 text-blue-700",
 };
 
+function extFromMime(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+  if (m === "image/png") return "png";
+  if (m === "image/gif") return "gif";
+  if (m === "image/webp") return "webp";
+  if (m === "image/heic") return "heic";
+  if (m === "video/mp4") return "mp4";
+  if (m === "video/quicktime") return "mov";
+  if (m === "video/webm") return "webm";
+  if (m.startsWith("image/")) return "img";
+  if (m.startsWith("video/")) return "mp4";
+  return "bin";
+}
+
+export interface PublishPanelMedia {
+  url: string | null;
+  mimeType: string;
+}
+
 interface PublishPanelProps {
   postId: string;
   body: string;
   hasVideo: boolean;
+  media: PublishPanelMedia[];
   onPublished?: () => void;
 }
 
-export function PublishPanel({ postId, body, hasVideo, onPublished }: PublishPanelProps) {
+export function PublishPanel({ postId, body, hasVideo, media, onPublished }: PublishPanelProps) {
   const [selected, setSelected] = useState<Set<Platform>>(new Set());
   const [scheduledAt, setScheduledAt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -44,6 +65,8 @@ export function PublishPanel({ postId, body, hasVideo, onPublished }: PublishPan
   const [success, setSuccess] = useState("");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isDisabled = (p: Platform) => VIDEO_ONLY_PLATFORMS.has(p) && !hasVideo;
@@ -111,6 +134,35 @@ export function PublishPanel({ postId, body, hasVideo, onPublished }: PublishPan
       setCopyError("Copy failed — try again");
     }
   };
+
+  const downloadMedia = async () => {
+    const downloadable = media.filter((m): m is PublishPanelMedia & { url: string } => !!m.url);
+    if (downloadable.length === 0) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      for (let i = 0; i < downloadable.length; i++) {
+        const m = downloadable[i];
+        const res = await fetch(m.url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = `post-${postId}-${i + 1}.${extFromMime(m.mimeType)}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const downloadableCount = media.filter((m) => m.url).length;
 
   return (
     <Card>
@@ -185,32 +237,67 @@ export function PublishPanel({ postId, body, hasVideo, onPublished }: PublishPan
                   </span>
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={copyCaption}
-                disabled={!body}
-                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-3 w-3" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3 w-3" />
-                    Copy caption
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={copyCaption}
+                  disabled={!body}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3 w-3" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" />
+                      Copy caption
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadMedia}
+                  disabled={downloading || downloadableCount === 0}
+                  title={
+                    downloadableCount === 0
+                      ? "No media on this post"
+                      : `Download ${downloadableCount} file${downloadableCount === 1 ? "" : "s"} to your Downloads folder`
+                  }
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download className="h-3 w-3" />
+                  {downloading
+                    ? "Downloading…"
+                    : downloadableCount > 1
+                    ? `Download media (${downloadableCount})`
+                    : "Download media"}
+                </button>
+              </div>
             </div>
-            {!body && (
+            {!body && downloadableCount === 0 && (
               <p className="mt-1 text-[11px] text-gray-400">
-                No caption — this post has no text.
+                No caption and no media — nothing to copy or download.
+              </p>
+            )}
+            {!body && downloadableCount > 0 && (
+              <p className="mt-1 text-[11px] text-gray-400">
+                No caption — only media can be downloaded.
+              </p>
+            )}
+            {body && downloadableCount === 0 && (
+              <p className="mt-1 text-[11px] text-gray-400">
+                No media on this post.
               </p>
             )}
             {copyError && (
               <p className="mt-1 text-[11px] text-red-600">{copyError}</p>
+            )}
+            {downloadError && (
+              <p className="mt-1 text-[11px] text-red-600">
+                Download failed: {downloadError}
+              </p>
             )}
           </div>
         </div>

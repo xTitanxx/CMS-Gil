@@ -6,6 +6,7 @@ import { decrypt } from "@/lib/encrypt";
 import { postToInstagram } from "@/lib/platforms/instagram";
 import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
+import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
 
 export async function POST(
@@ -129,6 +130,13 @@ export async function publishNow(
         break;
       case "TIKTOK":
         result = await postToTikTok({ accessToken }, post.body, mediaKeys);
+        break;
+      case "FACEBOOK_PAGE":
+        result = await postToFacebook(
+          { accessToken, platformUserId: platformUserId! },
+          post.body,
+          mediaKeys
+        );
         break;
       default:
         throw new Error(`Publishing to ${platform} is not supported`);

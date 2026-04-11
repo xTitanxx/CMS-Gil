@@ -1,0 +1,182 @@
+// Meta Graph API — Facebook Page Content Publishing
+// Scopes required on the Page access token: pages_manage_posts,
+// pages_read_engagement (for the `id` response field). Requires a Page
+// access token (from /me/accounts), not a user access token.
+
+import { getSignedDownloadUrl } from "@/lib/storage";
+
+interface PublishResult {
+  platformPostId: string;
+  platformUrl?: string;
+}
+
+interface FacebookCredentials {
+  accessToken: string; // Page access token
+  platformUserId: string; // Page ID
+}
+
+const GRAPH = "https://graph.facebook.com/v21.0";
+const VIDEO_RE = /\.(mp4|mov|avi|webm|mkv)$/i;
+
+export async function postToFacebook(
+  creds: FacebookCredentials,
+  body: string,
+  mediaKeys: string[]
+): Promise<PublishResult> {
+  const { accessToken, platformUserId: pageId } = creds;
+
+  // Text-only feed post
+  if (mediaKeys.length === 0) {
+    return feedPost(pageId, accessToken, { message: body });
+  }
+
+  // Single photo
+  if (mediaKeys.length === 1 && !VIDEO_RE.test(mediaKeys[0])) {
+    const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    return photoPost(pageId, accessToken, { url, caption: body });
+  }
+
+  // Single video
+  if (mediaKeys.length === 1 && VIDEO_RE.test(mediaKeys[0])) {
+    const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    return videoPost(pageId, accessToken, { file_url: url, description: body });
+  }
+
+  // Multiple files — if all photos, make one multi-photo feed post.
+  const allPhotos = mediaKeys.every((k) => !VIDEO_RE.test(k));
+  if (allPhotos) {
+    return multiPhotoPost(pageId, accessToken, mediaKeys, body);
+  }
+
+  // Mixed media or multiple videos — fall back to one post per file.
+  // The first post carries the caption; subsequent posts carry media only.
+  // This keeps the implementation small; we can upgrade to a proper mixed
+  // carousel later if it becomes important.
+  let firstResult: PublishResult | null = null;
+  for (let i = 0; i < mediaKeys.length; i++) {
+    const key = mediaKeys[i];
+    const caption = i === 0 ? body : "";
+    const url = await getSignedDownloadUrl(key, 3600);
+    const result = VIDEO_RE.test(key)
+      ? await videoPost(pageId, accessToken, { file_url: url, description: caption })
+      : await photoPost(pageId, accessToken, { url, caption });
+    if (i === 0) firstResult = result;
+  }
+  return firstResult!;
+}
+
+async function feedPost(
+  pageId: string,
+  accessToken: string,
+  fields: { message: string }
+): Promise<PublishResult> {
+  const form = new URLSearchParams({
+    message: fields.message,
+    published: "true",
+    access_token: accessToken,
+  });
+  const res = await fetch(`${GRAPH}/${pageId}/feed`, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok || !data.id) {
+    throw new Error(`Facebook feed post failed: ${JSON.stringify(data)}`);
+  }
+  return {
+    platformPostId: data.id,
+    platformUrl: facebookPostUrl(pageId, data.id),
+  };
+}
+
+async function photoPost(
+  pageId: string,
+  accessToken: string,
+  fields: { url: string; caption: string }
+): Promise<PublishResult> {
+  const form = new URLSearchParams({
+    url: fields.url,
+    caption: fields.caption,
+    published: "true",
+    access_token: accessToken,
+  });
+  const res = await fetch(`${GRAPH}/${pageId}/photos`, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok || !(data.id || data.post_id)) {
+    throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
+  }
+  const postId: string = data.post_id ?? data.id;
+  return {
+    platformPostId: postId,
+    platformUrl: facebookPostUrl(pageId, postId),
+  };
+}
+
+async function videoPost(
+  pageId: string,
+  accessToken: string,
+  fields: { file_url: string; description: string }
+): Promise<PublishResult> {
+  const form = new URLSearchParams({
+    file_url: fields.file_url,
+    description: fields.description,
+    access_token: accessToken,
+  });
+  const res = await fetch(`${GRAPH}/${pageId}/videos`, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok || !data.id) {
+    throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
+  }
+  return {
+    platformPostId: data.id,
+    platformUrl: facebookPostUrl(pageId, data.id),
+  };
+}
+
+async function multiPhotoPost(
+  pageId: string,
+  accessToken: string,
+  keys: string[],
+  caption: string
+): Promise<PublishResult> {
+  // 1. Upload each photo unpublished and collect media_fbid values.
+  const mediaFbids: string[] = [];
+  for (const key of keys) {
+    const url = await getSignedDownloadUrl(key, 3600);
+    const form = new URLSearchParams({
+      url,
+      published: "false",
+      access_token: accessToken,
+    });
+    const res = await fetch(`${GRAPH}/${pageId}/photos`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data.id) {
+      throw new Error(`Facebook multi-photo upload failed: ${JSON.stringify(data)}`);
+    }
+    mediaFbids.push(data.id);
+  }
+
+  // 2. Create a feed post that references them via attached_media[{n}].
+  const form = new URLSearchParams();
+  form.set("message", caption);
+  form.set("published", "true");
+  form.set("access_token", accessToken);
+  mediaFbids.forEach((id, i) => {
+    form.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id }));
+  });
+
+  const res = await fetch(`${GRAPH}/${pageId}/feed`, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok || !data.id) {
+    throw new Error(`Facebook multi-photo feed post failed: ${JSON.stringify(data)}`);
+  }
+  return {
+    platformPostId: data.id,
+    platformUrl: facebookPostUrl(pageId, data.id),
+  };
+}
+
+function facebookPostUrl(pageId: string, postId: string): string {
+  // postId is returned as "{pageId}_{numericId}" for feed posts, or a bare
+  // numeric id for photos/videos. Either works in the /{pageId}/posts/{id}
+  // shape — Facebook normalizes it.
+  const numeric = postId.includes("_") ? postId.split("_")[1] : postId;
+  return `https://www.facebook.com/${pageId}/posts/${numeric}`;
+}

@@ -20,7 +20,8 @@ const PLATFORMS: PlatformInfo[] = [
   {
     id: "FACEBOOK",
     label: "Facebook",
-    description: "Connect your Facebook profile to enable analytics (reactions, comments, shares, and Professional Mode reach).",
+    description:
+      "Connect your Facebook account to enable analytics on imported posts and publishing to a Facebook Page you admin. Personal profile publishing is not available — use the manual Copy caption row on a post.",
     color: "text-blue-700",
     connectUrl: "/api/connections/facebook",
   },
@@ -169,6 +170,23 @@ export default function ConnectionsPage() {
                     )}
                   </div>
                 )}
+
+                {platform.id === "FACEBOOK" && (() => {
+                  const pageToken = tokens.find((t) => t.platform === "FACEBOOK_PAGE");
+                  return (
+                    <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                      {pageToken ? (
+                        <span>
+                          <span className="font-medium">Page:</span> @{pageToken.platformUsername}
+                        </span>
+                      ) : connected ? (
+                        <span className="text-gray-400">
+                          No pages found — Facebook Page publishing unavailable
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })()}
 
                 {connected && platform.id === "YOUTUBE" && (
                   <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">

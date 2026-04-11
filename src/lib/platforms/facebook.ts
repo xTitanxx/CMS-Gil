@@ -82,7 +82,7 @@ async function feedPost(
   }
   return {
     platformPostId: data.id,
-    platformUrl: facebookPostUrl(pageId, data.id),
+    platformUrl: await fetchPermalink(data.id, accessToken),
   };
 }
 
@@ -99,13 +99,14 @@ async function photoPost(
   });
   const res = await fetch(`${GRAPH}/${pageId}/photos`, { method: "POST", body: form });
   const data = await res.json();
-  if (!res.ok || !(data.id || data.post_id)) {
+  if (!res.ok || !data.post_id) {
+    // published=true must return post_id. If it's absent, the photo uploaded
+    // but the page post didn't land — fail instead of recording a broken URL.
     throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
   }
-  const postId: string = data.post_id ?? data.id;
   return {
-    platformPostId: postId,
-    platformUrl: facebookPostUrl(pageId, postId),
+    platformPostId: data.post_id,
+    platformUrl: await fetchPermalink(data.post_id, accessToken),
   };
 }
 
@@ -126,7 +127,7 @@ async function videoPost(
   }
   return {
     platformPostId: data.id,
-    platformUrl: facebookPostUrl(pageId, data.id),
+    platformUrl: await fetchPermalink(data.id, accessToken),
   };
 }
 
@@ -153,7 +154,10 @@ async function multiPhotoPost(
     mediaFbids.push(data.id);
   }
 
-  // 2. Create a feed post that references them via attached_media[{n}].
+  // 2. Create a feed post that references them via attached_media[{n}]={json}.
+  //    The PHP-style indexed-key form is what Graph API accepts for
+  //    application/x-www-form-urlencoded bodies (same shape used by Meta's
+  //    own SDKs).
   const form = new URLSearchParams();
   form.set("message", caption);
   form.set("published", "true");
@@ -169,14 +173,27 @@ async function multiPhotoPost(
   }
   return {
     platformPostId: data.id,
-    platformUrl: facebookPostUrl(pageId, data.id),
+    platformUrl: await fetchPermalink(data.id, accessToken),
   };
 }
 
-function facebookPostUrl(pageId: string, postId: string): string {
-  // postId is returned as "{pageId}_{numericId}" for feed posts, or a bare
-  // numeric id for photos/videos. Either works in the /{pageId}/posts/{id}
-  // shape — Facebook normalizes it.
-  const numeric = postId.includes("_") ? postId.split("_")[1] : postId;
-  return `https://www.facebook.com/${pageId}/posts/${numeric}`;
+// Fetches the canonical permalink for a Facebook post id. Hand-constructing
+// URLs is brittle — feed posts use `{pageId}_{numeric}`, photos/videos use
+// bare numeric ids, and the visible URL shape depends on whether the page has
+// a vanity handle. Asking Graph API for it directly mirrors the Instagram
+// publish flow (see instagram.ts:124).
+async function fetchPermalink(
+  postId: string,
+  accessToken: string
+): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `${GRAPH}/${postId}?fields=permalink_url&access_token=${accessToken}`
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return typeof data.permalink_url === "string" ? data.permalink_url : undefined;
+  } catch {
+    return undefined;
+  }
 }

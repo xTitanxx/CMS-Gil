@@ -6,25 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Send, Clock, Video, Copy, Check, HelpCircle } from "lucide-react";
 
-const PLATFORMS = ["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"] as const;
+const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK", "FACEBOOK_PAGE"] as const;
 type Platform = (typeof PLATFORMS)[number];
 
 const VIDEO_ONLY_PLATFORMS: ReadonlySet<Platform> = new Set(["YOUTUBE", "TIKTOK"]);
 
 const PLATFORM_LABELS: Record<Platform, string> = {
-  FACEBOOK_PAGE: "Facebook Page",
   INSTAGRAM: "Instagram",
   LINKEDIN: "LinkedIn",
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
+  FACEBOOK_PAGE: "Facebook Page",
 };
 
+// LinkedIn uses text-blue-800 so it doesn't look identical to the
+// Facebook Page row (text-blue-700) when both are selected.
 const PLATFORM_COLORS: Record<Platform, string> = {
-  FACEBOOK_PAGE: "bg-blue-50 border-blue-200 text-blue-700",
   INSTAGRAM: "bg-pink-50 border-pink-200 text-pink-700",
   LINKEDIN: "bg-blue-50 border-blue-200 text-blue-800",
   YOUTUBE: "bg-red-50 border-red-200 text-red-700",
   TIKTOK: "bg-gray-900 border-gray-700 text-white",
+  FACEBOOK_PAGE: "bg-blue-50 border-blue-200 text-blue-700",
 };
 
 interface PublishPanelProps {

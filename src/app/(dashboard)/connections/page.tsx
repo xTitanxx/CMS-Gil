@@ -159,34 +159,31 @@ export default function ConnectionsPage() {
                 <p className="text-sm text-gray-600">{platform.description}</p>
 
                 {connected && token && (
-                  <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                    {token.platformUsername && (
-                      <span className="font-medium">@{token.platformUsername}</span>
-                    )}
-                    {token.expiresAt && (
-                      <span className="ml-2 text-gray-400">
-                        Expires: {new Date(token.expiresAt).toLocaleDateString()}
-                      </span>
-                    )}
+                  <div className="space-y-1 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                    <div>
+                      {token.platformUsername && (
+                        <span className="font-medium">@{token.platformUsername}</span>
+                      )}
+                      {token.expiresAt && (
+                        <span className="ml-2 text-gray-400">
+                          Expires: {new Date(token.expiresAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {platform.id === "FACEBOOK" && (() => {
+                      const pageToken = tokens.find((t) => t.platform === "FACEBOOK_PAGE");
+                      return pageToken ? (
+                        <div>
+                          <span className="font-medium">Page:</span> @{pageToken.platformUsername}
+                        </div>
+                      ) : (
+                        <div className="text-gray-400">
+                          No pages found — Facebook Page publishing unavailable
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
-
-                {platform.id === "FACEBOOK" && (() => {
-                  const pageToken = tokens.find((t) => t.platform === "FACEBOOK_PAGE");
-                  return (
-                    <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                      {pageToken ? (
-                        <span>
-                          <span className="font-medium">Page:</span> @{pageToken.platformUsername}
-                        </span>
-                      ) : connected ? (
-                        <span className="text-gray-400">
-                          No pages found — Facebook Page publishing unavailable
-                        </span>
-                      ) : null}
-                    </div>
-                  );
-                })()}
 
                 {connected && platform.id === "YOUTUBE" && (
                   <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">

@@ -1,0 +1,42 @@
+import { prisma } from "@/lib/prisma";
+
+let cachedContext: string | null = null;
+let cachedAt = 0;
+let cachedCount = 0;
+const TTL_MS = 60 * 60 * 1000; // 1 hour
+
+export async function getPostContext(): Promise<{ text: string; count: number }> {
+  const now = Date.now();
+  if (cachedContext && now - cachedAt < TTL_MS) {
+    return { text: cachedContext, count: cachedCount };
+  }
+
+  const gilUserId = process.env.GIL_USER_ID;
+  if (!gilUserId) {
+    throw new Error("GIL_USER_ID environment variable is not set");
+  }
+
+  const posts = await prisma.post.findMany({
+    where: { userId: gilUserId },
+    select: { body: true, tags: true, originalDate: true },
+    orderBy: { originalDate: "desc" },
+    take: 500,
+  });
+
+  const lines = posts.map((p) => {
+    const date = new Date(p.originalDate).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const tags = p.tags.length > 0 ? ` [${p.tags.join(", ")}]` : "";
+    const body = p.body?.trim() ?? "(no text)";
+    return `${date}${tags}\n${body}`;
+  });
+
+  cachedContext = lines.join("\n---\n");
+  cachedCount = posts.length;
+  cachedAt = now;
+
+  return { text: cachedContext, count: cachedCount };
+}

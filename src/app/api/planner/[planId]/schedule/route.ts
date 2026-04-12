@@ -52,9 +52,8 @@ export async function POST(
   const slots = await prisma.weeklyPlanSlot.findMany({
     where: {
       planId,
-      ...(slotIds
-        ? { id: { in: slotIds } }
-        : { status: { in: ["PROPOSED", "APPROVED"] } }),
+      status: { in: ["PROPOSED", "APPROVED"] },
+      ...(slotIds ? { id: { in: slotIds } } : {}),
     },
     select: {
       id: true,
@@ -98,13 +97,13 @@ export async function POST(
       });
     }
 
-    // Increment post publishCount
-    await prisma.post.update({
-      where: { id: slot.postId },
-      data: { publishCount: { increment: 1 } },
-    });
+    if (platformsToSchedule.length > 0) {
+      await prisma.post.update({
+        where: { id: slot.postId },
+        data: { publishCount: { increment: 1 } },
+      });
+    }
 
-    // Update slot status to SCHEDULED
     await prisma.weeklyPlanSlot.update({
       where: { id: slot.id },
       data: { status: "SCHEDULED" },

@@ -122,6 +122,7 @@ export default async function PostDetailPage({
         prevHref={prevHref}
         nextHref={nextHref}
         listHref={listHref}
+        actions={<DeleteButton postId={id} />}
       />
       <PostNavKeys
         prevHref={prevHref}
@@ -130,10 +131,6 @@ export default async function PostDetailPage({
       />
 
       <div className="mx-auto mt-3 w-full max-w-6xl space-y-3">
-        <div className="flex items-center justify-end">
-          <DeleteButton postId={id} />
-        </div>
-
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0">
             <PostEditor

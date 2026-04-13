@@ -16,7 +16,12 @@ export interface PublicPost {
   bodyNormalized: string;
   originalDate: Date;
   tags: string[];
+  sourceId: string | null;
   media: PublicPostMedia[];
+}
+
+export function isStory(sourceId: string | null | undefined): boolean {
+  return !!sourceId && sourceId.startsWith("fb_story_");
 }
 
 /**
@@ -61,12 +66,13 @@ export async function getPublicFeedPage(cursor?: {
   const where = cursor
     ? {
         userId: gilUserId,
+        NOT: { sourceId: { startsWith: "fb_story_" } },
         OR: [
           { originalDate: { lt: cursor.date } },
           { originalDate: cursor.date, id: { lt: cursor.id } },
         ],
       }
-    : { userId: gilUserId };
+    : { userId: gilUserId, NOT: { sourceId: { startsWith: "fb_story_" } } };
 
   const raw = await prisma.post.findMany({
     where,
@@ -76,6 +82,7 @@ export async function getPublicFeedPage(cursor?: {
       bodyNormalized: true,
       originalDate: true,
       tags: true,
+      sourceId: true,
       media: {
         select: {
           id: true,
@@ -114,6 +121,7 @@ export async function getPublicPost(id: string): Promise<PublicPost | null> {
       bodyNormalized: true,
       originalDate: true,
       tags: true,
+      sourceId: true,
       media: {
         select: {
           id: true,
@@ -147,6 +155,7 @@ export async function getRelatedPosts(
         bodyNormalized: true,
         originalDate: true,
         tags: true,
+        sourceId: true,
         media: {
           select: {
             id: true,
@@ -177,6 +186,7 @@ export async function getRelatedPosts(
       bodyNormalized: true,
       originalDate: true,
       tags: true,
+      sourceId: true,
       media: {
         select: {
           id: true,
@@ -199,4 +209,94 @@ export async function getRelatedPosts(
     .sort((a, b) => b.overlap - a.overlap || b.post.originalDate.getTime() - a.post.originalDate.getTime());
 
   return dedupePosts(scored.map((s) => s.post)).slice(0, limit);
+}
+
+export async function getPublicStoriesPage(cursor?: {
+  date: Date;
+  id: string;
+}): Promise<{ stories: PublicPost[]; nextCursor: { date: Date; id: string } | null }> {
+  const gilUserId = process.env.GIL_USER_ID;
+  if (!gilUserId) throw new Error("GIL_USER_ID is not set");
+
+  const pageSize = 30;
+
+  const where = cursor
+    ? {
+        userId: gilUserId,
+        sourceId: { startsWith: "fb_story_" },
+        OR: [
+          { originalDate: { lt: cursor.date } },
+          { originalDate: cursor.date, id: { lt: cursor.id } },
+        ],
+      }
+    : { userId: gilUserId, sourceId: { startsWith: "fb_story_" } };
+
+  const stories = await prisma.post.findMany({
+    where,
+    select: {
+      id: true,
+      body: true,
+      bodyNormalized: true,
+      originalDate: true,
+      tags: true,
+      sourceId: true,
+      media: {
+        select: {
+          id: true,
+          storageKey: true,
+          mimeType: true,
+          width: true,
+          height: true,
+          altText: true,
+        },
+      },
+    },
+    orderBy: [{ originalDate: "desc" }, { id: "desc" }],
+    take: pageSize,
+  });
+
+  const filtered = stories.filter((s) => s.media.length > 0);
+
+  const nextCursor =
+    stories.length === pageSize
+      ? {
+          date: stories[stories.length - 1].originalDate,
+          id: stories[stories.length - 1].id,
+        }
+      : null;
+
+  return { stories: filtered, nextCursor };
+}
+
+export async function getPublicStory(id: string): Promise<PublicPost | null> {
+  const gilUserId = process.env.GIL_USER_ID;
+  if (!gilUserId) throw new Error("GIL_USER_ID is not set");
+
+  const story = await prisma.post.findFirst({
+    where: {
+      id,
+      userId: gilUserId,
+      sourceId: { startsWith: "fb_story_" },
+    },
+    select: {
+      id: true,
+      body: true,
+      bodyNormalized: true,
+      originalDate: true,
+      tags: true,
+      sourceId: true,
+      media: {
+        select: {
+          id: true,
+          storageKey: true,
+          mimeType: true,
+          width: true,
+          height: true,
+          altText: true,
+        },
+      },
+    },
+  });
+
+  return story;
 }

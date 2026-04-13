@@ -1,6 +1,6 @@
 // src/lib/public-posts.test.ts
 import { describe, it, expect } from "vitest";
-import { dedupePosts, type PublicPost } from "./public-posts";
+import { dedupePosts, isStory, type PublicPost } from "./public-posts";
 
 function makePost(id: string, bodyNormalized: string, date: string): PublicPost {
   return {
@@ -9,6 +9,7 @@ function makePost(id: string, bodyNormalized: string, date: string): PublicPost 
     bodyNormalized,
     originalDate: new Date(date),
     tags: [],
+    sourceId: null,
     media: [],
   };
 }
@@ -51,5 +52,19 @@ describe("dedupePosts", () => {
     // 'a' is replaced by 'c' (older), but 'c' keeps its original date position? No:
     // the function keeps 'c' as the survivor. Result should be ordered by date desc.
     expect(result.map((p) => p.id)).toEqual(["b", "c"]);
+  });
+});
+
+describe("isStory", () => {
+  it("returns true for fb_story_ sourceIds", () => {
+    expect(isStory("fb_story_abc123")).toBe(true);
+  });
+  it("returns false for fb_ sourceIds without story prefix", () => {
+    expect(isStory("fb_abc123")).toBe(false);
+  });
+  it("returns false for null/undefined/empty", () => {
+    expect(isStory(null)).toBe(false);
+    expect(isStory(undefined)).toBe(false);
+    expect(isStory("")).toBe(false);
   });
 });

@@ -58,7 +58,13 @@ export function DayPanel({ day, entries, onClose }: Props) {
                   <span
                     className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusBadge(e.status)}`}
                   >
-                    {e.platforms.length > 0 ? e.status : "Imported"}
+                    {e.platforms.length > 0
+                      ? e.status
+                      : e.status === "PROPOSED"
+                        ? "Proposed"
+                        : e.status === "PLAN_APPROVED"
+                          ? "Approved"
+                          : "Imported"}
                   </span>
                 </div>
                 <div className="mt-1 line-clamp-3 text-xs text-gray-700">
@@ -81,5 +87,9 @@ function statusBadge(status: CalendarEntry["status"]): string {
       return "bg-yellow-100 text-yellow-800";
     case "IMPORTED":
       return "bg-gray-100 text-gray-700";
+    case "PROPOSED":
+      return "border border-dashed border-gray-400 bg-white text-gray-500";
+    case "PLAN_APPROVED":
+      return "border border-blue-400 bg-blue-50 text-blue-800";
   }
 }

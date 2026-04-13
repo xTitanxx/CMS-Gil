@@ -76,7 +76,13 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
                     {e.platforms.length > 0 ? (
                       <PlatformIcons platforms={e.platforms} size={11} />
                     ) : (
-                      <span className="truncate">Imported</span>
+                      <span className="truncate">
+                        {e.status === "PROPOSED"
+                          ? "Proposed"
+                          : e.status === "PLAN_APPROVED"
+                            ? "Approved"
+                            : "Imported"}
+                      </span>
                     )}
                   </div>
                 ))}
@@ -102,5 +108,9 @@ function statusClass(status: CalendarEntry["status"]): string {
       return "bg-yellow-100 text-yellow-800";
     case "IMPORTED":
       return "bg-gray-100 text-gray-700";
+    case "PROPOSED":
+      return "border border-dashed border-gray-400 bg-white text-gray-500 opacity-70";
+    case "PLAN_APPROVED":
+      return "border border-blue-400 bg-blue-50 text-blue-800";
   }
 }

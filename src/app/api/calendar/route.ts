@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  const [publishRecords, importedPosts] = await Promise.all([
+  const [publishRecords, importedPosts, planSlots] = await Promise.all([
     prisma.publishRecord.findMany({
       where: {
         post: { userId },
@@ -50,6 +50,16 @@ export async function GET(req: NextRequest) {
       },
       include: { media: { take: 1 } },
     }),
+    prisma.weeklyPlanSlot.findMany({
+      where: {
+        plan: { userId },
+        day: { gte: startDate, lte: endDate },
+        status: { in: ["PROPOSED", "APPROVED"] },
+      },
+      include: {
+        post: { include: { media: { take: 1 } } },
+      },
+    }),
   ]);
 
   // Group publish records by postId+date+status so a post published to
@@ -58,7 +68,7 @@ export async function GET(req: NextRequest) {
   type GroupedEntry = {
     postId: string;
     date: string;
-    status: "PENDING" | "PUBLISHED" | "IMPORTED";
+    status: "PENDING" | "PUBLISHED" | "IMPORTED" | "PROPOSED" | "PLAN_APPROVED";
     platforms: string[];
     thumbUrl: string | null;
     body: string;
@@ -107,6 +117,36 @@ export async function GET(req: NextRequest) {
       _storageKey: media?.storageKey,
       _mimeType: media?.mimeType,
     });
+  }
+
+  // Build a set of postId+date keys already covered by PublishRecords so we
+  // don't show duplicate entries for plan slots whose post is already scheduled.
+  const publishedPostDateKeys = new Set<string>();
+  for (const [key] of groups) {
+    const [postId, date] = key.split("|");
+    publishedPostDateKeys.add(`${postId}|${date}`);
+  }
+
+  for (const slot of planSlots) {
+    const dateKey = toDateKey(slot.day);
+    // Skip if this post already has a PublishRecord entry on the same day
+    if (publishedPostDateKeys.has(`${slot.postId}|${dateKey}`)) continue;
+    const slotStatus = slot.status === "APPROVED" ? "PLAN_APPROVED" : "PROPOSED";
+    const groupKey = `${slot.postId}|${dateKey}|${slotStatus}`;
+    // Only add if not already present (prefer higher-priority status if duplicate)
+    if (!groups.has(groupKey)) {
+      const media = slot.post.media[0];
+      groups.set(groupKey, {
+        postId: slot.postId,
+        date: dateKey,
+        status: slotStatus,
+        platforms: [],
+        thumbUrl: null,
+        body: slot.post.body,
+        _storageKey: media?.storageKey,
+        _mimeType: media?.mimeType,
+      });
+    }
   }
 
   const entries = await Promise.all(

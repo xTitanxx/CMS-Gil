@@ -15,12 +15,12 @@ import {
 import { signOut } from "next-auth/react";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/posts", label: "All Posts", icon: FileText },
-  { href: "/import", label: "Import", icon: Upload },
-  { href: "/connections", label: "Connections", icon: Link2 },
-  { href: "/scheduled", label: "Scheduled", icon: CalendarClock },
-  { href: "/todo", label: "To-Do", icon: CheckSquare },
+  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/posts", label: "All Posts", icon: FileText },
+  { href: "/admin/import", label: "Import", icon: Upload },
+  { href: "/admin/connections", label: "Connections", icon: Link2 },
+  { href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
+  { href: "/admin/todo", label: "To-Do", icon: CheckSquare },
 ];
 
 export function Sidebar() {

@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runImportJob } from "@/lib/import-worker";
-import { parseFacebookFile, ParsedPost } from "@/lib/facebook-parser";
+import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
 import { del } from "@vercel/blob";
 import unzipper from "unzipper";
 import { readdir } from "fs/promises";
@@ -163,7 +163,11 @@ async function processLocalFolder(
     }
   }
 
-  if (allPosts.length === 0) {
+  // Prefer entries from your_posts_*.json (post.timestamp) over album/video
+  // files (media creation_timestamp) when the same photo/video appears in both.
+  const dedupedPosts = dedupeParsedPosts(allPosts);
+
+  if (dedupedPosts.length === 0) {
     throw new Error("No posts found in the exported JSON files.");
   }
 
@@ -179,7 +183,7 @@ async function processLocalFolder(
     return ref.entry.buffer();
   };
 
-  await runImportJob({ jobId, userId, parsedPosts: allPosts, getMedia });
+  await runImportJob({ jobId, userId, parsedPosts: dedupedPosts, getMedia });
 }
 
 async function processMultiZipFromBlob(
@@ -219,7 +223,11 @@ async function processMultiZipFromBlob(
     }
   }
 
-  if (allPosts.length === 0) {
+  // Prefer entries from your_posts_*.json (post.timestamp) over album/video
+  // files (media creation_timestamp) when the same photo/video appears in both.
+  const dedupedPosts = dedupeParsedPosts(allPosts);
+
+  if (dedupedPosts.length === 0) {
     throw new Error("No posts found in the exported JSON files.");
   }
 
@@ -234,5 +242,5 @@ async function processMultiZipFromBlob(
     return ref.entry.buffer();
   };
 
-  await runImportJob({ jobId, userId, parsedPosts: allPosts, getMedia });
+  await runImportJob({ jobId, userId, parsedPosts: dedupedPosts, getMedia });
 }

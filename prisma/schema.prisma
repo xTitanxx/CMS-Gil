@@ -49,6 +49,7 @@ model User {
   importJobs     ImportJob[]
   platformTokens PlatformToken[]
   driveSync      DriveSync?
+  weeklyPlans    WeeklyPlan[]
 }
 
 model VerificationToken {
@@ -66,8 +67,17 @@ model Post {
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  body         String
-  bodyHtml     String?
+  body           String
+  bodyHtml       String?
+  // Normalized lowercase copy of body, used for the posts-list search filter so
+  // that typed keyboard text matches Facebook's smart-punctuation variants
+  // (curly quotes, em-dashes, ellipsis, nbsp, zero-width). Written by all
+  // Post-creating code paths via normalizeForSearch() in src/lib/search-normalize.ts.
+  bodyNormalized String  @default("")
+  // Link back to the original post on Facebook. For FB-imported posts this is
+  // populated by backfill from the HTML export (the dyi/l/?l=<token> redirector
+  // that FB bakes into its HTML export). See scripts/backfill-fb-urls.ts.
+  platformUrl    String?
 
   source       PostSource    @default(MANUAL)
   sourceId     String?
@@ -77,10 +87,12 @@ model Post {
   updatedAt    DateTime      @updatedAt
 
   tags         String[]      @default([])
+  publishCount Int           @default(0)
 
   media        Media[]
   publishes    PublishRecord[]
   analytics    PostAnalytics[]
+  planSlots    WeeklyPlanSlot[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -138,6 +150,7 @@ model PlatformToken {
 
 enum Platform {
   FACEBOOK
+  FACEBOOK_PAGE
   INSTAGRAM
   LINKEDIN
   YOUTUBE
@@ -245,5 +258,48 @@ model PostAnalytics {
   updatedAt      DateTime @updatedAt
 
   @@unique([postId, platform])
+  @@index([postId])
+}
+
+// ─── Weekly Planner ─────────────────────────────────────────────────────────
+
+enum PlanStatus {
+  DRAFT
+  PARTIAL
+  APPROVED
+}
+
+enum SlotStatus {
+  PROPOSED
+  APPROVED
+  SCHEDULED
+  SKIPPED
+}
+
+model WeeklyPlan {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart DateTime
+  status    PlanStatus @default(DRAFT)
+  slots     WeeklyPlanSlot[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([userId, weekStart])
+}
+
+model WeeklyPlanSlot {
+  id        String     @id @default(cuid())
+  planId    String
+  plan      WeeklyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post       @relation(fields: [postId], references: [id])
+  day       DateTime
+  status    SlotStatus @default(PROPOSED)
+  reasoning String?
+  platforms String[]
+
+  @@unique([planId, day])
   @@index([postId])
 }

@@ -5,12 +5,31 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Image as ImageIcon, Trash2, Sparkles, X, RefreshCw, Play, VolumeX } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Image as ImageIcon,
+  Trash2,
+  Sparkles,
+  X,
+  RefreshCw,
+  Play,
+  VolumeX,
+  SlidersHorizontal,
+  Send,
+} from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
 import { ViewToggle } from "./ViewToggle";
+import { PlatformIcons } from "../scheduled/PlatformIcons";
 import { displayBody } from "@/lib/post-body";
+import {
+  CONTENT_CATEGORIES,
+  AUDIO_CATEGORIES,
+  type ContentCategory,
+  type AudioCategory,
+} from "@/lib/posts-query";
 
 interface Post {
   id: string;
@@ -23,15 +42,53 @@ interface Post {
   tags: string[];
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
-  analytics: {
-    reactions: number | null;
-    comments: number | null;
-    shares: number | null;
-    platformPostId: string | null;
-  }[];
 }
 
-type AudioFilter = "all" | "audible" | "silent" | "hide-silent";
+type LinkFilter = "all" | "with" | "without";
+type MultiMediaFilter = "all" | "2";
+type TaggedFilter = "all" | "yes" | "no";
+type KindFilter = "posts" | "stories";
+
+const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
+  { value: "caption", label: "Caption only" },
+  { value: "image", label: "Image" },
+  { value: "video", label: "Video" },
+  { value: "nocaption", label: "No caption" },
+];
+
+const AUDIO_OPTIONS: { value: AudioCategory; label: string }[] = [
+  { value: "audible", label: "Video with audio" },
+  { value: "silent", label: "Silent video" },
+  { value: "nonvideo", label: "Non-video posts" },
+];
+
+const SORT_OPTIONS = [
+  { value: "originalDate_desc", label: "Post date (newest)" },
+  { value: "originalDate_asc", label: "Post date (oldest)" },
+  { value: "createdAt_desc", label: "Import date (newest)" },
+  { value: "createdAt_asc", label: "Import date (oldest)" },
+];
+
+function parseCsvToSet<T extends string>(
+  raw: string | undefined,
+  allowed: readonly T[]
+): Set<T> {
+  if (raw == null) return new Set(allowed);
+  const out = new Set<T>();
+  for (const part of raw.split(",")) {
+    const v = part.trim();
+    if ((allowed as readonly string[]).includes(v)) out.add(v as T);
+  }
+  return out;
+}
+
+function serializeSet<T extends string>(
+  set: Set<T>,
+  allowed: readonly T[]
+): string | null {
+  if (allowed.every((v) => set.has(v))) return null;
+  return [...set].join(",");
+}
 
 function RowDeleteButton({
   postId,
@@ -52,7 +109,7 @@ function RowDeleteButton({
 
   return (
     <button
-      className={`ml-2 flex-shrink-0 p-1 transition-colors ${
+      className={`flex-shrink-0 self-center p-1 transition-colors ${
         confirming
           ? "text-amber-500"
           : "text-gray-300 hover:text-red-500"
@@ -72,40 +129,345 @@ function RowDeleteButton({
   );
 }
 
+const ALL_PLATFORMS = [
+  "INSTAGRAM",
+  "LINKEDIN",
+  "YOUTUBE",
+  "TIKTOK",
+  "FACEBOOK_PAGE",
+] as const;
+const VIDEO_ONLY = new Set(["YOUTUBE", "TIKTOK"]);
+
+function RowPublishAllButton({ post }: { post: Post }) {
+  const { isLoading, status, message, run } = useAsync();
+  const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+  const targets = ALL_PLATFORMS.filter((p) => hasVideo || !VIDEO_ONLY.has(p));
+
+  const handlePublish = useCallback(async () => {
+    await run(async () => {
+      const res = await fetch(`/api/posts/${post.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platforms: targets }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Publish failed");
+      }
+    }, `Publishing to ${targets.length} platform${targets.length === 1 ? "" : "s"}`);
+  }, [post.id, targets, run]);
+  const { confirming, trigger } = useConfirm(handlePublish);
+
+  const tone =
+    status === "error"
+      ? "text-red-500"
+      : status === "success"
+      ? "text-green-600"
+      : confirming
+      ? "text-amber-500"
+      : "text-gray-300 hover:text-blue-600";
+
+  return (
+    <button
+      className={`flex-shrink-0 self-center p-1 transition-colors ${tone}`}
+      onClick={(e) => {
+        e.preventDefault();
+        trigger();
+      }}
+      title={
+        status === "error"
+          ? `Error: ${message}`
+          : status === "success"
+          ? "Publishing started"
+          : confirming
+          ? `Publish to ${targets.join(", ")}?`
+          : `Publish to all (${targets.length})`
+      }
+    >
+      {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+    </button>
+  );
+}
+
+interface FilterMenuProps {
+  sort: string;
+  setSort: (s: string) => void;
+  content: Set<ContentCategory>;
+  setContent: (s: Set<ContentCategory>) => void;
+  audio: Set<AudioCategory>;
+  setAudio: (s: Set<AudioCategory>) => void;
+  link: LinkFilter;
+  setLink: (v: LinkFilter) => void;
+  multiMedia: MultiMediaFilter;
+  setMultiMedia: (v: MultiMediaFilter) => void;
+  tagged: TaggedFilter;
+  setTagged: (v: TaggedFilter) => void;
+  activeCount: number;
+  onReset: () => void;
+}
+
+function FilterMenu(props: FilterMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  function toggleContent(v: ContentCategory) {
+    const next = new Set(props.content);
+    if (next.has(v)) next.delete(v);
+    else next.add(v);
+    props.setContent(next);
+  }
+  function toggleAudio(v: AudioCategory) {
+    const next = new Set(props.audio);
+    if (next.has(v)) next.delete(v);
+    else next.add(v);
+    props.setAudio(next);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-blue-500 focus:outline-none"
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        Filters
+        {props.activeCount > 0 && (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
+            {props.activeCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Filters
+            </span>
+            {props.activeCount > 0 && (
+              <button
+                onClick={props.onReset}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="max-h-96 space-y-4 overflow-y-auto pr-1">
+            <FilterSection title="Sort">
+              {SORT_OPTIONS.map((o) => (
+                <RadioRow
+                  key={o.value}
+                  name="sort"
+                  checked={props.sort === o.value}
+                  onChange={() => props.setSort(o.value)}
+                  label={o.label}
+                />
+              ))}
+            </FilterSection>
+            <FilterSection title="Content">
+              {CONTENT_OPTIONS.map((o) => (
+                <CheckRow
+                  key={o.value}
+                  checked={props.content.has(o.value)}
+                  onChange={() => toggleContent(o.value)}
+                  label={o.label}
+                />
+              ))}
+            </FilterSection>
+            <FilterSection title="Audio">
+              {AUDIO_OPTIONS.map((o) => (
+                <CheckRow
+                  key={o.value}
+                  checked={props.audio.has(o.value)}
+                  onChange={() => toggleAudio(o.value)}
+                  label={o.label}
+                />
+              ))}
+            </FilterSection>
+            <FilterSection title="Facebook link">
+              <RadioRow
+                name="link"
+                checked={props.link === "all"}
+                onChange={() => props.setLink("all")}
+                label="Any"
+              />
+              <RadioRow
+                name="link"
+                checked={props.link === "with"}
+                onChange={() => props.setLink("with")}
+                label="Has FB link"
+              />
+              <RadioRow
+                name="link"
+                checked={props.link === "without"}
+                onChange={() => props.setLink("without")}
+                label="No FB link"
+              />
+            </FilterSection>
+            <FilterSection title="Media count">
+              <RadioRow
+                name="multi"
+                checked={props.multiMedia === "all"}
+                onChange={() => props.setMultiMedia("all")}
+                label="Any"
+              />
+              <RadioRow
+                name="multi"
+                checked={props.multiMedia === "2"}
+                onChange={() => props.setMultiMedia("2")}
+                label="2 or more media"
+              />
+            </FilterSection>
+            <FilterSection title="AI tags">
+              <RadioRow
+                name="tagged"
+                checked={props.tagged === "all"}
+                onChange={() => props.setTagged("all")}
+                label="Any"
+              />
+              <RadioRow
+                name="tagged"
+                checked={props.tagged === "yes"}
+                onChange={() => props.setTagged("yes")}
+                label="AI tagged"
+              />
+              <RadioRow
+                name="tagged"
+                checked={props.tagged === "no"}
+                onChange={() => props.setTagged("no")}
+                label="Not yet tagged"
+              />
+            </FilterSection>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+        {title}
+      </p>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function RadioRow({
+  name,
+  checked,
+  onChange,
+  label,
+}: {
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+      <input
+        type="radio"
+        name={name}
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 cursor-pointer border-gray-300 text-blue-600"
+      />
+      {label}
+    </label>
+  );
+}
+
+function CheckRow({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
+      />
+      {label}
+    </label>
+  );
+}
+
 interface PostsListProps {
   initialSearch?: string;
   initialSort?: string;
-  initialAudio?: AudioFilter;
+  initialContent?: string;
+  initialAudio?: string;
+  initialLink?: LinkFilter;
+  initialMultiMedia?: MultiMediaFilter;
+  initialTagged?: TaggedFilter;
   initialTags?: string[];
+  initialKind?: KindFilter;
 }
 
 export function PostsList({
   initialSearch = "",
   initialSort = "originalDate_desc",
-  initialAudio = "all",
+  initialContent,
+  initialAudio,
+  initialLink = "all",
+  initialMultiMedia = "all",
+  initialTagged = "all",
   initialTags = [],
+  initialKind = "posts",
 }: PostsListProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState(initialSort);
-  const [audio, setAudio] = useState<AudioFilter>(initialAudio);
+  const [content, setContent] = useState<Set<ContentCategory>>(() =>
+    parseCsvToSet(initialContent, CONTENT_CATEGORIES)
+  );
+  const [audio, setAudio] = useState<Set<AudioCategory>>(() =>
+    parseCsvToSet(initialAudio, AUDIO_CATEGORIES)
+  );
+  const [link, setLink] = useState<LinkFilter>(initialLink);
+  const [multiMedia, setMultiMedia] = useState<MultiMediaFilter>(initialMultiMedia);
+  const [tagged, setTagged] = useState<TaggedFilter>(initialTagged);
+  const [kind, setKind] = useState<KindFilter>(initialKind);
   const [loading, setLoading] = useState(true);
-  // AI search
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Combined search bar state
+  const [aiMode, setAiMode] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
   const [aiSearching, setAiSearching] = useState(false);
   const [aiResult, setAiResult] = useState<{ tags: string[]; keywords: string[]; explanation: string } | null>(null);
   const [aiTags, setAiTags] = useState<string[]>(initialTags);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllMode, setSelectAllMode] = useState(false);
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const bulkDelete = useAsync();
-  const [lastBulkCount, setLastBulkCount] = useState(0);
   const bulkAnalyze = useAsync();
   const [analyzeQueued, setAnalyzeQueued] = useState<number | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
+  const isLoadingRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   async function runAiSearch() {
     if (!aiQuery.trim()) return;
@@ -119,7 +481,6 @@ export function PostsList({
     setAiResult(data);
     setAiTags(data.tags ?? []);
     if (data.keywords?.[0]) setSearch(data.keywords[0]);
-    setPage(1);
     setAiSearching(false);
   }
 
@@ -128,46 +489,137 @@ export function PostsList({
     setAiResult(null);
     setAiTags([]);
     setSearch("");
-    setPage(1);
   }
 
-  const fetchPosts = useCallback(async () => {
+  function toggleAiMode() {
+    if (aiMode) {
+      // turning off — clear AI state
+      clearAiSearch();
+      setAiMode(false);
+    } else {
+      setAiMode(true);
+    }
+  }
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (sort !== "originalDate_desc") n++;
+    if (content.size !== CONTENT_CATEGORIES.length) n++;
+    if (audio.size !== AUDIO_CATEGORIES.length) n++;
+    if (link !== "all") n++;
+    if (multiMedia !== "all") n++;
+    if (tagged !== "all") n++;
+    return n;
+  }, [sort, content, audio, link, multiMedia, tagged]);
+
+  function resetFilters() {
+    setSort("originalDate_desc");
+    setContent(new Set(CONTENT_CATEGORIES));
+    setAudio(new Set(AUDIO_CATEGORIES));
+    setLink("all");
+    setMultiMedia("all");
+    setTagged("all");
+  }
+
+  const buildQuery = useCallback(
+    (cursor: string | null) => {
+      const contentParam = serializeSet(content, CONTENT_CATEGORIES);
+      const audioParam = serializeSet(audio, AUDIO_CATEGORIES);
+      const params = new URLSearchParams({
+        limit: "20",
+        sort,
+        ...(search ? { search } : {}),
+        ...(aiTags.length > 0 ? { tags: aiTags.join(",") } : {}),
+        ...(contentParam ? { content: contentParam } : {}),
+        ...(audioParam ? { audio: audioParam } : {}),
+        ...(link !== "all" ? { link } : {}),
+        ...(multiMedia !== "all" ? { multiMedia } : {}),
+        ...(tagged !== "all" ? { tagged } : {}),
+        kind,
+      });
+      if (cursor) params.set("cursor", cursor);
+      return params;
+    },
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, kind],
+  );
+
+  const fetchInitial = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     setLoading(true);
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: "20",
-      sort,
-      ...(search ? { search } : {}),
-      ...(aiTags.length > 0 ? { tags: aiTags.join(",") } : {}),
-      ...(audio !== "all" ? { audio } : {}),
-    });
-    const res = await fetch(`/api/posts?${params}`);
-    const data = await res.json();
-    setPosts(data.posts ?? []);
-    setTotal(data.total ?? 0);
-    setPages(data.pages ?? 1);
-    setLoading(false);
-    setSelectedIds(new Set());
-    setSelectAllMode(false);
-    setLastSelectedIndex(null);
-    lastSelectedIndexRef.current = null;
-  }, [page, search, sort, aiTags, audio]);
+    try {
+      const params = buildQuery(null);
+      const res = await fetch(`/api/posts?${params}`);
+      const data = await res.json();
+      setPosts(data.posts ?? []);
+      setTotal(data.total ?? 0);
+      setNextCursor(data.nextCursor ?? null);
+      setDone(data.nextCursor == null);
+      setSelectedIds(new Set());
+      setSelectAllMode(false);
+      lastSelectedIndexRef.current = null;
+    } finally {
+      setLoading(false);
+      isLoadingRef.current = false;
+    }
+  }, [buildQuery]);
+
+  const fetchMore = useCallback(async () => {
+    if (isLoadingRef.current || !nextCursor) return;
+    isLoadingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const params = buildQuery(nextCursor);
+      const res = await fetch(`/api/posts?${params}`);
+      const data = await res.json();
+      setPosts((prev) => [...prev, ...(data.posts ?? [])]);
+      setNextCursor(data.nextCursor ?? null);
+      setDone(data.nextCursor == null);
+    } finally {
+      setLoadingMore(false);
+      isLoadingRef.current = false;
+    }
+  }, [buildQuery, nextCursor]);
 
   useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts]);
+    fetchInitial();
+  }, [fetchInitial]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !nextCursor) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !isLoadingRef.current) {
+            fetchMore();
+          }
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [nextCursor, fetchMore]);
 
   const detailQueryString = useMemo(() => {
     const qs = new URLSearchParams();
     if (search) qs.set("search", search);
     if (sort && sort !== "originalDate_desc") qs.set("sort", sort);
-    if (audio !== "all") qs.set("audio", audio);
+    const contentParam = serializeSet(content, CONTENT_CATEGORIES);
+    if (contentParam) qs.set("content", contentParam);
+    const audioParam = serializeSet(audio, AUDIO_CATEGORIES);
+    if (audioParam) qs.set("audio", audioParam);
+    if (link !== "all") qs.set("link", link);
+    if (multiMedia !== "all") qs.set("multiMedia", multiMedia);
+    if (tagged !== "all") qs.set("tagged", tagged);
     if (aiTags.length > 0) qs.set("tags", aiTags.join(","));
+    if (kind !== "posts") qs.set("kind", kind);
     return qs.toString();
-  }, [search, sort, audio, aiTags]);
+  }, [search, sort, content, audio, link, multiMedia, tagged, aiTags, kind]);
 
   const postHref = useCallback(
-    (id: string) => `/posts/${id}?${detailQueryString}`,
+    (id: string) => `/admin/posts/${id}?${detailQueryString}`,
     [detailQueryString],
   );
 
@@ -181,7 +633,6 @@ export function PostsList({
     } else {
       setSelectedIds(new Set(posts.map((p) => p.id)));
     }
-    setLastSelectedIndex(null);
     lastSelectedIndexRef.current = null;
   }
 
@@ -209,14 +660,12 @@ export function PostsList({
         }
         return next;
       });
-      setLastSelectedIndex(index);
       lastSelectedIndexRef.current = index;
     }
   }
 
   const handleBulkDelete = useCallback(async () => {
     const count = selectAllMode ? total : selectedIds.size;
-    setLastBulkCount(count);
     await bulkDelete.run(async () => {
       const res = await fetch("/api/posts", {
         method: "DELETE",
@@ -229,8 +678,8 @@ export function PostsList({
       });
       if (!res.ok) throw new Error("Delete failed");
     }, `Deleted ${count} post${count === 1 ? "" : "s"}`);
-    fetchPosts();
-  }, [bulkDelete, selectAllMode, total, selectedIds, search, fetchPosts]);
+    fetchInitial();
+  }, [bulkDelete, selectAllMode, total, selectedIds, search, fetchInitial]);
 
   const { confirming: bulkConfirming, trigger: triggerBulkDelete } = useConfirm(handleBulkDelete);
 
@@ -238,11 +687,21 @@ export function PostsList({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">All Posts</h1>
-          <p className="text-sm text-gray-500">{total} posts total</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {kind === "stories" ? "All Stories" : "All Posts"}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {total} {kind === "stories" ? "stories" : "posts"} total
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle />
+          <Link href="/admin/trash">
+            <Button size="sm" variant="outline">
+              <Trash2 className="h-4 w-4" />
+              Trash
+            </Button>
+          </Link>
           <Button
             size="sm"
             variant="outline"
@@ -259,7 +718,7 @@ export function PostsList({
             {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}
           </Button>
-          <Link href="/posts/new">
+          <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
               New Post
@@ -277,79 +736,111 @@ export function PostsList({
         </div>
       )}
 
-      {/* Search + Sort */}
+      {/* Feed tabs: posts vs. stories */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {(["posts", "stories"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => {
+              if (k === kind) return;
+              setKind(k);
+              setSelectedIds(new Set());
+              setSelectAllMode(false);
+              lastSelectedIndexRef.current = null;
+            }}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              kind === k
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {k === "posts" ? "Posts" : "Stories"}
+          </button>
+        ))}
+      </div>
+
+      {/* Combined search + filters */}
       <div className="space-y-2">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            {aiMode ? (
+              <Sparkles className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-purple-500" />
+            ) : (
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            )}
             <input
               type="text"
-              placeholder="Search posts..."
-              value={search}
+              placeholder={aiMode ? "AI search — describe what you're looking for..." : "Search posts..."}
+              value={aiMode ? aiQuery : search}
               onChange={(e) => {
-                setSearch(e.target.value);
-                setAiTags([]);
-                setAiResult(null);
-                setPage(1);
+                if (aiMode) {
+                  setAiQuery(e.target.value);
+                } else {
+                  setSearch(e.target.value);
+                  setAiTags([]);
+                  setAiResult(null);
+                }
               }}
-              className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none"
+              onKeyDown={(e) => {
+                if (aiMode && e.key === "Enter") runAiSearch();
+              }}
+              className={`w-full rounded-lg border bg-white py-2 pl-10 pr-11 text-sm focus:outline-none ${
+                aiMode
+                  ? "border-purple-300 focus:border-purple-500"
+                  : "border-gray-300 focus:border-blue-500"
+              }`}
             />
+            <button
+              type="button"
+              onClick={toggleAiMode}
+              title={aiMode ? "Switch to keyword search" : "Switch to AI search"}
+              aria-pressed={aiMode}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 transition-all ${
+                aiMode
+                  ? "bg-purple-100 text-purple-600 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                  : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              }`}
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
           </div>
-          <select
-            value={sort}
-            onChange={(e) => { setSort(e.target.value); setPage(1); }}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            <option value="originalDate_desc">Post date (newest)</option>
-            <option value="originalDate_asc">Post date (oldest)</option>
-            <option value="createdAt_desc">Import date (newest)</option>
-            <option value="createdAt_asc">Import date (oldest)</option>
-          </select>
-          <select
-            value={audio}
-            onChange={(e) => { setAudio(e.target.value as AudioFilter); setPage(1); }}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            title="Filter by audio track"
-          >
-            <option value="all">All posts</option>
-            <option value="audible">Has audio</option>
-            <option value="silent">Silent videos only</option>
-            <option value="hide-silent">Hide silent</option>
-          </select>
-        </div>
-
-        {/* AI Search */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Sparkles className="absolute left-3 top-2.5 h-4 w-4 text-purple-400" />
-            <input
-              type="text"
-              placeholder="AI search — describe what you're looking for..."
-              value={aiQuery}
-              onChange={(e) => setAiQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runAiSearch()}
-              className="w-full rounded-lg border border-purple-200 bg-white py-2 pl-10 pr-4 text-sm focus:border-purple-400 focus:outline-none"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runAiSearch}
-            disabled={aiSearching || !aiQuery.trim()}
-            className="border-purple-200 text-purple-700 hover:bg-purple-50"
-          >
-            {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Search
-          </Button>
+          {aiMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runAiSearch}
+              disabled={aiSearching || !aiQuery.trim()}
+              className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            >
+              {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Search
+            </Button>
+          )}
           {aiResult && (
             <Button variant="ghost" size="sm" onClick={clearAiSearch}>
               <X className="h-4 w-4" />
               Clear
             </Button>
           )}
+          <FilterMenu
+            sort={sort}
+            setSort={setSort}
+            content={content}
+            setContent={setContent}
+            audio={audio}
+            setAudio={setAudio}
+            link={link}
+            setLink={setLink}
+            multiMedia={multiMedia}
+            setMultiMedia={setMultiMedia}
+            tagged={tagged}
+            setTagged={setTagged}
+            activeCount={activeFilterCount}
+            onReset={resetFilters}
+          />
         </div>
 
-        {/* AI result explanation + matched tags */}
         {aiResult && (
           <div className="rounded-lg border border-purple-100 bg-purple-50 px-4 py-2 text-sm space-y-1">
             {aiResult.explanation && (
@@ -411,7 +902,7 @@ export function PostsList({
             </Button>
             <button
               className="ml-auto text-sm text-blue-600 hover:underline"
-              onClick={() => { setSelectedIds(new Set()); setSelectAllMode(false); setLastSelectedIndex(null); lastSelectedIndexRef.current = null; }}
+              onClick={() => { setSelectedIds(new Set()); setSelectAllMode(false); lastSelectedIndexRef.current = null; }}
             >
               Clear selection
             </button>
@@ -457,7 +948,7 @@ export function PostsList({
       ) : !loading && posts.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
           <p className="text-gray-500">No posts found.</p>
-          <Link href="/import" className="mt-2 block text-sm text-blue-600 hover:underline">
+          <Link href="/admin/import" className="mt-2 block text-sm text-blue-600 hover:underline">
             Import posts
           </Link>
         </div>
@@ -485,12 +976,12 @@ export function PostsList({
             return (
               <div
                 key={post.id}
-                className={`flex items-start gap-3 rounded-lg border bg-white p-4 transition-shadow hover:shadow-sm ${
+                className={`flex items-center gap-3 rounded-lg border bg-white p-4 transition-shadow hover:shadow-sm ${
                   isSelected ? "border-blue-300 bg-blue-50" : "border-gray-200"
                 }`}
               >
                 {/* Checkbox */}
-                <div className="flex-shrink-0 pt-0.5">
+                <div className="flex-shrink-0">
                   <input
                     type="checkbox"
                     checked={isSelected}
@@ -500,7 +991,7 @@ export function PostsList({
                   />
                 </div>
 
-                <Link href={postHref(post.id)} className="flex items-start gap-4 flex-1 min-w-0">
+                <Link href={postHref(post.id)} className="flex min-w-0 flex-1 items-center gap-4">
                   {/* Thumbnail */}
                   <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
                     {post.thumbUrl ? (
@@ -538,6 +1029,11 @@ export function PostsList({
                       </span>
                       <Badge variant="outline" className="text-xs">
                         {post.source}
+                        {post.tags.find((t) => t.startsWith("fb:")) && (
+                          <span className="ml-1 uppercase">
+                            {post.tags.find((t) => t.startsWith("fb:"))!.replace("fb:", "")}
+                          </span>
+                        )}
                       </Badge>
                       {post.media.length > 0 && (
                         <span className="text-xs text-gray-400">
@@ -552,9 +1048,9 @@ export function PostsList({
                     ) : (
                       <p className="mt-1 text-sm italic text-gray-400">No caption</p>
                     )}
-                    {post.tags.length > 0 && (
+                    {(() => { const visibleTags = post.tags.filter((t) => !t.startsWith("fb:")); return visibleTags.length > 0 ? (
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {post.tags.slice(0, 5).map((tag) => (
+                        {visibleTags.slice(0, 5).map((tag) => (
                           <span
                             key={tag}
                             className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
@@ -562,51 +1058,41 @@ export function PostsList({
                             {tag}
                           </span>
                         ))}
-                        {post.tags.length > 5 && (
-                          <span className="text-xs text-gray-400">+{post.tags.length - 5} more</span>
+                        {visibleTags.length > 5 && (
+                          <span className="text-xs text-gray-400">+{visibleTags.length - 5} more</span>
                         )}
                       </div>
-                    )}
-                    {post.source === "FACEBOOK" &&
-                      post.analytics?.[0]?.platformPostId && (
-                        <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-400">
-                          {post.analytics[0].reactions !== null && (
-                            <span>❤ {post.analytics[0].reactions}</span>
-                          )}
-                          {post.analytics[0].comments !== null && (
-                            <span>💬 {post.analytics[0].comments}</span>
-                          )}
-                          {post.analytics[0].shares !== null && (
-                            <span>↗ {post.analytics[0].shares}</span>
-                          )}
-                        </div>
-                      )}
+                    ) : null; })()}
                   </div>
 
-                  {/* Publish status */}
-                  {post.publishes.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {post.publishes.map((p) => (
-                        <Badge
-                          key={p.platform}
-                          variant={
-                            p.status === "PUBLISHED"
-                              ? "success"
-                              : p.status === "FAILED"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {p.platform}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
+                  {/* Published platforms */}
+                  <PlatformIcons
+                    platforms={[
+                      ...new Set(
+                        post.publishes
+                          .filter((p) => p.status === "PUBLISHED")
+                          .map((p) => p.platform),
+                      ),
+                    ]}
+                    size={16}
+                    className="flex-shrink-0 gap-1.5"
+                  />
                 </Link>
 
-                {/* Delete button */}
-                <RowDeleteButton postId={post.id} onDeleted={fetchPosts} />
+                {/* Row actions */}
+                <RowPublishAllButton post={post} />
+                <RowDeleteButton
+                  postId={post.id}
+                  onDeleted={() => {
+                    setPosts((prev) => prev.filter((p) => p.id !== post.id));
+                    setTotal((t) => Math.max(0, t - 1));
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      next.delete(post.id);
+                      return next;
+                    });
+                  }}
+                />
               </div>
             );
           })}
@@ -614,30 +1100,20 @@ export function PostsList({
         </div>
       )}
 
-      {/* Pagination */}
-      {pages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-gray-600">
-            Page {page} of {pages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === pages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
+      {/* Infinite scroll sentinel + end-of-feed */}
+      {posts.length > 0 && loadingMore && (
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-200" />
+          ))}
         </div>
       )}
+      {posts.length > 0 && done && (
+        <p className="py-6 text-center text-sm text-gray-400">
+          End of list — {posts.length} of {total} posts
+        </p>
+      )}
+      <div ref={sentinelRef} className="h-px" aria-hidden="true" />
     </div>
   );
 }

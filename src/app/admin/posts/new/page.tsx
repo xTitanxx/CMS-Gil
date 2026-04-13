@@ -169,7 +169,7 @@ export default function NewPostPage() {
         }
       }
 
-      router.push(`/posts/${postId}`);
+      router.push(`/admin/posts/${postId}`);
     } catch {
       setError("An unexpected error occurred. Please try again.");
       setSubmitting(false);
@@ -179,7 +179,7 @@ export default function NewPostPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-3">
-        <Link href="/posts">
+        <Link href="/admin/posts">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -296,7 +296,7 @@ export default function NewPostPage() {
           <Button type="submit" disabled={submitting}>
             {submitting ? (progress ?? "Creating...") : "Create Post"}
           </Button>
-          <Link href="/posts">
+          <Link href="/admin/posts">
             <Button type="button" variant="outline" disabled={submitting}>
               Cancel
             </Button>

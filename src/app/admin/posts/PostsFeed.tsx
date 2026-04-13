@@ -166,7 +166,7 @@ export function PostsFeed() {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle />
-          <Link href="/posts/new">
+          <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
               New Post
@@ -180,7 +180,7 @@ export function PostsFeed() {
           <FeedCard
             key={post.id}
             post={post}
-            href={`/posts/${post.id}?${detailQueryString}`}
+            href={`/admin/posts/${post.id}?${detailQueryString}`}
           />
         ))}
 
@@ -212,7 +212,7 @@ export function PostsFeed() {
           <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
             <p className="text-gray-500">No posts found.</p>
             <Link
-              href="/import"
+              href="/admin/import"
               className="mt-2 block text-sm text-blue-600 hover:underline"
             >
               Import posts

@@ -45,7 +45,7 @@ export function ManualFacebookActions({ body, postId }: ManualFacebookActionsPro
         asChild
         className="h-7 gap-1.5 px-2 text-xs"
       >
-        <a href={`/posts/${postId}`} target="_blank" rel="noopener noreferrer">
+        <a href={`/admin/posts/${postId}`} target="_blank" rel="noopener noreferrer">
           <Download className="h-3.5 w-3.5" />
           Download media
         </a>

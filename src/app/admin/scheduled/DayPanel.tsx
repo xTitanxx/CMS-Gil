@@ -37,7 +37,7 @@ export function DayPanel({ day, entries, onClose }: Props) {
           entries.map((e, i) => (
             <Link
               key={`${e.postId}-${e.status}-${i}`}
-              href={`/posts/${e.postId}`}
+              href={`/admin/posts/${e.postId}`}
               className="flex gap-3 rounded-lg border border-gray-200 p-2 transition-colors hover:bg-gray-50"
             >
               <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded bg-gray-100">

@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { BarChart2, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -39,15 +39,6 @@ function serializeNeighborQuery(sp: SearchParams): string {
   return qs.toString();
 }
 
-function MetricTile({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="rounded-lg bg-gray-50 px-4 py-3 text-center">
-      <p className="text-xl font-semibold text-gray-900">{value ?? "—"}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-    </div>
-  );
-}
-
 export default async function PostDetailPage({
   params,
   searchParams,
@@ -65,14 +56,28 @@ export default async function PostDetailPage({
     include: {
       media: true,
       publishes: { orderBy: { createdAt: "desc" } },
-      analytics: { where: { platform: "FACEBOOK" } },
     },
   });
 
   if (!post) notFound();
 
   const filters = parsePostsFilters(sp);
-  const { where: baseWhere } = buildPostsQuery(filters, session.user.id);
+  const postIdAllowlist =
+    filters.multiMedia === "2"
+      ? (
+          await prisma.$queryRaw<Array<{ postId: string }>>`
+            SELECT m."postId"
+            FROM "Media" m
+            JOIN "Post" p ON p.id = m."postId"
+            WHERE p."userId" = ${session.user.id}
+            GROUP BY m."postId"
+            HAVING COUNT(*) >= 2
+          `
+        ).map((r) => r.postId)
+      : null;
+  const { where: baseWhere } = buildPostsQuery(filters, session.user.id, {
+    postIdAllowlist,
+  });
   const neighbors = buildNeighborQueries(filters.sort, {
     id: post.id,
     originalDate: post.originalDate,
@@ -94,14 +99,18 @@ export default async function PostDetailPage({
 
   const neighborQuery = serializeNeighborQuery(sp);
   const listQuery = serializeListQuery(sp);
+  const fromParam = Array.isArray(sp.from) ? sp.from[0] : sp.from;
 
   const prevHref = prev
-    ? `/posts/${prev.id}${neighborQuery ? `?${neighborQuery}` : ""}`
+    ? `/admin/posts/${prev.id}${neighborQuery ? `?${neighborQuery}` : ""}`
     : null;
   const nextHref = next
-    ? `/posts/${next.id}${neighborQuery ? `?${neighborQuery}` : ""}`
+    ? `/admin/posts/${next.id}${neighborQuery ? `?${neighborQuery}` : ""}`
     : null;
-  const listHref = `/posts${listQuery ? `?${listQuery}` : ""}`;
+  const listHref =
+    fromParam === "dashboard"
+      ? "/admin/dashboard"
+      : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
 
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
@@ -144,7 +153,7 @@ export default async function PostDetailPage({
             />
           </div>
 
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <PublishPanelWithRefresh
               postId={id}
               body={post.body}
@@ -213,43 +222,6 @@ export default async function PostDetailPage({
             </Card>
           )}
 
-          {/* Facebook Analytics */}
-          {post.source === "FACEBOOK" && (() => {
-            const fbAnalytics = post.analytics[0] ?? null;
-            return (
-              <Card>
-                <CardHeader className="flex flex-row items-center gap-2 pb-3">
-                  <BarChart2 className="h-4 w-4 text-blue-600" />
-                  <CardTitle className="text-base">Facebook Analytics</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {!fbAnalytics ? (
-                    <p className="text-sm text-gray-400">Analytics pending — syncs nightly at 3am</p>
-                  ) : !fbAnalytics.platformPostId ? (
-                    <p className="text-sm text-gray-400">Post not yet matched — syncs nightly at 3am</p>
-                  ) : (
-                    <div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <MetricTile label="Reactions" value={fbAnalytics.reactions} />
-                        <MetricTile label="Comments" value={fbAnalytics.comments} />
-                        <MetricTile label="Shares" value={fbAnalytics.shares} />
-                        {fbAnalytics.reach !== null && (
-                          <MetricTile label="Reach" value={fbAnalytics.reach} />
-                        )}
-                        {fbAnalytics.impressions !== null && (
-                          <MetricTile label="Impressions" value={fbAnalytics.impressions} />
-                        )}
-                      </div>
-                      <p className="mt-3 text-xs text-gray-400">
-                        Last updated:{" "}
-                        {format(new Date(fbAnalytics.fetchedAt), "MMM d, yyyy 'at' h:mm a")}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-            })()}
           </div>
         </div>
       </div>

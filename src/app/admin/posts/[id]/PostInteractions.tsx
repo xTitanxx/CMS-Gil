@@ -19,7 +19,7 @@ export function DeleteButton({ postId }: { postId: string }) {
       const res = await fetch(`/api/posts/${postId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
     });
-    router.push("/posts");
+    router.push("/admin/posts");
   }, [postId, run, router]);
 
   const { confirming, trigger } = useConfirm(handleDelete);

@@ -4,7 +4,7 @@ import { SignInButtons } from "./SignInButtons";
 
 export default async function LoginPage() {
   const session = await auth();
-  if (session) redirect("/dashboard");
+  if (session) redirect("/admin/dashboard");
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">

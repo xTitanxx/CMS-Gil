@@ -151,7 +151,6 @@ export function StoryViewer({
             src={firstMedia.url}
             className="max-w-full max-h-full object-contain"
             autoPlay
-            muted
             playsInline
             onEnded={next}
             onTimeUpdate={onVideoTimeUpdate}

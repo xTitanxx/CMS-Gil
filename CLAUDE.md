@@ -101,6 +101,9 @@ Every new feature must be developed on a dedicated branch and pushed as a PR whe
 
 Never commit feature work directly to `claude/personal-cms-social-posting-QV57t`. Bug fixes and config changes on the main branch are fine.
 
+## UI Testing
+The user handles browser/UI verification. Do **not** start a dev server, open Playwright, or otherwise drive the UI to validate frontend changes — just implement the change, make sure it type-checks and unit tests pass, then hand off. The user will test in the browser and report back if anything is broken.
+
 ## Shell Command Rules
 - Always quote paths with spaces: `cd "My Folder"` not `cd My\ Folder`
 - Never use backslash-escaped whitespace in paths

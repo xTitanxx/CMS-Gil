@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getThumbnailUrl } from "@/lib/storage";
+import { getThumbnailUrl, getSignedDownloadUrl } from "@/lib/storage";
+import { normalizeForSearch } from "@/lib/search-normalize";
 import {
   buildCursorClause,
   buildPostsQuery,
@@ -23,20 +24,26 @@ const POST_INCLUDE = {
       scheduledAt: true,
     },
   },
-  analytics: {
-    where: { platform: "FACEBOOK" as const },
-    select: {
-      reactions: true,
-      comments: true,
-      shares: true,
-      platformPostId: true,
-    },
-  },
 } as const;
 
 type PostWithIncludes = Awaited<
   ReturnType<typeof prisma.post.findMany<{ include: typeof POST_INCLUDE }>>
 >[number];
+
+async function getMultiMediaPostIds(
+  userId: string,
+  minCount: number,
+): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ postId: string }>>`
+    SELECT m."postId"
+    FROM "Media" m
+    JOIN "Post" p ON p.id = m."postId"
+    WHERE p."userId" = ${userId}
+    GROUP BY m."postId"
+    HAVING COUNT(*) >= ${minCount}
+  `;
+  return rows.map((r) => r.postId);
+}
 
 async function decoratePosts(posts: PostWithIncludes[]) {
   return Promise.all(
@@ -53,7 +60,14 @@ async function decoratePosts(posts: PostWithIncludes[]) {
       );
       const isSilent =
         videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
-      return { ...post, thumbUrl, isVideo, isSilent };
+      const videoUrl = isVideo && firstMedia
+        ? await getSignedDownloadUrl(
+            firstMedia.storageKey,
+            undefined,
+            firstMedia.mimeType,
+          ).catch(() => null)
+        : null;
+      return { ...post, thumbUrl, videoUrl, isVideo, isSilent };
     }),
   );
 }
@@ -71,9 +85,14 @@ export async function GET(req: NextRequest) {
   const cursor = decodeCursor(cursorParam);
 
   const filters = parsePostsFilters(searchParams);
+  const postIdAllowlist =
+    filters.multiMedia === "2"
+      ? await getMultiMediaPostIds(session.user.id, 2)
+      : null;
   const { where: baseWhere, orderBy } = buildPostsQuery(
     filters,
     session.user.id,
+    { postIdAllowlist },
   );
 
   if (cursor) {
@@ -139,7 +158,7 @@ export async function DELETE(req: NextRequest) {
       ...(search
         ? {
             OR: [
-              { body: { contains: search, mode: "insensitive" as const } },
+              { bodyNormalized: { contains: normalizeForSearch(search) } },
               { tags: { has: search.toLowerCase() } },
             ],
           }
@@ -172,10 +191,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Post text is required" }, { status: 400 });
   }
 
+  const trimmed = text.trim();
   const post = await prisma.post.create({
     data: {
       userId: session.user.id,
-      body: text.trim(),
+      body: trimmed,
+      bodyNormalized: normalizeForSearch(trimmed),
       source: "MANUAL",
       originalDate: originalDate ? new Date(originalDate) : new Date(),
     },

@@ -10,6 +10,7 @@ const ICONS: Record<string, IconComponent> = {
   YOUTUBE: SiYoutube as unknown as IconComponent,
   TIKTOK: SiTiktok as unknown as IconComponent,
   FACEBOOK: SiFacebook as unknown as IconComponent,
+  FACEBOOK_PAGE: SiFacebook as unknown as IconComponent,
 };
 
 const COLORS: Record<string, string> = {
@@ -18,6 +19,7 @@ const COLORS: Record<string, string> = {
   YOUTUBE: "text-red-600",
   TIKTOK: "text-gray-900",
   FACEBOOK: "text-blue-600",
+  FACEBOOK_PAGE: "text-blue-600",
 };
 
 interface Props {

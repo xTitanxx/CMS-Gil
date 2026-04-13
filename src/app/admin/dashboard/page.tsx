@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { startOfWeek, format } from "date-fns";
 import { PlannerDashboard } from "./PlannerDashboard";
+import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
 export default async function DashboardPage() {
@@ -9,7 +10,6 @@ export default async function DashboardPage() {
   const userId = session!.user!.id!;
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
 
   const [totalPosts, published, scheduled, plan] = await Promise.all([
     prisma.post.count({ where: { userId } }),
@@ -31,6 +31,12 @@ export default async function DashboardPage() {
                 originalDate: true,
                 publishCount: true,
                 media: { select: { storageKey: true, mimeType: true }, take: 1 },
+                publishes: {
+                  where: { status: "PUBLISHED" },
+                  orderBy: { publishedAt: "desc" },
+                  take: 1,
+                  select: { publishedAt: true },
+                },
               },
             },
           },
@@ -44,10 +50,7 @@ export default async function DashboardPage() {
   if (plan) {
     const slots: PlanSlotData[] = plan.slots.map((s) => {
       const firstMedia = s.post.media[0];
-      const thumbUrl =
-        firstMedia && cloudName
-          ? `https://res.cloudinary.com/${cloudName}/image/upload/c_fill,w_80,h_80/${firstMedia.storageKey.replace(/\.[^.]+$/, "")}`
-          : null;
+      const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
 
       return {
         id: s.id,
@@ -62,6 +65,13 @@ export default async function DashboardPage() {
           tags: s.post.tags,
           originalDate: format(s.post.originalDate, "yyyy-MM-dd"),
           publishCount: s.post.publishCount,
+          lastPublishedAt: format(
+            s.post.publishes[0]?.publishedAt &&
+              s.post.publishes[0].publishedAt > s.post.originalDate
+              ? s.post.publishes[0].publishedAt
+              : s.post.originalDate,
+            "yyyy-MM-dd"
+          ),
           thumbUrl,
           hasVideo: s.post.media.some((m) => m.mimeType.startsWith("video/")),
         },

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Image as ImageIcon, Pencil, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
+import { KindTabs, type PostKind } from "./KindTabs";
 import { displayBody } from "@/lib/post-body";
 
 interface FeedPost {
@@ -16,6 +17,7 @@ interface FeedPost {
   source: string;
   originalDate: string;
   thumbUrl: string | null;
+  videoUrl: string | null;
   isVideo: boolean;
   isSilent: boolean;
   tags: string[];
@@ -32,7 +34,7 @@ interface FeedState {
 
 const feedCache = new Map<string, FeedState>();
 
-const FILTER_KEYS = ["search", "sort", "tags", "audio", "from", "to"] as const;
+const FILTER_KEYS = ["search", "sort", "tags", "audio", "from", "to", "kind"] as const;
 
 function buildFilterQuery(sp: URLSearchParams): URLSearchParams {
   const out = new URLSearchParams();
@@ -45,6 +47,8 @@ function buildFilterQuery(sp: URLSearchParams): URLSearchParams {
 
 export function PostsFeed() {
   const searchParams = useSearchParams();
+  const kind: PostKind =
+    searchParams.get("kind") === "stories" ? "stories" : "posts";
   const cacheKey = useMemo(() => {
     const qs = buildFilterQuery(new URLSearchParams(searchParams.toString()));
     return qs.toString();
@@ -141,6 +145,14 @@ export function PostsFeed() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+    // Walk up to the nearest scrollable ancestor so the observer works inside
+    // layouts where <main> owns the scroll (not the window).
+    let root: Element | null = el.parentElement;
+    while (root && root !== document.body) {
+      const style = getComputedStyle(root);
+      if (/(auto|scroll)/.test(style.overflowY)) break;
+      root = root.parentElement;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -149,7 +161,7 @@ export function PostsFeed() {
           }
         }
       },
-      { rootMargin: "400px 0px" },
+      { root: root && root !== document.body ? root : null, rootMargin: "400px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -159,7 +171,9 @@ export function PostsFeed() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">All Posts</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {kind === "stories" ? "All Stories" : "All Posts"}
+          </h1>
           <p className="text-sm text-gray-500">
             {posts.length > 0 ? `Showing ${posts.length}` : "Feed view"}
           </p>
@@ -174,6 +188,8 @@ export function PostsFeed() {
           </Link>
         </div>
       </div>
+
+      <KindTabs current={kind} />
 
       <div className="mx-auto w-full max-w-2xl space-y-6">
         {posts.map((post) => (
@@ -235,6 +251,7 @@ export function PostsFeed() {
 function FeedCard({ post, href }: { post: FeedPost; href: string }) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
+  const [playing, setPlaying] = useState(false);
 
   return (
     <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
@@ -270,24 +287,54 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
         </div>
       )}
 
-      {post.thumbUrl && (
+      {isVideo && post.videoUrl ? (
+        <div className="relative w-full bg-black">
+          {playing ? (
+            <video
+              src={post.videoUrl}
+              poster={post.thumbUrl ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              className="w-full object-contain max-h-[70vh]"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPlaying(true)}
+              className="group relative block w-full"
+              aria-label="Play video"
+            >
+              {post.thumbUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={post.thumbUrl}
+                  alt=""
+                  className="w-full object-contain max-h-[70vh]"
+                />
+              )}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="rounded-full bg-black/50 p-4 transition group-hover:bg-black/70">
+                  <svg
+                    className="h-8 w-8 fill-white text-white"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </div>
+            </button>
+          )}
+        </div>
+      ) : post.thumbUrl && (
         <Link href={href} className="block bg-gray-50">
           <div className="relative w-full">
-            {isVideo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={post.thumbUrl}
-                alt=""
-                className="w-full object-contain max-h-[70vh]"
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={post.thumbUrl}
-                alt=""
-                className="w-full object-contain max-h-[70vh]"
-              />
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={post.thumbUrl}
+              alt=""
+              className="w-full object-contain max-h-[70vh]"
+            />
             {isVideo && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div className="rounded-full bg-black/50 p-4">

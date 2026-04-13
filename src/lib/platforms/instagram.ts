@@ -116,9 +116,27 @@ async function publishContainer(
   });
   const data = await res.json();
   if (!data.id) throw new Error(`Instagram publish error: ${JSON.stringify(data)}`);
+
+  // The returned id is an internal numeric media id, not the shortcode used in
+  // https://www.instagram.com/p/{shortcode}/ URLs. Fetch the permalink field to
+  // get the real post URL.
+  let platformUrl: string | undefined;
+  try {
+    const permalinkRes = await fetch(
+      `${baseUrl}/${data.id}?fields=permalink&access_token=${accessToken}`
+    );
+    const permalinkData = await permalinkRes.json();
+    if (typeof permalinkData.permalink === "string") {
+      platformUrl = permalinkData.permalink;
+    }
+  } catch {
+    // If the permalink lookup fails, we still return the post id so the publish
+    // itself is recorded successfully; platformUrl just stays undefined.
+  }
+
   return {
     platformPostId: data.id,
-    platformUrl: `https://www.instagram.com/p/${data.id}/`,
+    platformUrl,
   };
 }
 

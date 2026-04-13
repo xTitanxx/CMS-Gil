@@ -4,7 +4,7 @@ export interface CandidatePost {
   tags: string[];
   originalDate: Date;
   publishCount: number;
-  lastPublishedAt: Date | null;
+  lastPublishedAt: Date;
   mediaTypes: string[];
   hasVideo: boolean;
   hasPhoto: boolean;
@@ -24,6 +24,7 @@ export interface PlanSlotData {
     tags: string[];
     originalDate: string;
     publishCount: number;
+    lastPublishedAt: string;
     thumbUrl: string | null;
     hasVideo: boolean;
   };

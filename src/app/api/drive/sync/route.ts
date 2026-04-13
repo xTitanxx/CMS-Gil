@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { google, drive_v3 } from "googleapis";
 import { runImportJob } from "@/lib/import-worker";
-import { parseFacebookFile, ParsedPost } from "@/lib/facebook-parser";
+import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
 
 export async function GET(_req: NextRequest) {
   const session = await auth();
@@ -239,7 +239,11 @@ export async function syncDriveFolder(userId: string, folderId: string) {
           }
         }
 
-        if (allPosts.length === 0) return;
+        // Prefer entries from your_posts_*.json (post.timestamp) over album/video
+        // files (media creation_timestamp) when the same photo/video appears in both.
+        const dedupedPosts = dedupeParsedPosts(allPosts);
+
+        if (dedupedPosts.length === 0) return;
 
         const getMedia = async (uri: string): Promise<Buffer | null> => {
           const normalized = uri.replace(/^\/+/, "");
@@ -255,7 +259,7 @@ export async function syncDriveFolder(userId: string, folderId: string) {
         await runImportJob({
           jobId: job.id,
           userId,
-          parsedPosts: allPosts,
+          parsedPosts: dedupedPosts,
           getMedia,
           source: "GOOGLE_DRIVE",
         });

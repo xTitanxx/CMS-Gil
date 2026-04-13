@@ -21,7 +21,7 @@ const PLATFORMS: PlatformInfo[] = [
     id: "FACEBOOK",
     label: "Facebook",
     description:
-      "Connect your Facebook account to enable analytics on imported posts and publishing to a Facebook Page you admin. Personal profile publishing is not available — use the manual Copy caption row on a post.",
+      "Connect your Facebook account to publish to a Facebook Page you admin. Personal profile publishing is not available — use the manual Copy caption row on a post.",
     color: "text-blue-700",
     connectUrl: "/api/connections/facebook",
   },

@@ -78,7 +78,8 @@ ${postContext}
             controller.enqueue(encoder.encode(chunk.delta.text));
           }
         }
-      } catch {
+      } catch (err) {
+        console.error("Chat API error:", err);
         controller.enqueue(
           encoder.encode("I'm having trouble responding right now. Please try again in a moment.")
         );

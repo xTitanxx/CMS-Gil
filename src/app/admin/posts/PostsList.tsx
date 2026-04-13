@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
 import { ViewToggle } from "./ViewToggle";
+import { KindTabs } from "./KindTabs";
 import { PlatformIcons } from "../scheduled/PlatformIcons";
 import { displayBody } from "@/lib/post-body";
 import {
@@ -40,6 +42,7 @@ interface Post {
   isVideo: boolean;
   isSilent: boolean;
   tags: string[];
+  platformUrl: string | null;
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
 }
@@ -451,7 +454,10 @@ export function PostsList({
   const [link, setLink] = useState<LinkFilter>(initialLink);
   const [multiMedia, setMultiMedia] = useState<MultiMediaFilter>(initialMultiMedia);
   const [tagged, setTagged] = useState<TaggedFilter>(initialTagged);
-  const [kind, setKind] = useState<KindFilter>(initialKind);
+  const searchParams = useSearchParams();
+  const kind: KindFilter =
+    searchParams.get("kind") === "stories" ? "stories" : "posts";
+  void initialKind;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   // Combined search bar state
@@ -588,6 +594,12 @@ export function PostsList({
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !nextCursor) return;
+    let root: Element | null = el.parentElement;
+    while (root && root !== document.body) {
+      const style = getComputedStyle(root);
+      if (/(auto|scroll)/.test(style.overflowY)) break;
+      root = root.parentElement;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -596,7 +608,7 @@ export function PostsList({
           }
         }
       },
-      { rootMargin: "600px 0px" },
+      { root: root && root !== document.body ? root : null, rootMargin: "600px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -736,29 +748,7 @@ export function PostsList({
         </div>
       )}
 
-      {/* Feed tabs: posts vs. stories */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {(["posts", "stories"] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => {
-              if (k === kind) return;
-              setKind(k);
-              setSelectedIds(new Set());
-              setSelectAllMode(false);
-              lastSelectedIndexRef.current = null;
-            }}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              kind === k
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {k === "posts" ? "Posts" : "Stories"}
-          </button>
-        ))}
-      </div>
+      <KindTabs current={kind} />
 
       {/* Combined search + filters */}
       <div className="space-y-2">
@@ -1027,14 +1017,28 @@ export function PostsList({
                       <span className="text-xs text-gray-400">
                         {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
                       </span>
-                      <Badge variant="outline" className="text-xs">
-                        {post.source}
-                        {post.tags.find((t) => t.startsWith("fb:")) && (
-                          <span className="ml-1 uppercase">
-                            {post.tags.find((t) => t.startsWith("fb:"))!.replace("fb:", "")}
-                          </span>
-                        )}
-                      </Badge>
+                      {(() => {
+                        const fbVariant = post.tags.find((t) => t.startsWith("fb:"));
+                        const label = `${post.source}${fbVariant ? ` ${fbVariant.replace("fb:", "").toUpperCase()}` : ""}`;
+                        return post.platformUrl ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.open(post.platformUrl!, "_blank", "noopener,noreferrer");
+                            }}
+                            className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                            title="Open original on Facebook"
+                          >
+                            {label}
+                          </button>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">
+                            {label}
+                          </Badge>
+                        );
+                      })()}
                       {post.media.length > 0 && (
                         <span className="text-xs text-gray-400">
                           {post.media.length} media

@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/drive-sync",
       "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/facebook-analytics",
-      "schedule": "0 3 * * *"
     }
   ]
 }

@@ -5,9 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Send, Clock, Video, Copy, Check, HelpCircle, Download } from "lucide-react";
+import type { ComponentType, SVGProps } from "react";
+import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
+import { FaLinkedin } from "react-icons/fa";
 
 const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK", "FACEBOOK_PAGE"] as const;
 type Platform = (typeof PLATFORMS)[number];
+
+type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
+
+const PLATFORM_ICONS: Record<Platform, IconComponent> = {
+  INSTAGRAM: SiInstagram as unknown as IconComponent,
+  LINKEDIN: FaLinkedin as unknown as IconComponent,
+  YOUTUBE: SiYoutube as unknown as IconComponent,
+  TIKTOK: SiTiktok as unknown as IconComponent,
+  FACEBOOK_PAGE: SiFacebook as unknown as IconComponent,
+};
 
 const VIDEO_ONLY_PLATFORMS: ReadonlySet<Platform> = new Set(["YOUTUBE", "TIKTOK"]);
 
@@ -177,6 +190,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
           </p>
           {PLATFORMS.map((p) => {
             const disabled = isDisabled(p);
+            const Icon = PLATFORM_ICONS[p];
             return (
               <button
                 key={p}
@@ -193,7 +207,10 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span>{PLATFORM_LABELS[p]}</span>
+                  <span className="flex items-center gap-2">
+                    <Icon size={16} aria-hidden="true" />
+                    {PLATFORM_LABELS[p]}
+                  </span>
                   {disabled ? (
                     <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
                       <Video className="h-3 w-3" />
@@ -213,8 +230,9 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
 
           {/* Manual Facebook (Personal) action row — not a toggle */}
           <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-blue-700">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+              <div className="flex min-w-0 items-center gap-2 text-blue-700">
+                <SiFacebook size={16} aria-hidden="true" className="shrink-0" />
                 <span className="font-medium">Facebook (Personal)</span>
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                   Manual
@@ -237,7 +255,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
                   </span>
                 </span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 ml-auto">
                 <button
                   type="button"
                   onClick={copyCaption}

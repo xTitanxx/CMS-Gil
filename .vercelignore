@@ -1,0 +1,9 @@
+# Dev-only / huge local artifacts — never ship to Vercel
+sample-exports/
+.playwright-mcp/
+.claude/
+trash/
+docs/superpowers/
+CLAUDE*.md
+"CLAUDE 2.md"
+"vitest.config 2.ts"

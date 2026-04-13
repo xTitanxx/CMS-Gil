@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSignedDownloadUrl, deleteObject } from "@/lib/storage";
+import { normalizeForSearch } from "@/lib/search-normalize";
 
 export async function GET(
   _req: NextRequest,
@@ -48,7 +49,9 @@ export async function PATCH(
   const post = await prisma.post.updateMany({
     where: { id, userId: session.user.id },
     data: {
-      ...(body.body !== undefined ? { body: body.body } : {}),
+      ...(body.body !== undefined
+        ? { body: body.body, bodyNormalized: normalizeForSearch(body.body) }
+        : {}),
       ...(body.originalDate !== undefined
         ? { originalDate: new Date(body.originalDate) }
         : {}),

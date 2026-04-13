@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { subWeeks } from "date-fns";
+import { buildThumbUrl } from "./thumbnail";
 import type { CandidatePost } from "./types";
 
 const RECENCY_WEEKS = 4;
@@ -12,24 +13,18 @@ export async function getCandidatePosts(userId: string): Promise<CandidatePost[]
     where: {
       userId,
       media: { some: {} },
-      AND: [
-        {
+      // Posts in this DB were originally published on Facebook — treat originalDate
+      // as the baseline "last posted" date. Skip anything posted (originally OR
+      // recycled via the hub) within the recency window.
+      originalDate: { lt: cutoff },
+      publishes: {
+        none: {
           OR: [
-            { publishes: { none: {} } },
-            {
-              publishes: {
-                none: {
-                  status: { in: ["PUBLISHED", "PENDING"] },
-                  OR: [
-                    { publishedAt: { gte: cutoff } },
-                    { scheduledAt: { gte: new Date() } },
-                  ],
-                },
-              },
-            },
+            { status: "PUBLISHED", publishedAt: { gte: cutoff } },
+            { status: "PENDING", scheduledAt: { gte: new Date() } },
           ],
         },
-      ],
+      },
     },
     select: {
       id: true,
@@ -45,17 +40,14 @@ export async function getCandidatePosts(userId: string): Promise<CandidatePost[]
         select: { publishedAt: true },
       },
     },
-    orderBy: [{ publishCount: "asc" }, { originalDate: "desc" }],
+    orderBy: [{ publishCount: "asc" }, { originalDate: "asc" }],
     take: MAX_CANDIDATES,
   });
 
   return posts.map((p) => {
     const mediaTypes = p.media.map((m) => m.mimeType);
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const firstMedia = p.media[0];
-    const thumbUrl = firstMedia && cloudName
-      ? `https://res.cloudinary.com/${cloudName}/image/upload/c_fill,w_80,h_80/${firstMedia.storageKey.replace(/\.[^.]+$/, "")}`
-      : null;
+    const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
 
     return {
       id: p.id,
@@ -63,7 +55,10 @@ export async function getCandidatePosts(userId: string): Promise<CandidatePost[]
       tags: p.tags,
       originalDate: p.originalDate,
       publishCount: p.publishCount,
-      lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
+      lastPublishedAt:
+        p.publishes[0]?.publishedAt && p.publishes[0].publishedAt > p.originalDate
+          ? p.publishes[0].publishedAt
+          : p.originalDate,
       mediaTypes,
       hasVideo: mediaTypes.some((m) => m.startsWith("video/")),
       hasPhoto: mediaTypes.some((m) => m.startsWith("image/")),

@@ -196,8 +196,6 @@ export function PostEditor({
   }
 
   const hasMedia = media.length > 0;
-  const primaryMedia = media[0];
-  const restMedia = media.slice(1);
 
   return (
     <div {...getRootProps()} className="relative">
@@ -225,24 +223,10 @@ export function PostEditor({
           />
         </div>
 
-        {/* Media hero */}
+        {/* Media gallery */}
         {hasMedia ? (
           <div className="mt-3 bg-gray-50">
-            <MediaHero
-              media={primaryMedia}
-              onDelete={() => deleteMedia(primaryMedia.id)}
-            />
-            {restMedia.length > 0 && (
-              <div className="grid grid-cols-4 gap-1 p-1">
-                {restMedia.map((m) => (
-                  <MediaTile
-                    key={m.id}
-                    media={m}
-                    onDelete={() => deleteMedia(m.id)}
-                  />
-                ))}
-              </div>
-            )}
+            <MediaGallery media={media} onDelete={deleteMedia} />
           </div>
         ) : null}
 
@@ -349,6 +333,64 @@ export function PostEditor({
   );
 }
 
+function MediaGallery({
+  media,
+  onDelete,
+}: {
+  media: MediaItem[];
+  onDelete: (id: string) => void;
+}) {
+  const count = media.length;
+
+  if (count === 1) {
+    return <MediaHero media={media[0]} onDelete={() => onDelete(media[0].id)} />;
+  }
+
+  if (count === 2) {
+    return (
+      <div className="grid grid-cols-2 gap-1 p-1">
+        {media.map((m) => (
+          <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-[4/5]" />
+        ))}
+      </div>
+    );
+  }
+
+  if (count === 3) {
+    // Facebook-style: tall left, two stacked right
+    return (
+      <div className="flex gap-1 p-1">
+        <div className="flex-1">
+          <MediaTile media={media[0]} onDelete={() => onDelete(media[0].id)} aspect="aspect-[3/4]" />
+        </div>
+        <div className="flex flex-1 flex-col gap-1">
+          <MediaTile media={media[1]} onDelete={() => onDelete(media[1].id)} aspect="aspect-[3/2]" />
+          <MediaTile media={media[2]} onDelete={() => onDelete(media[2].id)} aspect="aspect-[3/2]" />
+        </div>
+      </div>
+    );
+  }
+
+  if (count === 4) {
+    return (
+      <div className="grid grid-cols-2 gap-1 p-1">
+        {media.map((m) => (
+          <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-square" />
+        ))}
+      </div>
+    );
+  }
+
+  // 5+ media: responsive grid, all visible
+  return (
+    <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3">
+      {media.map((m) => (
+        <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-square" />
+      ))}
+    </div>
+  );
+}
+
 function MediaHero({
   media,
   onDelete,
@@ -406,15 +448,17 @@ function MediaHero({
 function MediaTile({
   media,
   onDelete,
+  aspect = "aspect-square",
 }: {
   media: MediaItem;
   onDelete: () => void;
+  aspect?: string;
 }) {
   const isVideo = media.mimeType.startsWith("video");
   const isSilentVideo = isVideo && media.hasAudio === false;
 
   return (
-    <div className="relative aspect-square overflow-hidden rounded-md">
+    <div className={`relative w-full overflow-hidden rounded-md bg-gray-100 ${aspect}`}>
       {media.url ? (
         isVideo ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption

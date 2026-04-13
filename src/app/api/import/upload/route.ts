@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runImportJob } from "@/lib/import-worker";
-import { parseFacebookFile, ParsedPost } from "@/lib/facebook-parser";
+import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
 import unzipper from "unzipper";
 
 export const maxDuration = 60;
@@ -110,7 +110,11 @@ async function processZip(jobId: string, userId: string, buffer: Buffer): Promis
     }
   }
 
-  if (allPosts.length === 0) {
+  // Prefer entries from your_posts_*.json (post.timestamp) over album/video
+  // files (media creation_timestamp) when the same photo/video appears in both.
+  const dedupedPosts = dedupeParsedPosts(allPosts);
+
+  if (dedupedPosts.length === 0) {
     throw new Error("No posts found in the exported JSON files.");
   }
 
@@ -128,5 +132,5 @@ async function processZip(jobId: string, userId: string, buffer: Buffer): Promis
     return entry.buffer();
   };
 
-  await runImportJob({ jobId, userId, parsedPosts: allPosts, getMedia });
+  await runImportJob({ jobId, userId, parsedPosts: dedupedPosts, getMedia });
 }

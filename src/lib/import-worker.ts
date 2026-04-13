@@ -3,6 +3,7 @@ import { parseFacebookFile, guessMimeType, ParsedPost } from "@/lib/facebook-par
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { ImportSource } from "@prisma/client";
 import { analyzePost } from "@/lib/analyze-post";
+import { normalizeForSearch } from "@/lib/search-normalize";
 
 function createSemaphore(limit: number) {
   let active = 0;
@@ -100,6 +101,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           data: {
             userId,
             body: parsed.body ?? "",
+            bodyNormalized: normalizeForSearch(parsed.body ?? ""),
             source: "FACEBOOK",
             sourceId: parsed.sourceId,
             originalDate: parsed.originalDate,

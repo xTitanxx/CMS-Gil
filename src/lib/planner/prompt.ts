@@ -8,12 +8,11 @@ export function buildPlannerSystemPrompt(
   connectedPlatforms: string[]
 ): string {
   const candidateLines = candidates.map((c) => {
-    const date = format(c.originalDate, "yyyy-MM-dd");
     const tags = c.tags.length > 0 ? `[${c.tags.join(", ")}]` : "[untagged]";
-    const lastPub = c.lastPublishedAt ? format(c.lastPublishedAt, "yyyy-MM-dd") : "never";
+    const lastPosted = format(c.lastPublishedAt, "yyyy-MM-dd");
     const media = c.hasVideo ? "video" : c.hasPhoto ? "photo" : "text";
     const body = c.body.slice(0, 150).replace(/\n/g, " ");
-    return `ID:${c.id} | ${date} | ${tags} | published:${c.publishCount}x, last:${lastPub} | ${media} | "${body}"`;
+    return `ID:${c.id} | last posted:${lastPosted} | ${tags} | recycled:${c.publishCount}x | ${media} | "${body}"`;
   });
 
   const historyLines = recentHistory.slice(0, 50).map((h) => {
@@ -31,11 +30,13 @@ export function buildPlannerSystemPrompt(
 
 CONNECTED PLATFORMS: ${connectedPlatforms.join(", ")}
 
+IMPORTANT CONTEXT: Every post in the candidate pool was originally published on Facebook on its "last posted" date. The "recycled" count tracks how many times it was re-posted via this content hub. Treat "last posted" as the ground truth for recency — a post originally shared 6 months ago that's never been recycled is a great candidate; a post from last month is not (it has been hard-filtered already, but strongly prefer older "last posted" dates anyway).
+
 SELECTION RULES:
 1. TAG DIVERSITY: Spread different topics across the week. Don't put similar content on consecutive days.
-2. PUBLISH COUNT FAIRNESS: Prefer posts with lower publishCount. Give under-shared content a chance.
-3. EVERGREEN ONLY: Skip posts that are clearly time-bound — holiday-specific, news reactions, birthday posts, "today I..." with temporal context. Use your judgment.
-4. RECENCY: All candidates have passed the 4-week cooldown, but still prefer posts not recycled recently.
+2. STRONGLY PREFER OLDER "LAST POSTED" DATES: posts from many months / years ago are ideal. Avoid anything posted in the last few months.
+3. RECYCLED COUNT FAIRNESS: Prefer posts with lower recycled count. Give under-shared content a chance.
+4. EVERGREEN ONLY: Skip posts that are clearly time-bound — holiday-specific, news reactions, birthday posts, "today I..." with temporal context. Use your judgment.
 5. ONE POST PER DAY: Select exactly one post per day, Monday through Sunday.
 
 When explaining your picks, be specific: "You haven't posted about cooking in 3 weeks" is good. "This is a good post" is not.

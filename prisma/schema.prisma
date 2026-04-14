@@ -87,6 +87,7 @@ model Post {
   updatedAt    DateTime      @updatedAt
 
   tags         String[]      @default([])
+  postType     PostType      @default(POST)
   publishCount Int           @default(0)
 
   media        Media[]
@@ -102,6 +103,12 @@ model Post {
 enum PostSource {
   FACEBOOK
   MANUAL
+}
+
+enum PostType {
+  POST
+  REEL
+  STORY
 }
 
 model Media {

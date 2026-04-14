@@ -88,7 +88,7 @@ export function ReelsFeed() {
         </div>
       </div>
 
-      <KindTabs current="reels" />
+      <KindTabs current="posts" />
 
       {loading && reels.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-xl bg-black/5">
@@ -161,6 +161,9 @@ function ReelSlide({ reel, muted }: { reel: ReelItem; muted: boolean }) {
   }, [visible, muted]);
 
   const isVideo = reel.isVideo && reel.videoUrl;
+  const videoMedia = reel.media.filter((m) => m.mimeType.startsWith("video/"));
+  const isSilent =
+    videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
   const dateLabel = useMemo(
     () => format(new Date(reel.originalDate), "MMM d, yyyy"),
     [reel.originalDate],
@@ -197,6 +200,16 @@ function ReelSlide({ reel, muted }: { reel: ReelItem; muted: boolean }) {
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent p-4 text-white">
         <span className="text-sm drop-shadow">{dateLabel}</span>
       </div>
+
+      {isSilent && (
+        <div
+          className="absolute left-4 top-14 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-3.5 w-3.5" />
+          <span>Silent</span>
+        </div>
+      )}
 
       <Link
         href={`/admin/posts/${reel.id}`}

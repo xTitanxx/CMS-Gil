@@ -21,7 +21,8 @@ const VIDEO_RE = /\.(mp4|mov|avi|webm|mkv)$/i;
 export async function postToFacebook(
   creds: FacebookCredentials,
   body: string,
-  mediaKeys: string[]
+  mediaKeys: string[],
+  postType: string = "POST"
 ): Promise<PublishResult> {
   const { accessToken, platformUserId: pageId } = creds;
 
@@ -33,12 +34,21 @@ export async function postToFacebook(
   // Single photo
   if (mediaKeys.length === 1 && !VIDEO_RE.test(mediaKeys[0])) {
     const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    if (postType === "STORY") {
+      return storyPost(pageId, accessToken, { url, isVideo: false });
+    }
     return photoPost(pageId, accessToken, { url, caption: body });
   }
 
   // Single video
   if (mediaKeys.length === 1 && VIDEO_RE.test(mediaKeys[0])) {
     const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    if (postType === "REEL") {
+      return reelPost(pageId, accessToken, { file_url: url, description: body });
+    }
+    if (postType === "STORY") {
+      return storyPost(pageId, accessToken, { url, isVideo: true });
+    }
     return videoPost(pageId, accessToken, { file_url: url, description: body });
   }
 
@@ -128,6 +138,95 @@ async function videoPost(
   return {
     platformPostId: data.id,
     platformUrl: await fetchPermalink(data.id, accessToken),
+  };
+}
+
+async function reelPost(
+  pageId: string,
+  accessToken: string,
+  fields: { file_url: string; description: string }
+): Promise<PublishResult> {
+  // Step 1: Initialize the reel upload
+  const initForm = new URLSearchParams({
+    upload_phase: "start",
+    access_token: accessToken,
+  });
+  const initRes = await fetch(`${GRAPH}/${pageId}/video_reels`, {
+    method: "POST",
+    body: initForm,
+  });
+  const initData = await initRes.json();
+  if (!initRes.ok || !initData.video_id) {
+    throw new Error(`Facebook reel init failed: ${JSON.stringify(initData)}`);
+  }
+
+  // Step 2: Upload the video binary
+  const videoRes = await fetch(fields.file_url);
+  const videoBuffer = await videoRes.arrayBuffer();
+  const uploadRes = await fetch(
+    `${GRAPH}/${initData.video_id}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+        offset: "0",
+        file_size: String(videoBuffer.byteLength),
+        "Content-Type": "application/octet-stream",
+      },
+      body: videoBuffer,
+    }
+  );
+  const uploadData = await uploadRes.json();
+  if (!uploadRes.ok || !uploadData.success) {
+    throw new Error(`Facebook reel upload failed: ${JSON.stringify(uploadData)}`);
+  }
+
+  // Step 3: Publish the reel
+  const publishForm = new URLSearchParams({
+    upload_phase: "finish",
+    video_id: initData.video_id,
+    title: fields.description.slice(0, 100),
+    description: fields.description,
+    access_token: accessToken,
+  });
+  const publishRes = await fetch(`${GRAPH}/${pageId}/video_reels`, {
+    method: "POST",
+    body: publishForm,
+  });
+  const publishData = await publishRes.json();
+  if (!publishRes.ok || !publishData.success) {
+    throw new Error(`Facebook reel publish failed: ${JSON.stringify(publishData)}`);
+  }
+
+  return {
+    platformPostId: initData.video_id,
+    platformUrl: await fetchPermalink(initData.video_id, accessToken),
+  };
+}
+
+async function storyPost(
+  pageId: string,
+  accessToken: string,
+  fields: { url: string; isVideo: boolean }
+): Promise<PublishResult> {
+  const endpoint = fields.isVideo
+    ? `${GRAPH}/${pageId}/video_stories`
+    : `${GRAPH}/${pageId}/photo_stories`;
+
+  const form = new URLSearchParams({
+    [fields.isVideo ? "file_url" : "url"]: fields.url,
+    access_token: accessToken,
+  });
+  const res = await fetch(endpoint, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok || !(data.success || data.id || data.post_id)) {
+    throw new Error(`Facebook story post failed: ${JSON.stringify(data)}`);
+  }
+
+  const postId = data.post_id ?? data.id;
+  return {
+    platformPostId: postId ?? "story",
+    platformUrl: postId ? await fetchPermalink(postId, accessToken) : undefined,
   };
 }
 

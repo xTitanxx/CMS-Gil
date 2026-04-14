@@ -81,6 +81,9 @@ export function PostEditor({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [mediaError, setMediaError] = useState("");
   const [editingDate, setEditingDate] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const CAPTION_CHAR_LIMIT = 280;
+  const isLong = body.length > CAPTION_CHAR_LIMIT;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
@@ -211,57 +214,8 @@ export function PostEditor({
       )}
 
       <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        {/* Caption — above the media, Facebook-style */}
-        <div className="px-5 pt-4">
-          <textarea
-            ref={textareaRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Write a caption…"
-            rows={1}
-            className="w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
-          />
-        </div>
-
-        {/* Media gallery */}
-        {hasMedia ? (
-          <div className="mt-3 bg-gray-50">
-            <MediaGallery media={media} onDelete={deleteMedia} />
-          </div>
-        ) : null}
-
-        {/* Tags */}
-        <div className="px-5 pt-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
-              >
-                {tag}
-                <button
-                  onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                  className="text-gray-400 hover:text-gray-700"
-                  aria-label={`Remove tag ${tag}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              placeholder={tags.length === 0 ? "Add tags…" : "+ tag"}
-              className="min-w-[4rem] rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-xs focus:border-blue-400 focus:outline-none"
-            />
-            <ReanalyzeButton postId={postId} />
-          </div>
-        </div>
-
-        {/* Metadata footer */}
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 px-5 py-2 text-[11px] text-gray-500">
+        {/* Header: date + source + FB link */}
+        <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-5 py-2 text-[11px] text-gray-500">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Calendar className="h-3 w-3 text-gray-400" />
@@ -297,7 +251,7 @@ export function PostEditor({
                 className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-600 hover:bg-blue-50"
                 title="Open the original post on Facebook"
               >
-                View original
+                View on Facebook
                 <ExternalLink className="h-3 w-3" />
               </a>
             )}
@@ -318,7 +272,78 @@ export function PostEditor({
             )}
           </span>
         </div>
+
+        {/* Caption — compact, FB-style with Read more */}
+        <div className="px-5 pt-3">
+          <div
+            className={
+              isLong && !expanded
+                ? "max-h-[5.25rem] overflow-hidden"
+                : undefined
+            }
+          >
+            <textarea
+              ref={textareaRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write a caption…"
+              rows={1}
+              className="w-full resize-none overflow-hidden border-0 bg-transparent text-[13px] leading-snug text-gray-800 placeholder:text-gray-400 focus:outline-none"
+            />
+          </div>
+          {isLong && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-0.5 text-[12px] font-medium text-gray-500 hover:text-gray-700"
+            >
+              {expanded ? "See less" : "See more"}
+            </button>
+          )}
+        </div>
+
+        {/* Media gallery */}
+        {hasMedia ? (
+          <div className="mt-3 bg-gray-50">
+            <MediaGallery media={media} onDelete={deleteMedia} />
+          </div>
+        ) : null}
       </article>
+
+      {/* Tags — separate box */}
+      <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Tags
+          </p>
+          <ReanalyzeButton postId={postId} />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
+            >
+              {tag}
+              <button
+                onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                className="text-gray-400 hover:text-gray-700"
+                aria-label={`Remove tag ${tag}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            type="text"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={handleTagKeyDown}
+            placeholder={tags.length === 0 ? "Add tags…" : "+ tag"}
+            className="min-w-[4rem] rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-xs focus:border-blue-400 focus:outline-none"
+          />
+        </div>
+      </div>
 
       {/* Upload hint below the card */}
       <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-200 px-3 py-1.5 text-[11px] text-gray-500">

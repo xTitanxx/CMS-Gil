@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
-export type PostKind = "posts" | "stories";
+export type PostKind = "posts" | "stories" | "reels";
 
 export function KindTabs({ current }: { current: PostKind }) {
   const router = useRouter();
@@ -27,7 +27,7 @@ export function KindTabs({ current }: { current: PostKind }) {
 
   return (
     <div className="flex gap-1 border-b border-gray-200">
-      {(["posts", "stories"] as const).map((k) => (
+      {(["posts", "stories", "reels"] as const).map((k) => (
         <button
           key={k}
           type="button"
@@ -38,7 +38,7 @@ export function KindTabs({ current }: { current: PostKind }) {
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
-          {k === "posts" ? "Posts" : "Stories"}
+          {k === "posts" ? "Posts" : k === "stories" ? "Stories" : "Reels"}
         </button>
       ))}
     </div>

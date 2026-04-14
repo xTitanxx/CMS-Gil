@@ -14,7 +14,6 @@ import {
   Sparkles,
   X,
   RefreshCw,
-  Play,
   VolumeX,
   SlidersHorizontal,
   Send,
@@ -39,6 +38,7 @@ interface Post {
   source: string;
   originalDate: string;
   thumbUrl: string | null;
+  videoUrl: string | null;
   isVideo: boolean;
   isSilent: boolean;
   tags: string[];
@@ -50,7 +50,7 @@ interface Post {
 type LinkFilter = "all" | "with" | "without";
 type MultiMediaFilter = "all" | "2";
 type TaggedFilter = "all" | "yes" | "no";
-type KindFilter = "posts" | "stories";
+type KindFilter = "posts" | "stories" | "reels";
 
 const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
   { value: "caption", label: "Caption only" },
@@ -283,6 +283,7 @@ function FilterMenu(props: FilterMenuProps) {
                   key={o.value}
                   checked={props.content.has(o.value)}
                   onChange={() => toggleContent(o.value)}
+                  onOnly={() => props.setContent(new Set([o.value]))}
                   label={o.label}
                 />
               ))}
@@ -293,6 +294,7 @@ function FilterMenu(props: FilterMenuProps) {
                   key={o.value}
                   checked={props.audio.has(o.value)}
                   onChange={() => toggleAudio(o.value)}
+                  onOnly={() => props.setAudio(new Set([o.value]))}
                   label={o.label}
                 />
               ))}
@@ -397,21 +399,36 @@ function RadioRow({
 function CheckRow({
   checked,
   onChange,
+  onOnly,
   label,
 }: {
   checked: boolean;
   onChange: () => void;
+  onOnly?: () => void;
   label: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+    <label className="group flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
       <input
         type="checkbox"
         checked={checked}
         onChange={onChange}
         className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
       />
-      {label}
+      <span className="flex-1">{label}</span>
+      {onOnly && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOnly();
+          }}
+          className="ml-auto hidden rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:bg-blue-50 group-hover:inline"
+        >
+          Only
+        </button>
+      )}
     </label>
   );
 }
@@ -455,8 +472,9 @@ export function PostsList({
   const [multiMedia, setMultiMedia] = useState<MultiMediaFilter>(initialMultiMedia);
   const [tagged, setTagged] = useState<TaggedFilter>(initialTagged);
   const searchParams = useSearchParams();
+  const kindQS = searchParams.get("kind");
   const kind: KindFilter =
-    searchParams.get("kind") === "stories" ? "stories" : "posts";
+    kindQS === "stories" ? "stories" : kindQS === "reels" ? "reels" : "posts";
   void initialKind;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -700,10 +718,10 @@ export function PostsList({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {kind === "stories" ? "All Stories" : "All Posts"}
+            {kind === "stories" ? "All Stories" : kind === "reels" ? "All Reels" : "All Posts"}
           </h1>
           <p className="text-sm text-gray-500">
-            {total} {kind === "stories" ? "stories" : "posts"} total
+            {total} {kind === "stories" ? "stories" : kind === "reels" ? "reels" : "posts"} total
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -983,8 +1001,23 @@ export function PostsList({
 
                 <Link href={postHref(post.id)} className="flex min-w-0 flex-1 items-center gap-4">
                   {/* Thumbnail */}
-                  <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
-                    {post.thumbUrl ? (
+                  <div
+                    className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-md bg-gray-100"
+                    onClick={(e) => {
+                      if (post.isVideo && post.videoUrl) e.preventDefault();
+                    }}
+                  >
+                    {post.isVideo && post.videoUrl ? (
+                      <video
+                        src={post.videoUrl}
+                        poster={post.thumbUrl ?? undefined}
+                        controls
+                        preload="metadata"
+                        playsInline
+                        className="h-full w-full object-cover"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : post.thumbUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={post.thumbUrl}
@@ -994,11 +1027,6 @@ export function PostsList({
                     ) : (
                       <div className="flex h-full items-center justify-center">
                         <ImageIcon className="h-6 w-6 text-gray-300" />
-                      </div>
-                    )}
-                    {post.isVideo && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <Play className="h-5 w-5 fill-white text-white" />
                       </div>
                     )}
                     {post.isSilent && (
@@ -1014,6 +1042,17 @@ export function PostsList({
                   {/* Content */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                      <span
+                        className="cursor-pointer rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-400 hover:text-gray-600"
+                        title={`#${index + 1} — ID: ${post.id} — click to copy ID`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(post.id);
+                        }}
+                      >
+                        #{index + 1}
+                      </span>
                       <span className="text-xs text-gray-400">
                         {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
                       </span>

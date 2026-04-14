@@ -211,10 +211,16 @@ export function buildPostsQuery(
 
   if (filters.kind === "stories") {
     extraAnds.push({ sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } });
+  } else if (filters.kind === "reels") {
+    extraAnds.push({
+      NOT: { sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } },
+    });
+    extraAnds.push({ tags: { has: "fb:reel" } });
   } else if (filters.kind === "posts") {
     extraAnds.push({
       NOT: { sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } },
     });
+    extraAnds.push({ NOT: { tags: { has: "fb:reel" } } });
   }
 
   const where: Prisma.PostWhereInput = {

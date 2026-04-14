@@ -1,6 +1,7 @@
 import { PostsList } from "./PostsList";
 import { PostsFeed } from "./PostsFeed";
 import { StoriesReel } from "./StoriesReel";
+import { ReelsFeed } from "./ReelsFeed";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -17,10 +18,16 @@ export default async function PostsPage({
 }) {
   const sp = await searchParams;
   const view = pick(sp, "view") === "feed" ? "feed" : "list";
-  const kindParam = pick(sp, "kind") === "stories" ? "stories" : "posts";
+  const kindRaw = pick(sp, "kind");
+  const kindParam: "posts" | "stories" | "reels" =
+    kindRaw === "stories" ? "stories" : kindRaw === "reels" ? "reels" : "posts";
 
   if (view === "feed" && kindParam === "stories") {
     return <StoriesReel />;
+  }
+
+  if (view === "feed" && kindParam === "reels") {
+    return <ReelsFeed />;
   }
 
   if (view === "feed") {

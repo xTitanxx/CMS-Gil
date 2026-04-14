@@ -70,7 +70,7 @@ export async function POST(
 export async function publishNow(
   recordId: string,
   userId: string,
-  post: { id: string; body: string; media: { storageKey: string; mimeType: string }[] },
+  post: { id: string; body: string; postType: string; media: { storageKey: string; mimeType: string }[] },
   platform: Platform
 ) {
   await prisma.publishRecord.update({
@@ -113,7 +113,8 @@ export async function publishNow(
         result = await postToInstagram(
           { accessToken, platformUserId: platformUserId! },
           post.body,
-          mediaKeys
+          mediaKeys,
+          post.postType
         );
         break;
       case "LINKEDIN":
@@ -138,7 +139,8 @@ export async function publishNow(
         result = await postToFacebook(
           { accessToken, platformUserId: platformUserId! },
           post.body,
-          mediaKeys
+          mediaKeys,
+          post.postType
         );
         break;
       default:

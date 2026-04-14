@@ -42,12 +42,16 @@ export async function postToYouTube(
   const videoBuffer = await getObject(videoKey);
   const stream = Readable.from(videoBuffer);
 
+  const description = body.includes("#Shorts")
+    ? truncate(body, 5000)
+    : truncate(body + "\n\n#Shorts", 5000);
+
   const res = await youtube.videos.insert({
     part: ["snippet", "status"],
     requestBody: {
       snippet: {
         title: truncate(title || body.slice(0, 100), 100),
-        description: truncate(body, 5000),
+        description,
         categoryId: "22", // People & Blogs
       },
       status: {

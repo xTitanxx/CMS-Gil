@@ -113,7 +113,8 @@ export async function GET(req: NextRequest) {
   }
 
   const skip = (page - 1) * limit;
-  const [total, rows] = await Promise.all([
+  const userId = session.user.id;
+  const [total, rows, storiesCount] = await Promise.all([
     prisma.post.count({ where: baseWhere }),
     prisma.post.findMany({
       where: baseWhere,
@@ -122,7 +123,9 @@ export async function GET(req: NextRequest) {
       take: limit,
       include: POST_INCLUDE,
     }),
+    prisma.post.count({ where: { userId, postType: "STORY" } }),
   ]);
+  const postsCount = await prisma.post.count({ where: { userId } }) - storiesCount;
 
   const decorated = await decoratePosts(rows);
   const nextCursor =
@@ -136,6 +139,7 @@ export async function GET(req: NextRequest) {
     page,
     pages: Math.ceil(total / limit),
     nextCursor,
+    kindCounts: { posts: postsCount, stories: storiesCount },
   });
 }
 

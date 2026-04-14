@@ -210,17 +210,9 @@ export function buildPostsQuery(
   if (audioClause) extraAnds.push(audioClause);
 
   if (filters.kind === "stories") {
-    extraAnds.push({ sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } });
-  } else if (filters.kind === "reels") {
-    extraAnds.push({
-      NOT: { sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } },
-    });
-    extraAnds.push({ tags: { has: "fb:reel" } });
+    extraAnds.push({ postType: "STORY" });
   } else if (filters.kind === "posts") {
-    extraAnds.push({
-      NOT: { sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } },
-    });
-    extraAnds.push({ NOT: { tags: { has: "fb:reel" } } });
+    extraAnds.push({ postType: { not: "STORY" } });
   }
 
   const where: Prisma.PostWhereInput = {

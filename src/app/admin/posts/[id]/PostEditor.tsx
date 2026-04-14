@@ -41,6 +41,7 @@ interface PostEditorProps {
   initialOriginalDate: Date;
   initialTags: string[];
   initialMedia: MediaItem[];
+  initialPostType: string;
   source: string;
   platformUrl: string | null;
 }
@@ -70,10 +71,12 @@ export function PostEditor({
   initialOriginalDate,
   initialTags,
   initialMedia,
+  initialPostType,
   source,
   platformUrl,
 }: PostEditorProps) {
   const [body, setBody] = useState(initialBody);
+  const [postType, setPostType] = useState(initialPostType);
   const [date, setDate] = useState(() => toDatetimeLocal(new Date(initialOriginalDate)));
   const [tags, setTags] = useState<string[]>(initialTags);
   const [media, setMedia] = useState<MediaItem[]>(initialMedia);
@@ -243,6 +246,33 @@ export function PostEditor({
             <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
               {source}
             </span>
+            {/* Post type selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500">Type</span>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                {(["POST", "REEL", "STORY"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={async () => {
+                      setPostType(t);
+                      await fetch(`/api/posts/${postId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ postType: t }),
+                      });
+                    }}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      postType === t
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {t === "POST" ? "Post" : t === "REEL" ? "Reel" : "Story"}
+                  </button>
+                ))}
+              </div>
+            </div>
             {platformUrl && (
               <a
                 href={platformUrl}

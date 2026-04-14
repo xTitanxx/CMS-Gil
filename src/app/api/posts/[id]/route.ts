@@ -58,6 +58,10 @@ export async function PATCH(
       ...(body.tags !== undefined && Array.isArray(body.tags)
         ? { tags: (body.tags as unknown[]).filter((t): t is string => typeof t === "string").slice(0, 50) }
         : {}),
+      ...(body.postType !== undefined &&
+        ["POST", "REEL", "STORY"].includes(body.postType)
+        ? { postType: body.postType }
+        : {}),
     },
   });
 

@@ -148,6 +148,7 @@ export default async function PostDetailPage({
               initialOriginalDate={post.originalDate}
               initialTags={post.tags}
               initialMedia={mediaWithUrls}
+              initialPostType={post.postType}
               source={post.source}
               platformUrl={post.platformUrl}
             />

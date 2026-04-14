@@ -36,6 +36,7 @@ interface Post {
   id: string;
   body: string;
   source: string;
+  postType: string;
   originalDate: string;
   thumbUrl: string | null;
   videoUrl: string | null;
@@ -50,7 +51,7 @@ interface Post {
 type LinkFilter = "all" | "with" | "without";
 type MultiMediaFilter = "all" | "2";
 type TaggedFilter = "all" | "yes" | "no";
-type KindFilter = "posts" | "stories" | "reels";
+type KindFilter = "posts" | "stories";
 
 const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
   { value: "caption", label: "Caption only" },
@@ -458,6 +459,7 @@ export function PostsList({
 }: PostsListProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
+  const [kindCounts, setKindCounts] = useState<{ posts: number; stories: number } | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [search, setSearch] = useState(initialSearch);
@@ -474,7 +476,7 @@ export function PostsList({
   const searchParams = useSearchParams();
   const kindQS = searchParams.get("kind");
   const kind: KindFilter =
-    kindQS === "stories" ? "stories" : kindQS === "reels" ? "reels" : "posts";
+    kindQS === "stories" ? "stories" : "posts";
   void initialKind;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -577,6 +579,7 @@ export function PostsList({
       const data = await res.json();
       setPosts(data.posts ?? []);
       setTotal(data.total ?? 0);
+      if (data.kindCounts) setKindCounts(data.kindCounts);
       setNextCursor(data.nextCursor ?? null);
       setDone(data.nextCursor == null);
       setSelectedIds(new Set());
@@ -718,10 +721,10 @@ export function PostsList({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {kind === "stories" ? "All Stories" : kind === "reels" ? "All Reels" : "All Posts"}
+            {kind === "stories" ? "All Stories" : "All Posts"}
           </h1>
           <p className="text-sm text-gray-500">
-            {total} {kind === "stories" ? "stories" : kind === "reels" ? "reels" : "posts"} total
+            {total} {kind === "stories" ? "stories" : "posts"} total
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -766,7 +769,7 @@ export function PostsList({
         </div>
       )}
 
-      <KindTabs current={kind} />
+      <KindTabs current={kind} counts={kindCounts} />
 
       {/* Combined search + filters */}
       <div className="space-y-2">
@@ -1057,8 +1060,8 @@ export function PostsList({
                         {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
                       </span>
                       {(() => {
-                        const fbVariant = post.tags.find((t) => t.startsWith("fb:"));
-                        const label = `${post.source}${fbVariant ? ` ${fbVariant.replace("fb:", "").toUpperCase()}` : ""}`;
+                        const typeLabel = post.postType && post.postType !== "POST" ? ` ${post.postType}` : "";
+                        const label = `${post.source}${typeLabel}`;
                         return post.platformUrl ? (
                           <button
                             type="button"
@@ -1091,7 +1094,7 @@ export function PostsList({
                     ) : (
                       <p className="mt-1 text-sm italic text-gray-400">No caption</p>
                     )}
-                    {(() => { const visibleTags = post.tags.filter((t) => !t.startsWith("fb:")); return visibleTags.length > 0 ? (
+                    {(() => { const visibleTags = post.tags; return visibleTags.length > 0 ? (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {visibleTags.slice(0, 5).map((tag) => (
                           <span

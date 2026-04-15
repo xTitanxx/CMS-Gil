@@ -56,9 +56,37 @@ export interface TrashedPost {
     originalUri: string | null;
     mimeType: string;
     sizeBytes: number | null;
+    width?: number | null;
+    height?: number | null;
+    altText?: string | null;
+    hasAudio?: boolean | null;
+    createdAt?: string;
   }>;
-  publishes: Array<{ platform: string; status: string }>;
-  analytics: Array<{ platform: string; reactions: number | null }>;
+  publishes: Array<{
+    id?: string;
+    platform: string;
+    status: string;
+    scheduledAt?: string | null;
+    publishedAt?: string | null;
+    platformPostId?: string | null;
+    platformUrl?: string | null;
+    errorMessage?: string | null;
+    retryCount?: number;
+    createdAt?: string;
+    updatedAt?: string;
+  }>;
+  analytics: Array<{
+    id?: string;
+    platform: string;
+    reactions: number | null;
+    platformPostId?: string | null;
+    comments?: number | null;
+    shares?: number | null;
+    reach?: number | null;
+    impressions?: number | null;
+    fetchedAt?: string;
+    updatedAt?: string;
+  }>;
 }
 
 /** Basic guard: only allow basename-shaped dir names (no slashes, no ..). */

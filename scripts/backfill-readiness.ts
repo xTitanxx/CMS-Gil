@@ -7,13 +7,21 @@ async function main() {
   let cursor: string | null = null;
   let processed = 0;
   while (true) {
-    const batch = await prisma.post.findMany({
-      where: { readiness: "UNCHECKED" },
-      include: { media: true },
-      take: 200,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: { id: "asc" },
-    });
+    const batch = cursor
+      ? await prisma.post.findMany({
+          where: { readiness: "UNCHECKED" },
+          include: { media: true },
+          take: 200,
+          skip: 1,
+          cursor: { id: cursor },
+          orderBy: { id: "asc" },
+        })
+      : await prisma.post.findMany({
+          where: { readiness: "UNCHECKED" },
+          include: { media: true },
+          take: 200,
+          orderBy: { id: "asc" },
+        });
     if (batch.length === 0) break;
     for (const post of batch) {
       const { readiness, reasons } = computeReadiness(

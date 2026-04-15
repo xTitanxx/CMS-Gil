@@ -356,7 +356,7 @@ export function buildPostsQuery(
     } else if (filters.subKind === "text") {
       // Genuinely text-only: no media AND not a share/quote
       extraAnds.push({ media: { none: {} } });
-      extraAnds.push({ OR: [{ share: { equals: Prisma.DbNull } }, { share: { equals: null } }] });
+      extraAnds.push({ share: { equals: Prisma.DbNull } });
     } else if (filters.subKind === "quoted") {
       // Quoted/shared FB post — has share metadata (shared to group, shared someone's post, etc.)
       extraAnds.push({ share: { not: Prisma.DbNull } });

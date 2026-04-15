@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import Link from "next/link";
+import { Send, ArrowLeft } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -101,8 +102,16 @@ export default function GilChatPage() {
     <>
       {/* Chat header */}
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 flex-shrink-0">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white font-semibold text-sm">
-          G
+        <Link
+          href="/"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+          aria-label="Back to feed"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
         </div>
         <div>
           <h1 className="text-sm font-semibold text-gray-900">Gil Alter</h1>
@@ -111,7 +120,7 @@ export default function GilChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-bold text-2xl">
@@ -169,7 +178,7 @@ export default function GilChatPage() {
 
       {/* Input */}
       <div className="border-t border-gray-200 bg-white px-4 py-3 flex-shrink-0">
-        <div className="flex items-end gap-2">
+        <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

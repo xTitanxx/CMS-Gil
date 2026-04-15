@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, BadgeCheck, VolumeX } from "lucide-react";
 
 interface Media {
   id: string;
@@ -10,6 +11,7 @@ interface Media {
   width: number | null;
   height: number | null;
   altText: string | null;
+  hasAudio: boolean | null;
   url: string | null;
 }
 
@@ -34,38 +36,133 @@ function formatDate(iso: string): string {
   });
 }
 
+const CAPTION_CHAR_LIMIT = 220;
+
 function PostCard({ post }: { post: FeedPost }) {
+  const [expanded, setExpanded] = useState(false);
+  const body = post.body ?? "";
+  const isLong = body.length > CAPTION_CHAR_LIMIT;
+  const shown = !expanded && isLong ? body.slice(0, CAPTION_CHAR_LIMIT).trimEnd() + "…" : body;
+
   return (
-    <Link
-      href={`/p/${post.id}`}
-      className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 transition-colors"
-    >
-      <p className="text-xs text-gray-500 mb-2">{formatDate(post.originalDate)}</p>
-      <p className="text-sm text-gray-800 whitespace-pre-wrap mb-3">{post.body}</p>
+    <article className="overflow-hidden rounded-lg bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gray-200">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
+        </div>
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="flex items-center gap-1">
+            <span className="text-[15px] font-semibold text-gray-900">Gil Alter</span>
+            <BadgeCheck className="h-4 w-4 fill-blue-600 text-white" />
+          </div>
+          <p className="text-xs text-gray-500">{formatDate(post.originalDate)}</p>
+        </div>
+        <button
+          type="button"
+          className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+          aria-label="More"
+        >
+          <MoreHorizontal className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Caption */}
+      {body && (
+        <div className="px-3 pb-2">
+          <p className="whitespace-pre-wrap text-[15px] leading-[1.35] text-gray-900">
+            {shown}
+            {isLong && !expanded && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className="font-semibold text-gray-600 hover:underline"
+                >
+                  See more
+                </button>
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Media — edge to edge */}
       {post.media.length > 0 && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
           {post.media.map((m) =>
             m.url && m.mimeType.startsWith("video/") ? (
-              <video
-                key={m.id}
-                src={m.url}
-                controls
-                className="rounded max-w-full"
-                preload="metadata"
-              />
+              <div key={m.id} className="relative">
+                <video
+                  src={m.url}
+                  controls
+                  className="w-full bg-black"
+                  preload="metadata"
+                />
+                {m.hasAudio === false && (
+                  <div
+                    className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[11px] font-medium text-white"
+                    title="Silent video — no audio track"
+                  >
+                    <VolumeX className="h-3.5 w-3.5" />
+                    <span>Silent</span>
+                  </div>
+                )}
+              </div>
             ) : m.url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={m.id}
                 src={m.url}
                 alt={m.altText ?? ""}
-                className="rounded max-w-full h-auto"
+                className="h-auto w-full"
               />
-            ) : null
+            ) : null,
           )}
         </div>
       )}
-    </Link>
+
+      {/* Reaction summary row */}
+      <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500">
+        <div className="flex items-center gap-1">
+          <span className="flex -space-x-1">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] text-white ring-2 ring-white">
+              👍
+            </span>
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">
+              ❤
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Footer actions */}
+      <div className="flex items-center justify-around border-t border-gray-200 px-1 py-0.5 text-sm font-medium text-gray-600">
+        <button
+          type="button"
+          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
+        >
+          <ThumbsUp className="h-5 w-5" />
+          <span>Like</span>
+        </button>
+        <Link
+          href={`/p/${post.id}`}
+          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
+        >
+          <MessageCircle className="h-5 w-5" />
+          <span>Comment</span>
+        </Link>
+        <button
+          type="button"
+          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
+        >
+          <Share2 className="h-5 w-5" />
+          <span>Share</span>
+        </button>
+      </div>
+    </article>
   );
 }
 

@@ -9,8 +9,10 @@ import {
   Check,
   AlertCircle,
   VolumeX,
+  Music,
   Calendar,
   ExternalLink,
+  Link as LinkIcon,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
@@ -28,11 +30,17 @@ const ACCEPTED_MIME_TYPES = {
   "video/quicktime": [".mov"],
 };
 
+export interface AudioTrackRef {
+  id: string;
+  title: string;
+}
+
 export interface MediaItem {
   id: string;
   mimeType: string;
   url: string | null;
   hasAudio?: boolean | null;
+  audioTrack?: AudioTrackRef | null;
 }
 
 interface PostEditorProps {
@@ -44,6 +52,7 @@ interface PostEditorProps {
   initialPostType: string;
   source: string;
   platformUrl: string | null;
+  share: { url?: string; source?: string; name?: string } | null;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -74,12 +83,17 @@ export function PostEditor({
   initialPostType,
   source,
   platformUrl,
+  share,
 }: PostEditorProps) {
   const [body, setBody] = useState(initialBody);
   const [postType, setPostType] = useState(initialPostType);
   const [date, setDate] = useState(() => toDatetimeLocal(new Date(initialOriginalDate)));
   const [tags, setTags] = useState<string[]>(initialTags);
   const [media, setMedia] = useState<MediaItem[]>(initialMedia);
+  const [currentShare, setCurrentShare] = useState(share);
+  const [currentPlatformUrl, setCurrentPlatformUrl] = useState(platformUrl ?? "");
+  const [editingLink, setEditingLink] = useState(false);
+  const [linkDraft, setLinkDraft] = useState(platformUrl ?? "");
   const [tagInput, setTagInput] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [mediaError, setMediaError] = useState("");
@@ -126,6 +140,27 @@ export function PostEditor({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [body, date, tags, postId]);
+
+  async function setMediaAudio(mediaId: string, audioTrackId: string | null) {
+    setMediaError("");
+    const res = await fetch(`/api/posts/${postId}/media/${mediaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audioTrackId }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setMedia((prev) =>
+        prev.map((m) =>
+          m.id === mediaId
+            ? { ...m, url: updated.url, audioTrack: updated.audioTrack }
+            : m,
+        ),
+      );
+    } else {
+      setMediaError("Failed to update audio. Please try again.");
+    }
+  }
 
   async function deleteMedia(mediaId: string) {
     setMediaError("");
@@ -273,17 +308,79 @@ export function PostEditor({
                 ))}
               </div>
             </div>
-            {platformUrl && (
-              <a
-                href={platformUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-600 hover:bg-blue-50"
-                title="Open the original post on Facebook"
+            {editingLink ? (
+              <span className="inline-flex items-center gap-1">
+                <input
+                  type="url"
+                  autoFocus
+                  value={linkDraft}
+                  onChange={(e) => setLinkDraft(e.target.value)}
+                  placeholder="https://…"
+                  className="w-56 rounded border border-gray-300 px-1 py-0.5 text-[11px] focus:border-blue-500 focus:outline-none"
+                  onKeyDown={async (e) => {
+                    if (e.key === "Escape") {
+                      setLinkDraft(currentPlatformUrl);
+                      setEditingLink(false);
+                    }
+                    if (e.key === "Enter") {
+                      const val = linkDraft.trim();
+                      setCurrentPlatformUrl(val);
+                      setEditingLink(false);
+                      await fetch(`/api/posts/${postId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ platformUrl: val || null }),
+                      });
+                    }
+                  }}
+                  onBlur={async () => {
+                    const val = linkDraft.trim();
+                    setCurrentPlatformUrl(val);
+                    setEditingLink(false);
+                    await fetch(`/api/posts/${postId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ platformUrl: val || null }),
+                    });
+                  }}
+                />
+              </span>
+            ) : currentPlatformUrl ? (
+              <span className="inline-flex items-center gap-1">
+                <a
+                  href={currentPlatformUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-600 hover:bg-blue-50"
+                  title="Open the original post"
+                >
+                  View original
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLinkDraft(currentPlatformUrl);
+                    setEditingLink(true);
+                  }}
+                  className="text-[10px] text-gray-400 hover:text-gray-600"
+                >
+                  edit
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setLinkDraft("");
+                  setEditingLink(true);
+                }}
+                className="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                title="Add original post link"
               >
-                View on Facebook
-                <ExternalLink className="h-3 w-3" />
-              </a>
+                <LinkIcon className="h-3 w-3" />
+                Add link
+              </button>
             )}
           </div>
           <span className="flex items-center gap-1">
@@ -335,9 +432,88 @@ export function PostEditor({
         {/* Media gallery */}
         {hasMedia ? (
           <div className="mt-3 bg-gray-50">
-            <MediaGallery media={media} onDelete={deleteMedia} />
+            <MediaGallery media={media} onDelete={deleteMedia} onSetAudio={setMediaAudio} />
           </div>
         ) : null}
+
+        {/* Quoted post card or "Mark as quoted" button */}
+        {currentShare ? (
+          <div className="mx-5 mt-3 mb-4 overflow-hidden rounded-lg border border-gray-300 bg-gray-50">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-3 py-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                <LinkIcon className="h-3 w-3" />
+                Quoted post on Facebook
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  setCurrentShare(null);
+                  await fetch(`/api/posts/${postId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ share: null }),
+                  });
+                }}
+                className="text-[10px] font-medium text-red-500 hover:text-red-700"
+              >
+                Remove
+              </button>
+            </div>
+            <div className="px-3 py-2 text-[12px] leading-snug text-gray-700">
+              {currentShare.url ? (
+                <>
+                  <div className="text-[11px] text-gray-500">
+                    Shared{currentShare.source ? ` from ${currentShare.source}` : " link"}
+                  </div>
+                  {currentShare.name && (
+                    <div className="mt-1 whitespace-pre-wrap text-gray-800">
+                      {currentShare.name}
+                    </div>
+                  )}
+                  <a
+                    href={currentShare.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 break-all text-blue-600 hover:underline"
+                  >
+                    {currentShare.url}
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                </>
+              ) : (
+                <>
+                  <div className="text-gray-800">
+                    {currentShare.name || "Gil shared a post."}
+                  </div>
+                  <div className="mt-1 text-[11px] italic text-gray-500">
+                    Facebook didn&apos;t preserve the embedded post&apos;s
+                    content in the export, so we only have the header above.
+                    Open the original via the FB link to see what was shared.
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mx-5 mt-3 mb-4">
+            <button
+              type="button"
+              onClick={async () => {
+                const shareVal = { name: "Shared post" };
+                setCurrentShare(shareVal);
+                await fetch(`/api/posts/${postId}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ share: shareVal }),
+                });
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:border-amber-400 hover:bg-amber-50"
+            >
+              <LinkIcon className="h-3 w-3" />
+              Mark as quoted post
+            </button>
+          </div>
+        )}
       </article>
 
       {/* Tags — separate box */}
@@ -391,56 +567,78 @@ export function PostEditor({
 function MediaGallery({
   media,
   onDelete,
+  onSetAudio,
 }: {
   media: MediaItem[];
   onDelete: (id: string) => void;
+  onSetAudio: (id: string, audioTrackId: string | null) => void;
 }) {
   const count = media.length;
 
   if (count === 1) {
-    return <MediaHero media={media[0]} onDelete={() => onDelete(media[0].id)} />;
+    return (
+      <MediaHero
+        media={media[0]}
+        onDelete={() => onDelete(media[0].id)}
+        onSetAudio={(tid) => onSetAudio(media[0].id, tid)}
+      />
+    );
   }
 
   if (count === 2) {
     return (
       <div className="grid grid-cols-2 gap-1 p-1">
         {media.map((m) => (
-          <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-[4/5]" />
+          <MediaTile
+            key={m.id}
+            media={m}
+            onDelete={() => onDelete(m.id)}
+            onSetAudio={(tid) => onSetAudio(m.id, tid)}
+            aspect="aspect-[4/5]"
+          />
         ))}
       </div>
     );
   }
 
   if (count === 3) {
-    // Facebook-style: tall left, two stacked right
     return (
       <div className="flex gap-1 p-1">
         <div className="flex-1">
-          <MediaTile media={media[0]} onDelete={() => onDelete(media[0].id)} aspect="aspect-[3/4]" />
+          <MediaTile
+            media={media[0]}
+            onDelete={() => onDelete(media[0].id)}
+            onSetAudio={(tid) => onSetAudio(media[0].id, tid)}
+            aspect="aspect-[3/4]"
+          />
         </div>
         <div className="flex flex-1 flex-col gap-1">
-          <MediaTile media={media[1]} onDelete={() => onDelete(media[1].id)} aspect="aspect-[3/2]" />
-          <MediaTile media={media[2]} onDelete={() => onDelete(media[2].id)} aspect="aspect-[3/2]" />
+          {[media[1], media[2]].map((m) => (
+            <MediaTile
+              key={m.id}
+              media={m}
+              onDelete={() => onDelete(m.id)}
+              onSetAudio={(tid) => onSetAudio(m.id, tid)}
+              aspect="aspect-[3/2]"
+            />
+          ))}
         </div>
       </div>
     );
   }
 
-  if (count === 4) {
-    return (
-      <div className="grid grid-cols-2 gap-1 p-1">
-        {media.map((m) => (
-          <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-square" />
-        ))}
-      </div>
-    );
-  }
-
-  // 5+ media: responsive grid, all visible
+  const aspect = count === 4 ? "aspect-square" : "aspect-square";
+  const cols = count === 4 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3";
   return (
-    <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3">
+    <div className={`grid ${cols} gap-1 p-1`}>
       {media.map((m) => (
-        <MediaTile key={m.id} media={m} onDelete={() => onDelete(m.id)} aspect="aspect-square" />
+        <MediaTile
+          key={m.id}
+          media={m}
+          onDelete={() => onDelete(m.id)}
+          onSetAudio={(tid) => onSetAudio(m.id, tid)}
+          aspect={aspect}
+        />
       ))}
     </div>
   );
@@ -449,9 +647,11 @@ function MediaGallery({
 function MediaHero({
   media,
   onDelete,
+  onSetAudio,
 }: {
   media: MediaItem;
   onDelete: () => void;
+  onSetAudio: (audioTrackId: string | null) => void;
 }) {
   const isVideo = media.mimeType.startsWith("video");
   const isSilentVideo = isVideo && media.hasAudio === false;
@@ -480,13 +680,27 @@ function MediaHero({
           <Film className="h-8 w-8 text-gray-400" />
         </div>
       )}
-      {isSilentVideo && (
+      {isSilentVideo && !media.audioTrack && (
         <div
           className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] text-white"
           title="No audio track"
         >
           <VolumeX className="h-3 w-3" />
           <span>silent</span>
+        </div>
+      )}
+      {isVideo && media.audioTrack && (
+        <div
+          className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-purple-600/80 px-2.5 py-1 text-[10px] text-white"
+          title={`Music overlay: ${media.audioTrack.title}`}
+        >
+          <Music className="h-3 w-3" />
+          <span className="max-w-[12rem] truncate">{media.audioTrack.title}</span>
+        </div>
+      )}
+      {isVideo && (
+        <div className="absolute bottom-3 right-3">
+          <AudioPicker media={media} onSetAudio={onSetAudio} />
         </div>
       )}
       <button
@@ -500,13 +714,112 @@ function MediaHero({
   );
 }
 
+interface AudioTrackSummary {
+  id: string;
+  title: string;
+}
+
+function AudioPicker({
+  media,
+  onSetAudio,
+}: {
+  media: MediaItem;
+  onSetAudio: (audioTrackId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [tracks, setTracks] = useState<AudioTrackSummary[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function openPicker() {
+    setOpen((v) => !v);
+    if (tracks != null) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/audio");
+      if (res.ok) {
+        const data = (await res.json()) as AudioTrackSummary[];
+        setTracks(data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const currentId = media.audioTrack?.id ?? null;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={openPicker}
+        className="flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] text-white hover:bg-black/80"
+        title="Add or change music"
+      >
+        <Music className="h-3 w-3" />
+        <span>{media.audioTrack ? "Change" : "Add music"}</span>
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 mb-1 w-56 rounded-md border border-gray-200 bg-white shadow-lg">
+          <div className="max-h-64 overflow-y-auto py-1 text-xs">
+            {loading && (
+              <div className="px-3 py-2 text-gray-500">Loading…</div>
+            )}
+            {!loading && tracks && tracks.length === 0 && (
+              <div className="px-3 py-2 text-gray-500">
+                No tracks yet.{" "}
+                <a href="/admin/audio" className="text-blue-600 hover:underline">
+                  Upload one
+                </a>
+              </div>
+            )}
+            {currentId && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSetAudio(null);
+                  setOpen(false);
+                }}
+                className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50"
+              >
+                Remove music
+              </button>
+            )}
+            {tracks?.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  onSetAudio(t.id);
+                  setOpen(false);
+                }}
+                className={`block w-full px-3 py-1.5 text-left hover:bg-gray-100 ${
+                  t.id === currentId ? "bg-purple-50 font-medium text-purple-700" : ""
+                }`}
+              >
+                {t.title}
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-gray-100 px-3 py-1.5 text-[11px] text-gray-500">
+            <a href="/admin/audio" className="text-blue-600 hover:underline">
+              Manage library →
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MediaTile({
   media,
   onDelete,
+  onSetAudio,
   aspect = "aspect-square",
 }: {
   media: MediaItem;
   onDelete: () => void;
+  onSetAudio: (audioTrackId: string | null) => void;
   aspect?: string;
 }) {
   const isVideo = media.mimeType.startsWith("video");
@@ -520,7 +833,7 @@ function MediaTile({
           <video
             src={media.url}
             className="h-full w-full object-cover"
-            muted
+            controls
             playsInline
           />
         ) : (
@@ -536,9 +849,22 @@ function MediaTile({
           <Film className="h-5 w-5 text-gray-400" />
         </div>
       )}
-      {isSilentVideo && (
+      {isSilentVideo && !media.audioTrack && (
         <div className="absolute bottom-1 left-1 rounded-full bg-black/60 p-0.5">
           <VolumeX className="h-3 w-3 text-white" />
+        </div>
+      )}
+      {isVideo && media.audioTrack && (
+        <div
+          className="absolute bottom-1 left-1 rounded-full bg-purple-600/80 p-0.5"
+          title={`Music: ${media.audioTrack.title}`}
+        >
+          <Music className="h-3 w-3 text-white" />
+        </div>
+      )}
+      {isVideo && (
+        <div className="absolute bottom-1 right-1">
+          <AudioPicker media={media} onSetAudio={onSetAudio} />
         </div>
       )}
       <button

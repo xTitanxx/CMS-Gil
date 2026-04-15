@@ -2,11 +2,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { VolumeX } from "lucide-react";
 import { StoryViewer } from "./StoryViewer";
 
 interface StoryMedia {
   id: string;
   mimeType: string;
+  hasAudio: boolean | null;
   url: string | null;
 }
 
@@ -99,11 +101,12 @@ function StoryThumbnail({ story, onClick }: { story: Story; onClick: () => void 
   if (!firstMedia?.url) return null;
 
   const isVideo = firstMedia.mimeType.startsWith("video/");
+  const isSilent = isVideo && firstMedia.hasAudio === false;
 
   return (
     <button
       onClick={onClick}
-      className="flex-shrink-0 rounded-full p-[2px] bg-gradient-to-tr from-blue-500 to-purple-500"
+      className="relative flex-shrink-0 rounded-full p-[2px] bg-gradient-to-tr from-blue-500 to-purple-500"
     >
       <div className="h-16 w-16 rounded-full overflow-hidden bg-gray-200 border-2 border-white">
         {isVideo ? (
@@ -122,6 +125,14 @@ function StoryThumbnail({ story, onClick }: { story: Story; onClick: () => void 
           />
         )}
       </div>
+      {isSilent && (
+        <div
+          className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 ring-2 ring-white"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-3 w-3 text-white" />
+        </div>
+      )}
     </button>
   );
 }

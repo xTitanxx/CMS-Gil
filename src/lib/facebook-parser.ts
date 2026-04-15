@@ -35,6 +35,23 @@ export interface FBPost {
   label_values?: FBLabelValue[];
 }
 
+export interface ParsedShare {
+  url?: string;
+  source?: string;
+  name?: string;
+}
+
+// Title patterns FB writes for shares: "X shared a post.", "X shared a link.",
+// "X shared Y's post.", etc. "is with" / "is feeling" / "updated" are
+// life-event/check-in titles, not shares, and are ignored.
+const SHARE_TITLE_RE = /\sshared\s(a|an|his|her|their|[^\s]+'s)\s/i;
+
+// "Gil shared a memory." is FB's On-This-Day feature — the user resurfacing
+// their own prior post via the memory prompt, not a crosspost of someone
+// else's content. Excluded from share detection so memory-reposts stay
+// classified as original posts.
+const MEMORY_TITLE_RE = /\sshared\s(a|his|her|their)\s+memory\b/i;
+
 export interface FBAlbumPhoto {
   uri: string;
   creation_timestamp: number;
@@ -53,6 +70,7 @@ export interface ParsedPost {
   originalDate: Date;
   sourceId: string;
   mediaUris: string[];
+  share?: ParsedShare | null;
   // Priority for cross-file dedup. Higher wins when the same sourceId appears
   // in multiple exported files. your_posts_*.json (post.timestamp) is preferred
   // over album/0.json and your_videos.json (creation_timestamp), because the
@@ -106,6 +124,7 @@ export function parseFacebookExport(raw: unknown): ParsedPost[] {
     }
 
     const mediaUris: string[] = [];
+    let share: ParsedShare | null = null;
     if (Array.isArray(post.attachments)) {
       for (const att of post.attachments) {
         if (!Array.isArray(att.data)) continue;
@@ -113,8 +132,31 @@ export function parseFacebookExport(raw: unknown): ParsedPost[] {
           if (d.media?.uri) {
             mediaUris.push(d.media.uri);
           }
+          if (!share && d.external_context) {
+            const { url, source, name } = d.external_context;
+            if (url || source || name) {
+              share = {
+                ...(url ? { url } : {}),
+                ...(source ? { source: fixFBEncoding(source) } : {}),
+                ...(name ? { name: fixFBEncoding(name) } : {}),
+              };
+            }
+          }
         }
       }
+    }
+
+    // Fallback share signal: FB sometimes writes a share-style title even when
+    // no external_context is attached (e.g. shares of other FB posts). Flag the
+    // post as a share so UI can render a chip; the parsed share is empty since
+    // we have no URL to preserve.
+    if (
+      !share &&
+      typeof post.title === "string" &&
+      SHARE_TITLE_RE.test(post.title) &&
+      !MEMORY_TITLE_RE.test(post.title)
+    ) {
+      share = { name: fixFBEncoding(post.title) };
     }
 
     // Handle label_values format (reels_you_have_pinned.json, etc.)
@@ -134,6 +176,12 @@ export function parseFacebookExport(raw: unknown): ParsedPost[] {
 
     if (!body && mediaUris.length === 0) continue;
 
+    // Drop pure shares with no original commentary. These are FB-generated
+    // "Gil shared a link." stubs with no user content — importing them creates
+    // broken posts (no body, no media, no context). The external_context URL
+    // alone is not content worth keeping.
+    if (share && !body) continue;
+
     // Use the first media filename as sourceId so this post naturally deduplicates
     // against the same photo/video appearing in an album JSON from the same export.
     const firstMedia = mediaUris[0];
@@ -146,6 +194,7 @@ export function parseFacebookExport(raw: unknown): ParsedPost[] {
       originalDate: new Date(post.timestamp * 1000),
       sourceId,
       mediaUris,
+      share,
       priority: PRIORITY_POSTS_FILE,
     });
   }

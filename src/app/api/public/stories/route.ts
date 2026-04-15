@@ -1,7 +1,7 @@
 // src/app/api/public/stories/route.ts
 import { NextRequest } from "next/server";
 import { getPublicStoriesPage } from "@/lib/public-posts";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getMediaUrl } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
           width: m.width,
           height: m.height,
           altText: m.altText,
-          url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
+          hasAudio: m.hasAudio,
+          url: await getMediaUrl(m).catch(
             () => null
           ),
         }))

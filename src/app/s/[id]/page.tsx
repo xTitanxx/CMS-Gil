@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPublicStory } from "@/lib/public-posts";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getMediaUrl } from "@/lib/storage";
 import { SingleStoryViewer } from "./SingleStoryViewer";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,8 @@ export default async function StoryPage({
     story.media.map(async (m) => ({
       id: m.id,
       mimeType: m.mimeType,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
+      hasAudio: m.hasAudio,
+      url: await getMediaUrl(m).catch(
         () => null
       ),
     }))

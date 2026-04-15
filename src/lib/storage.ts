@@ -54,7 +54,7 @@ export async function uploadBuffer(
   const publicId = key.replace(/\.[^/.]+$/, "");
   const result = await new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: "auto", type: "upload" },
+      { public_id: publicId, resource_type: "auto", type: "upload", media_metadata: true },
       (error, uploadResult) => {
         if (error) return reject(error);
         if (!uploadResult) return reject(new Error("Cloudinary returned no result"));
@@ -88,14 +88,52 @@ export async function fetchVideoAudioStatus(key: string): Promise<boolean | null
 export async function getSignedDownloadUrl(
   key: string,
   _expiresIn = 3600,
-  mimeType?: string
+  mimeType?: string,
+  audioOverlayKey?: string | null
 ): Promise<string> {
   const isVideo = mimeType?.startsWith("video");
-  const resourceType = isVideo ? "video" : "image";
+  const isAudio = mimeType?.startsWith("audio");
+  const resourceType = isVideo || isAudio ? "video" : "image";
   // Strip extension — Cloudinary appends the format automatically; including it in
   // the public_id would produce a double-extension URL (e.g. file.jpg.jpg).
   const publicId = key.replace(/\.[^/.]+$/, "");
+
+  if (isVideo && audioOverlayKey) {
+    // Overlay a user-provided audio track onto the video. Cloudinary requires
+    // slashes in the overlay public_id to be escaped as colons.
+    const audioPublicId = audioOverlayKey.replace(/\.[^/.]+$/, "").replace(/\//g, ":");
+    return cloudinary.url(publicId, {
+      resource_type: "video",
+      type: "upload",
+      transformation: [
+        { overlay: `video:${audioPublicId}` },
+        { flags: "layer_apply" },
+      ],
+    });
+  }
+
   return cloudinary.url(publicId, { resource_type: resourceType, type: "upload" });
+}
+
+/**
+ * Convenience wrapper for media rows that may carry an AudioTrack overlay.
+ * Pass the media object with its (optional) audioTrack relation.
+ */
+export function getMediaUrl(media: {
+  storageKey: string;
+  mimeType: string;
+  audioTrack?: { storageKey: string } | null;
+}): Promise<string> {
+  return getSignedDownloadUrl(
+    media.storageKey,
+    3600,
+    media.mimeType,
+    media.audioTrack?.storageKey ?? null
+  );
+}
+
+export function audioKey(userId: string, filename: string): string {
+  return `audio/${userId}/${Date.now()}-${filename}`;
 }
 
 // Returns a jpg poster frame for videos, or the image URL for images
@@ -125,7 +163,8 @@ export async function getObject(key: string): Promise<Buffer> {
 
 export async function deleteObject(key: string, mimeType?: string): Promise<void> {
   const publicId = key.replace(/\.[^/.]+$/, "");
-  const resourceType = mimeType?.startsWith("video") ? "video" : "image";
+  const isVideoLike = mimeType?.startsWith("video") || mimeType?.startsWith("audio");
+  const resourceType = isVideoLike ? "video" : "image";
   await cloudinary.uploader.destroy(publicId, { resource_type: resourceType, type: "upload" });
 }
 

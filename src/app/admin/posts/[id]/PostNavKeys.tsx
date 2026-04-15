@@ -37,7 +37,7 @@ export function PostNavKeys({
         router.push(nextHref);
       } else if (e.key === "Escape") {
         e.preventDefault();
-        router.push(listHref);
+        router.push(listHref, { scroll: false });
       }
     }
 

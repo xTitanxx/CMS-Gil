@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl, deleteObject } from "@/lib/storage";
+import { getMediaUrl, deleteObject } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
 
 export async function GET(
@@ -17,7 +18,7 @@ export async function GET(
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
     include: {
-      media: true,
+      media: { include: { audioTrack: { select: { id: true, title: true, storageKey: true } } } },
       publishes: { orderBy: { createdAt: "desc" } },
     },
   });
@@ -27,7 +28,7 @@ export async function GET(
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       ...m,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
+      url: await getMediaUrl(m).catch(() => null),
     }))
   );
 
@@ -61,6 +62,17 @@ export async function PATCH(
       ...(body.postType !== undefined &&
         ["POST", "REEL", "STORY"].includes(body.postType)
         ? { postType: body.postType }
+        : {}),
+      ...(body.share !== undefined
+        ? { share: body.share === null ? Prisma.DbNull : body.share }
+        : {}),
+      ...(body.platformUrl !== undefined
+        ? {
+            platformUrl:
+              typeof body.platformUrl === "string" && body.platformUrl.trim()
+                ? body.platformUrl.trim()
+                : null,
+          }
         : {}),
     },
   });

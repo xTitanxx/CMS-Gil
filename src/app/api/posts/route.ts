@@ -32,16 +32,25 @@ type PostWithIncludes = Awaited<
 
 async function getMultiMediaPostIds(
   userId: string,
-  minCount: number,
+  mode: "1" | "2",
 ): Promise<string[]> {
-  const rows = await prisma.$queryRaw<Array<{ postId: string }>>`
-    SELECT m."postId"
-    FROM "Media" m
-    JOIN "Post" p ON p.id = m."postId"
-    WHERE p."userId" = ${userId}
-    GROUP BY m."postId"
-    HAVING COUNT(*) >= ${minCount}
-  `;
+  const rows = mode === "1"
+    ? await prisma.$queryRaw<Array<{ postId: string }>>`
+        SELECT m."postId"
+        FROM "Media" m
+        JOIN "Post" p ON p.id = m."postId"
+        WHERE p."userId" = ${userId}
+        GROUP BY m."postId"
+        HAVING COUNT(*) = 1
+      `
+    : await prisma.$queryRaw<Array<{ postId: string }>>`
+        SELECT m."postId"
+        FROM "Media" m
+        JOIN "Post" p ON p.id = m."postId"
+        WHERE p."userId" = ${userId}
+        GROUP BY m."postId"
+        HAVING COUNT(*) >= 2
+      `;
   return rows.map((r) => r.postId);
 }
 
@@ -87,8 +96,10 @@ export async function GET(req: NextRequest) {
   const filters = parsePostsFilters(searchParams);
   const postIdAllowlist =
     filters.multiMedia === "2"
-      ? await getMultiMediaPostIds(session.user.id, 2)
-      : null;
+      ? await getMultiMediaPostIds(session.user.id, "2")
+      : filters.multiMedia === "1"
+        ? await getMultiMediaPostIds(session.user.id, "1")
+        : null;
   const { where: baseWhere, orderBy } = buildPostsQuery(
     filters,
     session.user.id,
@@ -114,7 +125,33 @@ export async function GET(req: NextRequest) {
 
   const skip = (page - 1) * limit;
   const userId = session.user.id;
-  const [total, rows, storiesCount] = await Promise.all([
+
+  // Counts for the sub-tab pill row. We compute these with the same base
+  // Where shape (search, filters, date range, etc.) but swapped kind+subKind,
+  // so switching tabs feels consistent with what the user is currently
+  // filtering for.
+  const subKindSpecs: Array<{ key: string; kind: "posts" | "stories"; sub: string }> = [
+    { key: "postsAll", kind: "posts", sub: "all" },
+    { key: "postsVideoAudio", kind: "posts", sub: "video-audio" },
+    { key: "postsVideoSilent", kind: "posts", sub: "video-silent" },
+    { key: "postsPhoto", kind: "posts", sub: "photo" },
+    { key: "postsText", kind: "posts", sub: "text" },
+    { key: "postsQuoted", kind: "posts", sub: "quoted" },
+    { key: "storiesAll", kind: "stories", sub: "all" },
+    { key: "storiesVideoAudio", kind: "stories", sub: "video-audio" },
+    { key: "storiesVideoSilent", kind: "stories", sub: "video-silent" },
+  ];
+
+  // Count WITHOUT subKind so "X posts total" reflects the full kind, not just
+  // the active sub-tab.  The sub-kind counts below give per-tab numbers.
+  const { where: kindOnlyWhere } = buildPostsQuery(
+    { ...filters, subKind: undefined },
+    userId,
+    { postIdAllowlist },
+  );
+
+  const [total, filteredTotal, rows, ...subCounts] = await Promise.all([
+    prisma.post.count({ where: kindOnlyWhere }),
     prisma.post.count({ where: baseWhere }),
     prisma.post.findMany({
       where: baseWhere,
@@ -123,9 +160,40 @@ export async function GET(req: NextRequest) {
       take: limit,
       include: POST_INCLUDE,
     }),
-    prisma.post.count({ where: { userId, postType: "STORY" } }),
+    ...subKindSpecs.map((spec) => {
+      const { where } = buildPostsQuery(
+        { ...filters, kind: spec.kind, subKind: spec.sub },
+        userId,
+        { postIdAllowlist },
+      );
+      return prisma.post.count({ where });
+    }),
   ]);
-  const postsCount = await prisma.post.count({ where: { userId } }) - storiesCount;
+  const subKindCounts = Object.fromEntries(
+    subKindSpecs.map((spec, i) => [spec.key, subCounts[i] ?? 0]),
+  ) as Record<string, number>;
+  const postsCount = subKindCounts.postsAll ?? 0;
+  const storiesCount = subKindCounts.storiesAll ?? 0;
+
+  // When a filter is active, also compute unfiltered totals per sub-tab
+  // so the UI can show "0/81" instead of just "0".
+  const hasFilter = !!(filters.search || filters.tags || filters.from || filters.to);
+  let subKindTotals: Record<string, number> | undefined;
+  if (hasFilter) {
+    const noFilterBase = { kind: filters.kind, subKind: undefined } as const;
+    const totalCounts = await Promise.all(
+      subKindSpecs.map((spec) => {
+        const { where } = buildPostsQuery(
+          { ...noFilterBase, kind: spec.kind, subKind: spec.sub },
+          userId,
+        );
+        return prisma.post.count({ where });
+      }),
+    );
+    subKindTotals = Object.fromEntries(
+      subKindSpecs.map((spec, i) => [spec.key, totalCounts[i] ?? 0]),
+    );
+  }
 
   const decorated = await decoratePosts(rows);
   const nextCursor =
@@ -136,10 +204,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     posts: decorated,
     total,
+    filteredTotal,
     page,
-    pages: Math.ceil(total / limit),
+    pages: Math.ceil(filteredTotal / limit),
     nextCursor,
     kindCounts: { posts: postsCount, stories: storiesCount },
+    subKindCounts,
+    ...(subKindTotals ? { subKindTotals } : {}),
   });
 }
 

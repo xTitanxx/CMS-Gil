@@ -37,6 +37,7 @@ export function StoryViewer({
   const story = stories[index];
   const firstMedia = story?.media[0];
   const isVideo = firstMedia?.mimeType.startsWith("video/") ?? false;
+  const isSilent = isVideo && firstMedia?.hasAudio === false;
 
   const next = useCallback(() => {
     if (index < stories.length - 1) {
@@ -138,8 +139,8 @@ export function StoryViewer({
         <X className="h-5 w-5" />
       </button>
 
-      {/* Mute toggle (only for videos) */}
-      {isVideo && (
+      {/* Mute toggle (only for videos with audio) */}
+      {isVideo && !isSilent && (
         <button
           onClick={() => setMuted((m) => !m)}
           className="absolute top-4 right-16 z-20 text-white p-2 hover:bg-white/10 rounded-full"
@@ -147,6 +148,17 @@ export function StoryViewer({
         >
           {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
         </button>
+      )}
+
+      {/* Silent-video indicator (non-interactive) */}
+      {isSilent && (
+        <div
+          className="absolute top-4 right-16 z-20 flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-4 w-4" />
+          <span>Silent</span>
+        </div>
       )}
 
       {/* Date */}

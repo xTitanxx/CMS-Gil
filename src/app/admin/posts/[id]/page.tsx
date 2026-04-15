@@ -4,9 +4,10 @@ import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getMediaUrl } from "@/lib/storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
+import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
 import { PostNavKeys } from "./PostNavKeys";
@@ -54,8 +55,10 @@ export default async function PostDetailPage({
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
     include: {
-      media: true,
+      media: { include: { audioTrack: { select: { id: true, title: true, storageKey: true } } } },
       publishes: { orderBy: { createdAt: "desc" } },
+      parentPost: { select: { id: true, body: true, _count: { select: { media: true } } } },
+      _count: { select: { childPosts: true } },
     },
   });
 
@@ -74,7 +77,18 @@ export default async function PostDetailPage({
             HAVING COUNT(*) >= 2
           `
         ).map((r) => r.postId)
-      : null;
+      : filters.multiMedia === "1"
+        ? (
+            await prisma.$queryRaw<Array<{ postId: string }>>`
+              SELECT m."postId"
+              FROM "Media" m
+              JOIN "Post" p ON p.id = m."postId"
+              WHERE p."userId" = ${session.user.id}
+              GROUP BY m."postId"
+              HAVING COUNT(*) = 1
+            `
+          ).map((r) => r.postId)
+        : null;
   const { where: baseWhere } = buildPostsQuery(filters, session.user.id, {
     postIdAllowlist,
   });
@@ -117,9 +131,10 @@ export default async function PostDetailPage({
       id: m.id,
       mimeType: m.mimeType,
       hasAudio: m.hasAudio,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
-        () => null,
-      ),
+      audioTrack: m.audioTrack
+        ? { id: m.audioTrack.id, title: m.audioTrack.title }
+        : null,
+      url: await getMediaUrl(m).catch(() => null),
     })),
   );
 
@@ -131,7 +146,12 @@ export default async function PostDetailPage({
         prevHref={prevHref}
         nextHref={nextHref}
         listHref={listHref}
-        actions={<DeleteButton postId={id} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <CopyIdChip id={id} />
+            <DeleteButton postId={id} />
+          </div>
+        }
       />
       <PostNavKeys
         prevHref={prevHref}
@@ -140,6 +160,28 @@ export default async function PostDetailPage({
       />
 
       <div className="mx-auto mt-3 w-full max-w-6xl space-y-3">
+        {post.parentPost && (
+          <a
+            href={`/admin/posts/${post.parentPost.id}`}
+            className="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100"
+          >
+            <span className="font-medium">Part of album</span>
+            <span className="text-amber-700">
+              {post.parentPost._count.media} photos
+              {post.parentPost.body
+                ? ` — ${post.parentPost.body.slice(0, 60).replace(/\s+/g, " ")}${post.parentPost.body.length > 60 ? "…" : ""}`
+                : ""}
+            </span>
+          </a>
+        )}
+        {post._count.childPosts > 0 && (
+          <div className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-900">
+            <span className="font-medium">Album with individual photo posts</span>
+            <span className="text-blue-700">
+              {post._count.childPosts} linked child {post._count.childPosts === 1 ? "post" : "posts"}
+            </span>
+          </div>
+        )}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0">
             <PostEditor
@@ -151,6 +193,7 @@ export default async function PostDetailPage({
               initialPostType={post.postType}
               source={post.source}
               platformUrl={post.platformUrl}
+              share={post.share as { url?: string; source?: string; name?: string } | null}
             />
           </div>
 

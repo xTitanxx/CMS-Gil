@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { subWeeks } from "date-fns";
 import { buildThumbUrl } from "./thumbnail";
@@ -13,6 +14,11 @@ export async function getCandidatePosts(userId: string): Promise<CandidatePost[]
     where: {
       userId,
       media: { some: {} },
+      // Exclude FB shares/crossposts — those were never original Gil content
+      // (he was resurfacing someone else's post), so resurfacing them here
+      // would republish material he doesn't own. `share` is a JSON column
+      // populated by the FB-share parser; NULL means original post.
+      share: { equals: Prisma.DbNull },
       // Posts in this DB were originally published on Facebook — treat originalDate
       // as the baseline "last posted" date. Skip anything posted (originally OR
       // recycled via the hub) within the recency window.

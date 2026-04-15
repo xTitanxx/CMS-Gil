@@ -105,6 +105,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
             source: "FACEBOOK",
             sourceId: parsed.sourceId,
             originalDate: parsed.originalDate,
+            share: parsed.share ? (parsed.share as object) : undefined,
           },
         });
 
@@ -122,7 +123,10 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                 fileBuffer = mediaFiles.get(normalizedUri) ?? mediaFiles.get(uri) ?? null;
               }
 
-              if (!fileBuffer) continue;
+              if (!fileBuffer) {
+                errors.push(`Media missing for post ${parsed.sourceId}: ${uri}`);
+                continue;
+              }
 
               const filename = uri.split("/").pop() ?? "media";
               const mimeType = guessMimeType(filename);

@@ -19,15 +19,11 @@ export default async function PostsPage({
   const sp = await searchParams;
   const view = pick(sp, "view") === "feed" ? "feed" : "list";
   const kindRaw = pick(sp, "kind");
-  const kindParam: "posts" | "stories" | "reels" =
-    kindRaw === "stories" ? "stories" : kindRaw === "reels" ? "reels" : "posts";
+  const kindParam: "posts" | "stories" =
+    kindRaw === "stories" ? "stories" : "posts";
 
   if (view === "feed" && kindParam === "stories") {
     return <StoriesReel />;
-  }
-
-  if (view === "feed" && kindParam === "reels") {
-    return <ReelsFeed />;
   }
 
   if (view === "feed") {
@@ -35,21 +31,18 @@ export default async function PostsPage({
   }
 
   const tagsParam = pick(sp, "tags");
-  const contentParam = pick(sp, "content");
-  const audioParam = pick(sp, "audio");
-  const linkParam = pick(sp, "link") as "all" | "with" | "without" | undefined;
-  const multiMediaParam = pick(sp, "multiMedia") as "all" | "2" | undefined;
-  const taggedParam = pick(sp, "tagged") as "all" | "yes" | "no" | undefined;
 
   return (
     <PostsList
       initialSearch={pick(sp, "search") ?? ""}
       initialSort={pick(sp, "sort") ?? "originalDate_desc"}
-      initialContent={contentParam}
-      initialAudio={audioParam}
-      initialLink={linkParam ?? "all"}
-      initialMultiMedia={multiMediaParam ?? "all"}
-      initialTagged={taggedParam ?? "all"}
+      initialContent={pick(sp, "content")}
+      initialAudio={pick(sp, "audio")}
+      initialLink={pick(sp, "link")}
+      initialMultiMedia={pick(sp, "multiMedia")}
+      initialTagged={pick(sp, "tagged")}
+      initialShare={pick(sp, "share")}
+      initialQuality={pick(sp, "quality")}
       initialTags={tagsParam ? tagsParam.split(",").filter(Boolean) : []}
       initialKind={kindParam}
     />

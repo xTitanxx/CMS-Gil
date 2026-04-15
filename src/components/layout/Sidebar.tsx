@@ -11,6 +11,7 @@ import {
   CalendarClock,
   LogOut,
   CheckSquare,
+  Music,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -18,6 +19,7 @@ const nav = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/posts", label: "All Posts", icon: FileText },
   { href: "/admin/import", label: "Import", icon: Upload },
+  { href: "/admin/audio", label: "Audio Library", icon: Music },
   { href: "/admin/connections", label: "Connections", icon: Link2 },
   { href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
   { href: "/admin/todo", label: "To-Do", icon: CheckSquare },

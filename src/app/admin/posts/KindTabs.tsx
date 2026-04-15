@@ -3,9 +3,14 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
-export type PostKind = "posts" | "stories" | "reels";
+export type PostKind = "posts" | "stories";
 
-export function KindTabs({ current }: { current: PostKind }) {
+interface KindCounts {
+  posts: number;
+  stories: number;
+}
+
+export function KindTabs({ current, counts }: { current: PostKind; counts?: KindCounts | null }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -27,7 +32,7 @@ export function KindTabs({ current }: { current: PostKind }) {
 
   return (
     <div className="flex gap-1 border-b border-gray-200">
-      {(["posts", "stories", "reels"] as const).map((k) => (
+      {(["posts", "stories"] as const).map((k) => (
         <button
           key={k}
           type="button"
@@ -38,7 +43,12 @@ export function KindTabs({ current }: { current: PostKind }) {
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
-          {k === "posts" ? "Posts" : k === "stories" ? "Stories" : "Reels"}
+          {k === "posts" ? "Posts" : "Stories"}
+          {counts && (
+            <span className="ml-1.5 text-xs text-gray-400">
+              {counts[k].toLocaleString()}
+            </span>
+          )}
         </button>
       ))}
     </div>

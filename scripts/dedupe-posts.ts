@@ -38,7 +38,7 @@ import { normalizeForSearch } from "../src/lib/search-normalize";
 
 const TRASH_ROOT = path.join(process.cwd(), "trash");
 
-type Rule = "A" | "B" | "C" | "D" | "E";
+type Rule = "A" | "B" | "C" | "D" | "E" | "F";
 
 type Group = {
   userId: string;

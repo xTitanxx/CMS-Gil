@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -15,7 +15,10 @@ import {
   X,
   RefreshCw,
   VolumeX,
-  SlidersHorizontal,
+  Link as LinkIcon,
+  Video,
+  Images,
+  FileText,
   Send,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
@@ -23,6 +26,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
+import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
 import { PlatformIcons } from "../scheduled/PlatformIcons";
 import { displayBody } from "@/lib/post-body";
 import {
@@ -31,6 +35,25 @@ import {
   type ContentCategory,
   type AudioCategory,
 } from "@/lib/posts-query";
+import {
+  FilterMenu,
+  SortMenu,
+  JumpToDateMenu,
+  parseCsvToSet,
+  serializeSet,
+  countActiveFilters,
+  buildFilterParams,
+  LINK_VALUES,
+  MULTI_MEDIA_VALUES,
+  TAGGED_VALUES,
+  SHARE_VALUES,
+  QUALITY_VALUES,
+  type LinkValue,
+  type MultiMediaValue,
+  type TaggedValue,
+  type ShareValue,
+  type QualityValue,
+} from "./PostFilterUI";
 
 interface Post {
   id: string;
@@ -44,54 +67,57 @@ interface Post {
   isSilent: boolean;
   tags: string[];
   platformUrl: string | null;
+  share: { url?: string; source?: string; name?: string } | null;
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
 }
 
-type LinkFilter = "all" | "with" | "without";
-type MultiMediaFilter = "all" | "2";
-type TaggedFilter = "all" | "yes" | "no";
 type KindFilter = "posts" | "stories";
 
-const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
-  { value: "caption", label: "Caption only" },
-  { value: "image", label: "Image" },
-  { value: "video", label: "Video" },
-  { value: "nocaption", label: "No caption" },
-];
+// Per-filter-key cache so navigating into a post and back restores the list
+// without refetching and keeps the scroll position. Lives at module scope so
+// it survives the PostsList unmount that happens during client navigation.
+interface ListSnapshot {
+  posts: Post[];
+  nextCursor: string | null;
+  done: boolean;
+  total: number;
+  filteredTotal: number;
+  scrollTop: number;
+}
+const listCache = new Map<string, ListSnapshot>();
 
-const AUDIO_OPTIONS: { value: AudioCategory; label: string }[] = [
-  { value: "audible", label: "Video with audio" },
-  { value: "silent", label: "Silent video" },
-  { value: "nonvideo", label: "Non-video posts" },
-];
-
-const SORT_OPTIONS = [
-  { value: "originalDate_desc", label: "Post date (newest)" },
-  { value: "originalDate_asc", label: "Post date (oldest)" },
-  { value: "createdAt_desc", label: "Import date (newest)" },
-  { value: "createdAt_asc", label: "Import date (oldest)" },
-];
-
-function parseCsvToSet<T extends string>(
-  raw: string | undefined,
-  allowed: readonly T[]
-): Set<T> {
-  if (raw == null) return new Set(allowed);
-  const out = new Set<T>();
-  for (const part of raw.split(",")) {
-    const v = part.trim();
-    if ((allowed as readonly string[]).includes(v)) out.add(v as T);
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.body) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY)) return node;
+    node = node.parentElement;
   }
-  return out;
+  return null;
 }
 
-function serializeSet<T extends string>(
-  set: Set<T>,
-  allowed: readonly T[]
-): string | null {
-  if (allowed.every((v) => set.has(v))) return null;
-  return [...set].join(",");
+// Base64url-encode a cursor client-side to match the server's encodeCursor().
+function encodeCursorClient(c: { value: string; id: string }): string {
+  const b64 = btoa(JSON.stringify(c));
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Build a synthetic cursor that makes the API start streaming posts from a
+// chosen calendar date. For desc sort we pivot just after end-of-day so the
+// first returned row is the latest post on that day; for asc, just before
+// start-of-day so the first row is the earliest post on that day.
+function jumpCursorForDate(dateStr: string, sort: string): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + "T00:00:00Z");
+  if (isNaN(d.getTime())) return null;
+  const dir = sort.endsWith("_asc") ? "asc" : "desc";
+  if (dir === "desc") {
+    const pivot = new Date(d.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    return encodeCursorClient({ value: pivot, id: "zzzzzzzzzzzzzzzzzzzzzzzzz" });
+  }
+  const pivot = new Date(d.getTime() - 1).toISOString();
+  return encodeCursorClient({ value: pivot, id: "" });
 }
 
 function RowDeleteButton({
@@ -193,255 +219,16 @@ function RowPublishAllButton({ post }: { post: Post }) {
   );
 }
 
-interface FilterMenuProps {
-  sort: string;
-  setSort: (s: string) => void;
-  content: Set<ContentCategory>;
-  setContent: (s: Set<ContentCategory>) => void;
-  audio: Set<AudioCategory>;
-  setAudio: (s: Set<AudioCategory>) => void;
-  link: LinkFilter;
-  setLink: (v: LinkFilter) => void;
-  multiMedia: MultiMediaFilter;
-  setMultiMedia: (v: MultiMediaFilter) => void;
-  tagged: TaggedFilter;
-  setTagged: (v: TaggedFilter) => void;
-  activeCount: number;
-  onReset: () => void;
-}
-
-function FilterMenu(props: FilterMenuProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  function toggleContent(v: ContentCategory) {
-    const next = new Set(props.content);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    props.setContent(next);
-  }
-  function toggleAudio(v: AudioCategory) {
-    const next = new Set(props.audio);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    props.setAudio(next);
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-blue-500 focus:outline-none"
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-        Filters
-        {props.activeCount > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
-            {props.activeCount}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Filters
-            </span>
-            {props.activeCount > 0 && (
-              <button
-                onClick={props.onReset}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-          <div className="max-h-96 space-y-4 overflow-y-auto pr-1">
-            <FilterSection title="Sort">
-              {SORT_OPTIONS.map((o) => (
-                <RadioRow
-                  key={o.value}
-                  name="sort"
-                  checked={props.sort === o.value}
-                  onChange={() => props.setSort(o.value)}
-                  label={o.label}
-                />
-              ))}
-            </FilterSection>
-            <FilterSection title="Content">
-              {CONTENT_OPTIONS.map((o) => (
-                <CheckRow
-                  key={o.value}
-                  checked={props.content.has(o.value)}
-                  onChange={() => toggleContent(o.value)}
-                  onOnly={() => props.setContent(new Set([o.value]))}
-                  label={o.label}
-                />
-              ))}
-            </FilterSection>
-            <FilterSection title="Audio">
-              {AUDIO_OPTIONS.map((o) => (
-                <CheckRow
-                  key={o.value}
-                  checked={props.audio.has(o.value)}
-                  onChange={() => toggleAudio(o.value)}
-                  onOnly={() => props.setAudio(new Set([o.value]))}
-                  label={o.label}
-                />
-              ))}
-            </FilterSection>
-            <FilterSection title="Facebook link">
-              <RadioRow
-                name="link"
-                checked={props.link === "all"}
-                onChange={() => props.setLink("all")}
-                label="Any"
-              />
-              <RadioRow
-                name="link"
-                checked={props.link === "with"}
-                onChange={() => props.setLink("with")}
-                label="Has FB link"
-              />
-              <RadioRow
-                name="link"
-                checked={props.link === "without"}
-                onChange={() => props.setLink("without")}
-                label="No FB link"
-              />
-            </FilterSection>
-            <FilterSection title="Media count">
-              <RadioRow
-                name="multi"
-                checked={props.multiMedia === "all"}
-                onChange={() => props.setMultiMedia("all")}
-                label="Any"
-              />
-              <RadioRow
-                name="multi"
-                checked={props.multiMedia === "2"}
-                onChange={() => props.setMultiMedia("2")}
-                label="2 or more media"
-              />
-            </FilterSection>
-            <FilterSection title="AI tags">
-              <RadioRow
-                name="tagged"
-                checked={props.tagged === "all"}
-                onChange={() => props.setTagged("all")}
-                label="Any"
-              />
-              <RadioRow
-                name="tagged"
-                checked={props.tagged === "yes"}
-                onChange={() => props.setTagged("yes")}
-                label="AI tagged"
-              />
-              <RadioRow
-                name="tagged"
-                checked={props.tagged === "no"}
-                onChange={() => props.setTagged("no")}
-                label="Not yet tagged"
-              />
-            </FilterSection>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-        {title}
-      </p>
-      <div className="space-y-1">{children}</div>
-    </div>
-  );
-}
-
-function RadioRow({
-  name,
-  checked,
-  onChange,
-  label,
-}: {
-  name: string;
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
-      <input
-        type="radio"
-        name={name}
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 cursor-pointer border-gray-300 text-blue-600"
-      />
-      {label}
-    </label>
-  );
-}
-
-function CheckRow({
-  checked,
-  onChange,
-  onOnly,
-  label,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  onOnly?: () => void;
-  label: string;
-}) {
-  return (
-    <label className="group flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
-      />
-      <span className="flex-1">{label}</span>
-      {onOnly && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onOnly();
-          }}
-          className="ml-auto hidden rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:bg-blue-50 group-hover:inline"
-        >
-          Only
-        </button>
-      )}
-    </label>
-  );
-}
-
 interface PostsListProps {
   initialSearch?: string;
   initialSort?: string;
   initialContent?: string;
   initialAudio?: string;
-  initialLink?: LinkFilter;
-  initialMultiMedia?: MultiMediaFilter;
-  initialTagged?: TaggedFilter;
+  initialLink?: string;
+  initialMultiMedia?: string;
+  initialTagged?: string;
+  initialShare?: string;
+  initialQuality?: string;
   initialTags?: string[];
   initialKind?: KindFilter;
 }
@@ -451,15 +238,20 @@ export function PostsList({
   initialSort = "originalDate_desc",
   initialContent,
   initialAudio,
-  initialLink = "all",
-  initialMultiMedia = "all",
-  initialTagged = "all",
+  initialLink,
+  initialMultiMedia,
+  initialTagged,
+  initialShare,
+  initialQuality,
   initialTags = [],
   initialKind = "posts",
 }: PostsListProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
   const [kindCounts, setKindCounts] = useState<{ posts: number; stories: number } | null>(null);
+  const [subKindCounts, setSubKindCounts] = useState<SubKindCounts | null>(null);
+  const [subKindTotals, setSubKindTotals] = useState<SubKindCounts | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [search, setSearch] = useState(initialSearch);
@@ -470,13 +262,31 @@ export function PostsList({
   const [audio, setAudio] = useState<Set<AudioCategory>>(() =>
     parseCsvToSet(initialAudio, AUDIO_CATEGORIES)
   );
-  const [link, setLink] = useState<LinkFilter>(initialLink);
-  const [multiMedia, setMultiMedia] = useState<MultiMediaFilter>(initialMultiMedia);
-  const [tagged, setTagged] = useState<TaggedFilter>(initialTagged);
+  const [link, setLink] = useState<Set<LinkValue>>(() =>
+    parseCsvToSet(initialLink, LINK_VALUES),
+  );
+  const [multiMedia, setMultiMedia] = useState<Set<MultiMediaValue>>(() =>
+    parseCsvToSet(initialMultiMedia, MULTI_MEDIA_VALUES),
+  );
+  const [tagged, setTagged] = useState<Set<TaggedValue>>(() =>
+    parseCsvToSet(initialTagged, TAGGED_VALUES),
+  );
+  const [share, setShare] = useState<Set<ShareValue>>(() =>
+    parseCsvToSet(initialShare, SHARE_VALUES),
+  );
+  const [quality, setQuality] = useState<Set<QualityValue>>(() =>
+    parseCsvToSet(initialQuality, QUALITY_VALUES),
+  );
+  // When set, the next fetchInitial uses this as the starting cursor (jump-to-date).
+  const [jumpCursor, setJumpCursor] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const kindQS = searchParams.get("kind");
   const kind: KindFilter =
     kindQS === "stories" ? "stories" : "posts";
+  const subKindQS = searchParams.get("subKind");
+  const subKind = ["all", "video-audio", "video-silent", "photo", "text", "quoted"].includes(subKindQS ?? "")
+    ? (subKindQS as string)
+    : "all";
   void initialKind;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -491,9 +301,13 @@ export function PostsList({
   const bulkDelete = useAsync();
   const bulkAnalyze = useAsync();
   const [analyzeQueued, setAnalyzeQueued] = useState<number | null>(null);
+  const [analyzeJob, setAnalyzeJob] = useState<{ id: string; status: "RUNNING" | "CANCELLED" | "DONE"; total: number; completed: number } | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const isRestoringRef = useRef(false);
+  const pendingScrollTargetRef = useRef<number | null>(null);
 
   async function runAiSearch() {
     if (!aiQuery.trim()) return;
@@ -527,46 +341,34 @@ export function PostsList({
     }
   }
 
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (sort !== "originalDate_desc") n++;
-    if (content.size !== CONTENT_CATEGORIES.length) n++;
-    if (audio.size !== AUDIO_CATEGORIES.length) n++;
-    if (link !== "all") n++;
-    if (multiMedia !== "all") n++;
-    if (tagged !== "all") n++;
-    return n;
-  }, [sort, content, audio, link, multiMedia, tagged]);
+  const activeFilterCount = useMemo(
+    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality }),
+    [sort, content, audio, link, multiMedia, tagged, share, quality],
+  );
 
   function resetFilters() {
     setSort("originalDate_desc");
     setContent(new Set(CONTENT_CATEGORIES));
     setAudio(new Set(AUDIO_CATEGORIES));
-    setLink("all");
-    setMultiMedia("all");
-    setTagged("all");
+    setLink(new Set(LINK_VALUES));
+    setMultiMedia(new Set(MULTI_MEDIA_VALUES));
+    setTagged(new Set(TAGGED_VALUES));
+    setShare(new Set(SHARE_VALUES));
+    setQuality(new Set(QUALITY_VALUES));
   }
 
   const buildQuery = useCallback(
     (cursor: string | null) => {
-      const contentParam = serializeSet(content, CONTENT_CATEGORIES);
-      const audioParam = serializeSet(audio, AUDIO_CATEGORIES);
-      const params = new URLSearchParams({
-        limit: "20",
-        sort,
-        ...(search ? { search } : {}),
-        ...(aiTags.length > 0 ? { tags: aiTags.join(",") } : {}),
-        ...(contentParam ? { content: contentParam } : {}),
-        ...(audioParam ? { audio: audioParam } : {}),
-        ...(link !== "all" ? { link } : {}),
-        ...(multiMedia !== "all" ? { multiMedia } : {}),
-        ...(tagged !== "all" ? { tagged } : {}),
-        kind,
+      const params = buildFilterParams({
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
       });
+      params.set("limit", "20");
+      if (sort === "originalDate_desc") params.delete("sort");
+      params.set("sort", sort);
       if (cursor) params.set("cursor", cursor);
       return params;
     },
-    [search, sort, aiTags, content, audio, link, multiMedia, tagged, kind],
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind],
   );
 
   const fetchInitial = useCallback(async () => {
@@ -574,12 +376,15 @@ export function PostsList({
     isLoadingRef.current = true;
     setLoading(true);
     try {
-      const params = buildQuery(null);
+      const params = buildQuery(jumpCursor);
       const res = await fetch(`/api/posts?${params}`);
       const data = await res.json();
       setPosts(data.posts ?? []);
       setTotal(data.total ?? 0);
+      setFilteredTotal(data.filteredTotal ?? data.total ?? 0);
       if (data.kindCounts) setKindCounts(data.kindCounts);
+      if (data.subKindCounts) setSubKindCounts(data.subKindCounts);
+      setSubKindTotals(data.subKindTotals ?? null);
       setNextCursor(data.nextCursor ?? null);
       setDone(data.nextCursor == null);
       setSelectedIds(new Set());
@@ -588,8 +393,11 @@ export function PostsList({
     } finally {
       setLoading(false);
       isLoadingRef.current = false;
+      // Consume jump cursor after one fetch — further filter changes refetch
+      // from the top, not from the jumped-to date.
+      if (jumpCursor) setJumpCursor(null);
     }
-  }, [buildQuery]);
+  }, [buildQuery, jumpCursor]);
 
   const fetchMore = useCallback(async () => {
     if (isLoadingRef.current || !nextCursor) return;
@@ -608,9 +416,159 @@ export function PostsList({
     }
   }, [buildQuery, nextCursor]);
 
-  useEffect(() => {
+  const cacheKey = useMemo(
+    () =>
+      buildFilterParams({
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+      }).toString(),
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind],
+  );
+  const initialisedKeyRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (initialisedKeyRef.current === cacheKey) return;
+    initialisedKeyRef.current = cacheKey;
+    const cached = listCache.get(cacheKey);
+    if (cached && cached.posts.length > 0) {
+      // Sync setState inside useLayoutEffect: React re-renders and commits
+      // before the browser paints, so the list is populated and scrollTop
+      // can be applied without a "flash at top" frame.
+      setPosts(cached.posts);
+      setNextCursor(cached.nextCursor);
+      setDone(cached.done);
+      setTotal(cached.total);
+      setFilteredTotal(cached.filteredTotal);
+      setLoading(false);
+      pendingScrollTargetRef.current = cached.scrollTop > 0 ? cached.scrollTop : null;
+      if (pendingScrollTargetRef.current != null) {
+        isRestoringRef.current = true;
+      }
+      return;
+    }
     fetchInitial();
-  }, [fetchInitial]);
+  }, [cacheKey, fetchInitial]);
+
+  // Drive scroll restoration across layout changes. Runs after every commit
+  // until the target is reached (or a timeout elapses). ResizeObserver nudges
+  // us whenever late-loading images/videos grow the list.
+  useLayoutEffect(() => {
+    if (pendingScrollTargetRef.current == null) return;
+    const el = findScrollParent(rootRef.current);
+    if (!el) return;
+    const target = pendingScrollTargetRef.current;
+    console.log("[PostsList] restore", { target, now: el.scrollTop, height: el.scrollHeight, client: el.clientHeight });
+    const start = performance.now();
+    let cancelled = false;
+
+    const apply = () => {
+      if (cancelled || pendingScrollTargetRef.current == null) return;
+      el.scrollTop = target;
+      console.log("[PostsList] apply", { target, actual: el.scrollTop, height: el.scrollHeight });
+      if (Math.abs(el.scrollTop - target) < 2) {
+        // Hit. Keep isRestoring guard up for a short grace window in case
+        // more media loads and the browser nudges scrollTop.
+        window.setTimeout(() => {
+          pendingScrollTargetRef.current = null;
+          isRestoringRef.current = false;
+        }, 400);
+        return;
+      }
+      if (performance.now() - start > 5000) {
+        pendingScrollTargetRef.current = null;
+        isRestoringRef.current = false;
+        return;
+      }
+      requestAnimationFrame(apply);
+    };
+    requestAnimationFrame(apply);
+
+    const ro = new ResizeObserver(() => {
+      if (pendingScrollTargetRef.current != null) {
+        el.scrollTop = pendingScrollTargetRef.current;
+      }
+    });
+    ro.observe(el);
+    if (rootRef.current) ro.observe(rootRef.current);
+
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+    };
+  }, [posts.length]);
+
+  // Keep the cache fresh as more pages load or filters change.
+  useEffect(() => {
+    const existing = listCache.get(cacheKey);
+    listCache.set(cacheKey, {
+      posts,
+      nextCursor,
+      done,
+      total,
+      filteredTotal,
+      scrollTop: existing?.scrollTop ?? 0,
+    });
+  }, [cacheKey, posts, nextCursor, done, total, filteredTotal]);
+
+  // Persist scroll position on the admin <main> container.
+  useEffect(() => {
+    const el = findScrollParent(rootRef.current);
+    if (!el) return;
+    let frame = 0;
+    const onScroll = () => {
+      if (isRestoringRef.current) return;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const snap = listCache.get(cacheKey);
+        if (snap) {
+          listCache.set(cacheKey, { ...snap, scrollTop: el.scrollTop });
+        }
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [cacheKey]);
+
+  // Sync filter state to URL so ViewToggle preserves filters when switching views
+  useEffect(() => {
+    const params = buildFilterParams({
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind,
+    });
+    const url = new URL(window.location.href);
+    // Clear existing filter keys then apply current state
+    for (const key of [
+      "search", "sort", "tags", "content", "audio", "link",
+      "multiMedia", "tagged", "share", "quality", "kind",
+    ]) {
+      url.searchParams.delete(key);
+    }
+    params.forEach((v, k) => url.searchParams.set(k, v));
+    window.history.replaceState(null, "", url.toString());
+  }, [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const res = await fetch("/api/posts/bulk-analyze");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setAnalyzeJob(data.job ?? null);
+      } catch {}
+    }
+    check();
+    const interval = setInterval(() => {
+      if (analyzeJob?.status === "RUNNING") check();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [analyzeJob?.status]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -636,20 +594,11 @@ export function PostsList({
   }, [nextCursor, fetchMore]);
 
   const detailQueryString = useMemo(() => {
-    const qs = new URLSearchParams();
-    if (search) qs.set("search", search);
-    if (sort && sort !== "originalDate_desc") qs.set("sort", sort);
-    const contentParam = serializeSet(content, CONTENT_CATEGORIES);
-    if (contentParam) qs.set("content", contentParam);
-    const audioParam = serializeSet(audio, AUDIO_CATEGORIES);
-    if (audioParam) qs.set("audio", audioParam);
-    if (link !== "all") qs.set("link", link);
-    if (multiMedia !== "all") qs.set("multiMedia", multiMedia);
-    if (tagged !== "all") qs.set("tagged", tagged);
-    if (aiTags.length > 0) qs.set("tags", aiTags.join(","));
-    if (kind !== "posts") qs.set("kind", kind);
-    return qs.toString();
-  }, [search, sort, content, audio, link, multiMedia, tagged, aiTags, kind]);
+    return buildFilterParams({
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind,
+      subKind: subKind !== "all" ? subKind : undefined,
+    }).toString();
+  }, [search, sort, content, audio, link, multiMedia, tagged, share, quality, aiTags, kind, subKind]);
 
   const postHref = useCallback(
     (id: string) => `/admin/posts/${id}?${detailQueryString}`,
@@ -698,7 +647,7 @@ export function PostsList({
   }
 
   const handleBulkDelete = useCallback(async () => {
-    const count = selectAllMode ? total : selectedIds.size;
+    const count = selectAllMode ? filteredTotal : selectedIds.size;
     await bulkDelete.run(async () => {
       const res = await fetch("/api/posts", {
         method: "DELETE",
@@ -712,19 +661,21 @@ export function PostsList({
       if (!res.ok) throw new Error("Delete failed");
     }, `Deleted ${count} post${count === 1 ? "" : "s"}`);
     fetchInitial();
-  }, [bulkDelete, selectAllMode, total, selectedIds, search, fetchInitial]);
+  }, [bulkDelete, selectAllMode, filteredTotal, selectedIds, search, fetchInitial]);
 
   const { confirming: bulkConfirming, trigger: triggerBulkDelete } = useConfirm(handleBulkDelete);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={rootRef}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             {kind === "stories" ? "All Stories" : "All Posts"}
           </h1>
           <p className="text-sm text-gray-500">
-            {total} {kind === "stories" ? "stories" : "posts"} total
+            {filteredTotal < total
+              ? `${filteredTotal.toLocaleString()} of ${total.toLocaleString()} ${kind === "stories" ? "stories" : "posts"}`
+              : `${total.toLocaleString()} ${kind === "stories" ? "stories" : "posts"}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -735,22 +686,39 @@ export function PostsList({
               Trash
             </Button>
           </Link>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={bulkAnalyze.isLoading}
-            onClick={async () => {
-              await bulkAnalyze.run(async () => {
-                const res = await fetch("/api/posts/bulk-analyze", { method: "POST" });
-                if (!res.ok) throw new Error("Failed to start analysis");
+          {analyzeJob?.status === "RUNNING" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await fetch("/api/posts/bulk-analyze", { method: "DELETE" });
+                const res = await fetch("/api/posts/bulk-analyze");
                 const data = await res.json();
-                setAnalyzeQueued(data.queued);
-              });
-            }}
-          >
-            {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}
-          </Button>
+                setAnalyzeJob(data.job ?? null);
+              }}
+            >
+              <X className="h-4 w-4" />
+              Cancel tagging ({analyzeJob.completed}/{analyzeJob.total})
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkAnalyze.isLoading}
+              onClick={async () => {
+                await bulkAnalyze.run(async () => {
+                  const res = await fetch("/api/posts/bulk-analyze", { method: "POST" });
+                  if (!res.ok) throw new Error("Failed to start analysis");
+                  const data = await res.json();
+                  setAnalyzeQueued(data.queued);
+                  setAnalyzeJob(data.job ?? null);
+                });
+              }}
+            >
+              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}
+            </Button>
+          )}
           <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -770,6 +738,7 @@ export function PostsList({
       )}
 
       <KindTabs current={kind} counts={kindCounts} />
+      <SubKindTabs kind={kind} current={subKind} counts={subKindCounts} totals={subKindTotals} />
 
       {/* Combined search + filters */}
       <div className="space-y-2">
@@ -834,9 +803,14 @@ export function PostsList({
               Clear
             </Button>
           )}
+          <SortMenu sort={sort} setSort={setSort} />
+          <JumpToDateMenu
+            onJump={(dateStr) => {
+              const c = jumpCursorForDate(dateStr, sort);
+              setJumpCursor(c);
+            }}
+          />
           <FilterMenu
-            sort={sort}
-            setSort={setSort}
             content={content}
             setContent={setContent}
             audio={audio}
@@ -847,6 +821,10 @@ export function PostsList({
             setMultiMedia={setMultiMedia}
             tagged={tagged}
             setTagged={setTagged}
+            share={share}
+            setShare={setShare}
+            quality={quality}
+            setQuality={setQuality}
             activeCount={activeFilterCount}
             onReset={resetFilters}
           />
@@ -875,7 +853,7 @@ export function PostsList({
         <div className="space-y-2">
           <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2">
             <span className="text-sm text-blue-700 font-medium">
-              {selectAllMode ? total : selectedIds.size} selected
+              {selectAllMode ? filteredTotal : selectedIds.size} selected
             </span>
             <Button
               size="sm"
@@ -924,20 +902,20 @@ export function PostsList({
           {bulkDelete.status === "error" && (
             <p className="text-sm text-red-600 px-1">{bulkDelete.message}</p>
           )}
-          {allSelected && !selectAllMode && total > posts.length && (
+          {allSelected && !selectAllMode && filteredTotal > posts.length && (
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm text-blue-700">
               All {posts.length} posts on this page are selected.{" "}
               <button
                 className="font-medium underline hover:text-blue-900"
                 onClick={() => setSelectAllMode(true)}
               >
-                Select all {total} posts
+                Select all {filteredTotal} posts
               </button>
             </div>
           )}
           {selectAllMode && (
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-              All {total} posts are selected.{" "}
+              All {filteredTotal} posts are selected.{" "}
               <button
                 className="font-medium underline hover:text-blue-900"
                 onClick={() => { setSelectAllMode(false); setSelectedIds(new Set()); }}
@@ -1060,8 +1038,9 @@ export function PostsList({
                         {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
                       </span>
                       {(() => {
-                        const typeLabel = post.postType && post.postType !== "POST" ? ` ${post.postType}` : "";
-                        const label = `${post.source}${typeLabel}`;
+                        const label = post.postType && post.postType !== "POST"
+                          ? post.postType.charAt(0) + post.postType.slice(1).toLowerCase()
+                          : "Post";
                         return post.platformUrl ? (
                           <button
                             type="button"
@@ -1081,9 +1060,52 @@ export function PostsList({
                           </Badge>
                         );
                       })()}
-                      {post.media.length > 0 && (
-                        <span className="text-xs text-gray-400">
-                          {post.media.length} media
+                      {(() => {
+                        const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+                        const hasImage = post.media.some((m) => m.mimeType.startsWith("image/"));
+                        const count = post.media.length;
+                        if (count === 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                              <FileText className="h-3 w-3" />
+                              Text only
+                            </span>
+                          );
+                        }
+                        if (hasVideo) {
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                              <Video className="h-3 w-3" />
+                              Video{count > 1 ? ` +${count - 1}` : ""}
+                            </span>
+                          );
+                        }
+                        if (count > 1) {
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                              <Images className="h-3 w-3" />
+                              {count} images
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                            <ImageIcon className="h-3 w-3" />
+                            Image
+                          </span>
+                        );
+                      })()}
+                      {post.share && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                          title={
+                            post.share.url
+                              ? `Quoted post: ${post.share.url}`
+                              : "Quoted a Facebook post (share card not preserved by export)"
+                          }
+                        >
+                          <LinkIcon className="h-3 w-3" />
+                          {post.share.url ? "Shared link" : "Quoted FB post"}
                         </span>
                       )}
                     </div>
@@ -1132,6 +1154,7 @@ export function PostsList({
                   onDeleted={() => {
                     setPosts((prev) => prev.filter((p) => p.id !== post.id));
                     setTotal((t) => Math.max(0, t - 1));
+                    setFilteredTotal((t) => Math.max(0, t - 1));
                     setSelectedIds((prev) => {
                       const next = new Set(prev);
                       next.delete(post.id);
@@ -1156,7 +1179,7 @@ export function PostsList({
       )}
       {posts.length > 0 && done && (
         <p className="py-6 text-center text-sm text-gray-400">
-          End of list — {posts.length} of {total} posts
+          End of list — {posts.length} of {filteredTotal.toLocaleString()} posts
         </p>
       )}
       <div ref={sentinelRef} className="h-px" aria-hidden="true" />

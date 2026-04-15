@@ -10,7 +10,7 @@ import * as path from "node:path";
 
 export const TRASH_ROOT = path.join(process.cwd(), "trash");
 
-export type TrashRule = "A" | "B" | "C" | "D" | "E";
+export type TrashRule = "A" | "B" | "C" | "D" | "E" | "F" | "AI";
 
 export interface TrashManifest {
   rule: TrashRule;
@@ -26,6 +26,9 @@ export const RULE_LABELS: Record<TrashRule | string, { name: string; description
   C: { name: "Full Match", description: "Same caption, date, and media fingerprint" },
   D: { name: "Reused Caption", description: "Same caption text across any date or media" },
   E: { name: "Reused Text-Only", description: "Same caption text, only text posts (no media)" },
+  F: { name: "Empty Share Stub", description: "Facebook share wrapper with no body, no media, and no original commentary — the FB export carried only a 'X shared a post.' title" },
+  AI: { name: "AI-detected Duplicate", description: "Claude vision compared media + text and judged the dropped rows as duplicates of the kept row (same moment, re-encoded, or reuploaded)" },
+  "reconcile-main": { name: "Reconciled Multi-media Post", description: "Fixed by reconcile-main-posts.ts: multi-media posts that were split into separate rows during file-by-file import. All media was merged onto the keeper row; the dropped rows are these trashed stubs." },
 };
 
 export interface TrashDirSummary {

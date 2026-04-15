@@ -15,6 +15,8 @@ import {
   Music,
   AlertCircle,
   Star,
+  Menu,
+  X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -58,12 +60,28 @@ function TriageBadge() {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <aside className="flex h-screen w-60 flex-col border-r border-gray-200 bg-white px-3 py-4">
-      <div className="mb-6 px-3">
-        <h1 className="text-lg font-bold text-gray-900">CMS Gil</h1>
-        <p className="text-xs text-gray-500">Personal content hub</p>
+  // Close drawer on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const navContent = (
+    <>
+      <div className="mb-6 flex items-center justify-between px-3">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">CMS Gil</h1>
+          <p className="text-xs text-gray-500">Personal content hub</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1">
@@ -83,7 +101,6 @@ export function Sidebar() {
           </Link>
         ))}
 
-        {/* Triage link with live count badge */}
         <Link
           href="/admin/triage"
           className={cn(
@@ -119,6 +136,41 @@ export function Sidebar() {
         <LogOut className="h-4 w-4" />
         Sign out
       </button>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile top bar */}
+      <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="rounded-lg p-2 text-gray-700 hover:bg-gray-100"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <h1 className="text-base font-semibold text-gray-900">CMS Gil</h1>
+      </div>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white px-3 py-4 md:flex">
+        {navContent}
+      </aside>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="fixed left-0 top-0 z-50 flex h-dvh w-[85%] max-w-xs flex-col border-r border-gray-200 bg-white px-3 py-4 md:hidden">
+            {navContent}
+          </aside>
+        </>
+      )}
+    </>
   );
 }

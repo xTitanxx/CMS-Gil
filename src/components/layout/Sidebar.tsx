@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   LogOut,
   CheckSquare,
   Music,
+  AlertCircle,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -24,6 +26,34 @@ const nav = [
   { href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
   { href: "/admin/todo", label: "To-Do", icon: CheckSquare },
 ];
+
+function TriageBadge() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetch_() {
+      try {
+        const res = await fetch("/api/triage/count");
+        if (res.ok) {
+          const data = await res.json();
+          setCount(data.total ?? 0);
+        }
+      } catch {
+        // silent
+      }
+    }
+    void fetch_();
+    const interval = setInterval(fetch_, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!count) return null;
+  return (
+    <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -51,6 +81,21 @@ export function Sidebar() {
             {label}
           </Link>
         ))}
+
+        {/* Triage link with live count badge */}
+        <Link
+          href="/admin/triage"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            pathname.startsWith("/admin/triage")
+              ? "bg-blue-50 text-blue-700"
+              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          )}
+        >
+          <AlertCircle className="h-4 w-4" />
+          Triage
+          <TriageBadge />
+        </Link>
       </nav>
 
       <button

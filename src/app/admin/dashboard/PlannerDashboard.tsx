@@ -84,11 +84,11 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
   }, [plan, refreshPlan]);
 
   return (
-    <div className="-m-8 flex h-[calc(100vh-3.5rem)] flex-col">
+    <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col md:-m-8">
       {/* Stats bar */}
-      <div className="flex shrink-0 items-center gap-6 border-b border-gray-200 bg-white px-8 py-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 md:gap-6 md:px-8">
         <h1 className="text-base font-bold text-gray-900">Content Hub</h1>
-        <div className="flex items-center gap-5 text-sm text-gray-600">
+        <div className="flex items-center gap-3 text-sm text-gray-600 md:gap-5">
           <span>
             <span className="font-semibold text-gray-900">{stats.totalPosts}</span> posts
           </span>
@@ -101,10 +101,10 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
         </div>
       </div>
 
-      {/* Two-pane layout */}
-      <div className="flex min-h-0 flex-1 gap-0">
-        {/* Left: Weekly plan (3/5) */}
-        <div className="w-3/5 overflow-hidden p-6 pr-3">
+      {/* Two-pane layout — stacked on mobile, side-by-side on md+ */}
+      <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto md:flex-row md:overflow-hidden">
+        {/* Left: Weekly plan (full on mobile, 3/5 on md+) */}
+        <div className="shrink-0 overflow-hidden p-4 md:w-3/5 md:shrink md:overflow-hidden md:p-6 md:pr-3">
           <WeeklyPlanView
             plan={plan}
             loading={loading}
@@ -116,12 +116,12 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
           />
         </div>
 
-        {/* Right: Planner chat (2/5) */}
-        <div className="w-2/5 overflow-hidden p-6 pl-3">
+        {/* Right: Planner chat (full on mobile, 2/5 on md+) */}
+        <div className="min-h-[400px] shrink-0 overflow-hidden p-4 md:w-2/5 md:min-h-0 md:shrink md:overflow-hidden md:p-6 md:pl-3">
           {plan ? (
             <PlannerChat planId={plan.id} onPlanUpdated={refreshPlan} />
           ) : (
-            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
+            <div className="flex h-full min-h-[200px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
               Generate a plan to start chatting
             </div>
           )}

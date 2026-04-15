@@ -46,12 +46,12 @@ export function WeeklyPlanView({
   return (
     <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-gray-500" />
-          <div>
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 md:px-5 md:py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <CalendarDays className="h-5 w-5 shrink-0 text-gray-500" />
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-gray-900">Weekly Plan</h2>
-            <p className="text-xs text-gray-500">{weekRange}</p>
+            <p className="truncate text-xs text-gray-500">{weekRange}</p>
           </div>
         </div>
 
@@ -59,19 +59,20 @@ export function WeeklyPlanView({
           onClick={() => onGenerate()}
           disabled={loading}
           size="sm"
-          className="gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60"
+          className="ml-2 shrink-0 gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Sparkles className="h-4 w-4" />
           )}
-          Plan My Week
+          <span className="hidden sm:inline">Plan My Week</span>
+          <span className="sm:hidden">Plan</span>
         </Button>
       </div>
 
       {/* Slot list */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 overflow-y-auto px-3 py-3 md:px-5 md:py-4">
         {loading && !plan ? (
           <div className="flex h-40 items-center justify-center gap-2 text-gray-500">
             <Loader2 className="h-5 w-5 animate-spin" />

@@ -667,10 +667,10 @@ export function PostsList({
   const { confirming: bulkConfirming, trigger: triggerBulkDelete } = useConfirm(handleBulkDelete);
 
   return (
-    <div className="space-y-6" ref={rootRef}>
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6" ref={rootRef}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
             {kind === "stories" ? "All Stories" : "All Posts"}
           </h1>
           <p className="text-sm text-gray-500">
@@ -679,12 +679,12 @@ export function PostsList({
               : `${total.toLocaleString()} ${kind === "stories" ? "stories" : "posts"}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewToggle />
           <Link href="/admin/trash">
             <Button size="sm" variant="outline">
-              <Trash2 className="h-4 w-4" />
-              Trash
+              <Trash2 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Trash</span>
             </Button>
           </Link>
           {analyzeJob?.status === "RUNNING" ? (
@@ -698,8 +698,9 @@ export function PostsList({
                 setAnalyzeJob(data.job ?? null);
               }}
             >
-              <X className="h-4 w-4" />
-              Cancel tagging ({analyzeJob.completed}/{analyzeJob.total})
+              <X className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Cancel tagging ({analyzeJob.completed}/{analyzeJob.total})</span>
+              <span className="sm:hidden">Cancel ({analyzeJob.completed}/{analyzeJob.total})</span>
             </Button>
           ) : (
             <Button
@@ -716,14 +717,14 @@ export function PostsList({
                 });
               }}
             >
-              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}
+              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              <span className="hidden sm:inline">{bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}</span>
             </Button>
           )}
           <Link href="/admin/posts/new">
             <Button size="sm">
-              <Plus className="h-4 w-4" />
-              New Post
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">New Post</span>
             </Button>
           </Link>
         </div>
@@ -743,8 +744,8 @@ export function PostsList({
 
       {/* Combined search + filters */}
       <div className="space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2">
+          <div className="relative min-w-0 flex-1" style={{ minWidth: "160px" }}>
             {aiMode ? (
               <Sparkles className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-purple-500" />
             ) : (
@@ -852,8 +853,8 @@ export function PostsList({
       {/* Bulk action bar */}
       {someSelected && (
         <div className="space-y-2">
-          <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2">
-            <span className="text-sm text-blue-700 font-medium">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 md:gap-3 md:px-4">
+            <span className="text-sm font-medium text-blue-700">
               {selectAllMode ? filteredTotal : selectedIds.size} selected
             </span>
             <Button
@@ -863,12 +864,12 @@ export function PostsList({
               onClick={triggerBulkDelete}
               className={bulkConfirming ? "border-amber-400 text-amber-700 hover:bg-amber-50" : ""}
             >
-              {bulkDelete.isLoading ? <Spinner /> : <Trash2 className="h-4 w-4" />}
+              {bulkDelete.isLoading ? <Spinner /> : <Trash2 className="h-4 w-4 shrink-0" />}
               {bulkDelete.isLoading
                 ? "Deleting..."
                 : bulkConfirming
-                ? "Are you sure?"
-                : "Delete selected"}
+                ? "Sure?"
+                : "Delete"}
             </Button>
             <Button
               size="sm"
@@ -887,14 +888,14 @@ export function PostsList({
                 });
               }}
             >
-              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {bulkAnalyze.isLoading ? "Starting..." : "Tag selected"}
+              {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              {bulkAnalyze.isLoading ? "Starting..." : "Tag"}
             </Button>
             <button
               className="ml-auto text-sm text-blue-600 hover:underline"
               onClick={() => { setSelectedIds(new Set()); setSelectAllMode(false); lastSelectedIndexRef.current = null; }}
             >
-              Clear selection
+              Clear
             </button>
           </div>
           {bulkDelete.status === "success" && (
@@ -966,12 +967,12 @@ export function PostsList({
             return (
               <div
                 key={post.id}
-                className={`flex items-center gap-3 rounded-lg border bg-white p-4 transition-shadow hover:shadow-sm ${
+                className={`flex items-start gap-2 rounded-lg border bg-white p-3 transition-shadow hover:shadow-sm md:items-center md:gap-3 md:p-4 ${
                   isSelected ? "border-blue-300 bg-blue-50" : "border-gray-200"
                 }`}
               >
                 {/* Checkbox */}
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 pt-1 md:pt-0">
                   <input
                     type="checkbox"
                     checked={isSelected}
@@ -981,10 +982,10 @@ export function PostsList({
                   />
                 </div>
 
-                <Link href={postHref(post.id)} className="flex min-w-0 flex-1 items-center gap-4">
+                <Link href={postHref(post.id)} className="flex min-w-0 flex-1 items-start gap-3 md:items-center md:gap-4">
                   {/* Thumbnail */}
                   <div
-                    className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-md bg-gray-100"
+                    className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28"
                     onClick={(e) => {
                       if (post.isVideo && post.videoUrl) e.preventDefault();
                     }}
@@ -1023,7 +1024,7 @@ export function PostsList({
 
                   {/* Content */}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1 md:gap-2">
                       <span
                         className="cursor-pointer rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-400 hover:text-gray-600"
                         title={`#${index + 1} — ID: ${post.id} — click to copy ID`}
@@ -1036,7 +1037,8 @@ export function PostsList({
                         #{index + 1}
                       </span>
                       <span className="text-xs text-gray-400">
-                        {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
+                        {format(new Date(post.originalDate), "MMM d, yyyy")}
+                        <span className="hidden sm:inline"> · {format(new Date(post.originalDate), "h:mm a")}</span>
                       </span>
                       {post.rating && (
                         <span className="text-yellow-500 text-xs" title={`${post.rating.stars}/5`}>
@@ -1073,15 +1075,15 @@ export function PostsList({
                         if (count === 0) {
                           return (
                             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-                              <FileText className="h-3 w-3" />
-                              Text only
+                              <FileText className="h-3 w-3 shrink-0" />
+                              <span className="hidden sm:inline">Text only</span>
                             </span>
                           );
                         }
                         if (hasVideo) {
                           return (
                             <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                              <Video className="h-3 w-3" />
+                              <Video className="h-3 w-3 shrink-0" />
                               Video{count > 1 ? ` +${count - 1}` : ""}
                             </span>
                           );
@@ -1089,14 +1091,14 @@ export function PostsList({
                         if (count > 1) {
                           return (
                             <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                              <Images className="h-3 w-3" />
+                              <Images className="h-3 w-3 shrink-0" />
                               {count} images
                             </span>
                           );
                         }
                         return (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                            <ImageIcon className="h-3 w-3" />
+                            <ImageIcon className="h-3 w-3 shrink-0" />
                             Image
                           </span>
                         );
@@ -1110,8 +1112,8 @@ export function PostsList({
                               : "Quoted a Facebook post (share card not preserved by export)"
                           }
                         >
-                          <LinkIcon className="h-3 w-3" />
-                          {post.share.url ? "Shared link" : "Quoted FB post"}
+                          <LinkIcon className="h-3 w-3 shrink-0" />
+                          <span className="hidden sm:inline">{post.share.url ? "Shared link" : "Quoted FB post"}</span>
                         </span>
                       )}
                     </div>
@@ -1123,23 +1125,29 @@ export function PostsList({
                       <p className="mt-1 text-sm italic text-gray-400">No caption</p>
                     )}
                     {(() => { const visibleTags = post.tags; return visibleTags.length > 0 ? (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {visibleTags.slice(0, 5).map((tag) => (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {visibleTags.slice(0, 3).map((tag) => (
                           <span
                             key={tag}
-                            className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                            className="hidden rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 sm:inline-block"
                           >
                             {tag}
                           </span>
                         ))}
-                        {visibleTags.length > 5 && (
-                          <span className="text-xs text-gray-400">+{visibleTags.length - 5} more</span>
+                        {/* On mobile show just the count */}
+                        {visibleTags.length > 0 && (
+                          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 sm:hidden">
+                            {visibleTags.length} tags
+                          </span>
+                        )}
+                        {visibleTags.length > 3 && (
+                          <span className="hidden text-xs text-gray-400 sm:inline">+{visibleTags.length - 3} more</span>
                         )}
                       </div>
                     ) : null; })()}
                   </div>
 
-                  {/* Published platforms */}
+                  {/* Published platforms — hide on mobile to save space */}
                   <PlatformIcons
                     platforms={[
                       ...new Set(
@@ -1149,7 +1157,7 @@ export function PostsList({
                       ),
                     ]}
                     size={16}
-                    className="flex-shrink-0 gap-1.5"
+                    className="hidden flex-shrink-0 gap-1.5 md:flex"
                   />
                 </Link>
 

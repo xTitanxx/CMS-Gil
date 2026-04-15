@@ -87,7 +87,7 @@ export function PlannerChat({ planId, onPlanUpdated }: PlannerChatProps) {
     <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Sparkles className="h-4 w-4 text-purple-600" />
+        <Sparkles className="h-4 w-4 shrink-0 text-purple-600" />
         <span className="text-sm font-semibold text-gray-800">Planning Assistant</span>
       </div>
 

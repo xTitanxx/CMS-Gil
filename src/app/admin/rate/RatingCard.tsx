@@ -12,6 +12,7 @@ function chipsForStars(s: number): string[] {
 
 type Media = { id: string; mimeType: string; url?: string; thumbnailUrl?: string };
 type Rating = { stars: number; reasons: string[]; note: string | null };
+type Lifecycle = "EVERGREEN" | "EPHEMERAL" | "SEASONAL" | "UNKNOWN";
 type Post = {
   id: string;
   body: string;
@@ -19,6 +20,7 @@ type Post = {
   tags: string[];
   media: Media[];
   rating: Rating | null;
+  lifecycle: Lifecycle;
 };
 
 export function RatingCard({
@@ -35,6 +37,27 @@ export function RatingCard({
   const [noteOpen, setNoteOpen] = useState(!!post.rating?.note);
   const [note, setNote] = useState(post.rating?.note ?? "");
   const [expanded, setExpanded] = useState(false);
+  const [lifecycle, setLifecycle] = useState<Lifecycle>(post.lifecycle);
+  const [savingLifecycle, setSavingLifecycle] = useState(false);
+
+  async function setEvergreen(next: "EVERGREEN" | "EPHEMERAL") {
+    if (savingLifecycle || lifecycle === next) return;
+    setSavingLifecycle(true);
+    const prev = lifecycle;
+    setLifecycle(next);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/lifecycle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lifecycle: next, season: null }),
+      });
+      if (!res.ok) setLifecycle(prev);
+    } catch {
+      setLifecycle(prev);
+    } finally {
+      setSavingLifecycle(false);
+    }
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -54,14 +77,14 @@ export function RatingCard({
     setReasons((rs) => (rs.includes(c) ? rs.filter((x) => x !== c) : [...rs, c]));
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col w-full max-w-xl mx-auto">
       {firstMedia && (
-        <div className="relative w-full aspect-square bg-gray-900 flex items-center justify-center overflow-hidden">
+        <div className="relative w-full bg-gray-900 flex items-center justify-center overflow-hidden">
           {firstMedia.mimeType.startsWith("video/") ? (
             // eslint-disable-next-line jsx-a11y/media-has-caption
             <video
               src={firstMedia.url}
-              className="w-full h-full object-cover"
+              className="block w-full max-h-[60vh] object-contain"
               autoPlay
               muted
               playsInline
@@ -73,7 +96,7 @@ export function RatingCard({
             <img
               src={firstMedia.url ?? firstMedia.thumbnailUrl}
               alt=""
-              className="w-full h-full object-cover"
+              className="block w-full max-h-[60vh] object-contain"
             />
           )}
         </div>
@@ -93,6 +116,34 @@ export function RatingCard({
         </div>
         <div className="flex justify-center">
           <StarRow value={stars} onChange={setStars} size="lg" />
+        </div>
+
+        <div className="flex items-center justify-center gap-2 text-xs">
+          <span className="opacity-70">Evergreen?</span>
+          <button
+            type="button"
+            onClick={() => setEvergreen("EVERGREEN")}
+            disabled={savingLifecycle}
+            className={`px-3 py-1.5 rounded-full border transition ${
+              lifecycle === "EVERGREEN"
+                ? "bg-green-400 text-black border-green-400"
+                : "bg-white/5 border-white/20 hover:bg-white/10"
+            }`}
+          >
+            Yes
+          </button>
+          <button
+            type="button"
+            onClick={() => setEvergreen("EPHEMERAL")}
+            disabled={savingLifecycle}
+            className={`px-3 py-1.5 rounded-full border transition ${
+              lifecycle === "EPHEMERAL"
+                ? "bg-orange-400 text-black border-orange-400"
+                : "bg-white/5 border-white/20 hover:bg-white/10"
+            }`}
+          >
+            No
+          </button>
         </div>
         {stars !== null && (
           <div className="flex flex-wrap gap-2 justify-center">

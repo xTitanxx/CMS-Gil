@@ -4,6 +4,7 @@ import { RatingCard } from "./RatingCard";
 
 type Media = { id: string; mimeType: string; url?: string; thumbnailUrl?: string };
 type Rating = { stars: number; reasons: string[]; note: string | null };
+type Lifecycle = "EVERGREEN" | "EPHEMERAL" | "SEASONAL" | "UNKNOWN";
 type Post = {
   id: string;
   body: string;
@@ -11,6 +12,7 @@ type Post = {
   tags: string[];
   media: Media[];
   rating: Rating | null;
+  lifecycle: Lifecycle;
 };
 
 type Stats = { total: number; rated: number; byStar: Record<number, number> };

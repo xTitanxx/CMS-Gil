@@ -70,6 +70,7 @@ interface Post {
   share: { url?: string; source?: string; name?: string } | null;
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
+  rating: { stars: number } | null;
 }
 
 type KindFilter = "posts" | "stories";
@@ -1037,6 +1038,11 @@ export function PostsList({
                       <span className="text-xs text-gray-400">
                         {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
                       </span>
+                      {post.rating && (
+                        <span className="text-yellow-500 text-xs" title={`${post.rating.stars}/5`}>
+                          {"★".repeat(post.rating.stars)}
+                        </span>
+                      )}
                       {(() => {
                         const label = post.postType && post.postType !== "POST"
                           ? post.postType.charAt(0) + post.postType.slice(1).toLowerCase()

@@ -25,6 +25,7 @@ const POST_INCLUDE = {
       scheduledAt: true,
     },
   },
+  rating: true,
 } as const;
 
 type PostWithIncludes = Awaited<

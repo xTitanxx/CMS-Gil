@@ -50,6 +50,7 @@ model User {
   platformTokens PlatformToken[]
   driveSync      DriveSync?
   weeklyPlans    WeeklyPlan[]
+  audioTracks    AudioTrack[]
 }
 
 model VerificationToken {
@@ -61,6 +62,27 @@ model VerificationToken {
 }
 
 // ─── Core Content ────────────────────────────────────────────────────────────
+
+enum Lifecycle {
+  UNKNOWN
+  EVERGREEN
+  EPHEMERAL
+  SEASONAL
+}
+
+enum Season {
+  SPRING
+  SUMMER
+  FALL
+  WINTER
+}
+
+enum Readiness {
+  UNCHECKED
+  READY
+  NOT_READY
+  ARCHIVED
+}
 
 model Post {
   id           String        @id @default(cuid())
@@ -90,6 +112,31 @@ model Post {
   postType     PostType      @default(POST)
   publishCount Int           @default(0)
 
+  lifecycle           Lifecycle  @default(UNKNOWN)
+  season              Season?
+  lifecycleOverridden Boolean    @default(false)
+  readiness           Readiness  @default(UNCHECKED)
+  notReadyReasons     String[]   @default([])
+  readinessCheckedAt  DateTime?
+  archivedAt          DateTime?
+
+  rating              PostRating?
+
+  // Populated when the imported post is a share/crosspost of another post or
+  // external link. Shape: { url?: string; source?: string; name?: string }.
+  // Null for original content. Lets the UI render a "shared from …" chip and
+  // keeps the context that was otherwise dropped from the FB export.
+  share        Json?
+
+  // Optional pointer to a "parent" multi-media post. Used when an FB album was
+  // imported as a single 50-image post AND each individual photo also has its
+  // own caption/location post in the export. The per-photo posts get linked
+  // back to the album post so the UI can show a "Part of album" badge.
+  // Backfilled by scripts/backfill-album-children.ts.
+  parentPostId String?
+  parentPost   Post?    @relation("PostAlbumChildren", fields: [parentPostId], references: [id], onDelete: SetNull)
+  childPosts   Post[]   @relation("PostAlbumChildren")
+
   media        Media[]
   publishes    PublishRecord[]
   analytics    PostAnalytics[]
@@ -97,7 +144,10 @@ model Post {
 
   @@index([userId, originalDate])
   @@index([sourceId])
+  @@index([parentPostId])
   @@index([tags], type: Gin)
+  @@index([readiness])
+  @@index([lifecycle])
 }
 
 enum PostSource {
@@ -130,7 +180,32 @@ model Media {
   // by scripts/backfill-audio.ts for historical rows.
   hasAudio    Boolean?
 
+  // When set, indicates that the delivered video URL should be generated with a
+  // Cloudinary audio overlay using the referenced AudioTrack's storageKey. Used
+  // to add licensed/custom music (e.g. generated in Suno) to silent videos whose
+  // original audio was stripped by Facebook's licensed-music policy during export.
+  audioTrackId String?
+  audioTrack   AudioTrack? @relation(fields: [audioTrackId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
+}
+
+model AudioTrack {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  storageKey  String
+  mimeType    String   @default("audio/mpeg")
+  sizeBytes   Int?
+  durationSec Float?
+
+  media       Media[]
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // ─── Social Platform Tokens ──────────────────────────────────────────────────
@@ -216,6 +291,24 @@ model ImportJob {
   startedAt     DateTime?
   completedAt   DateTime?
   createdAt     DateTime     @default(now())
+}
+
+model BulkAnalyzeJob {
+  id          String             @id @default(cuid())
+  userId      String
+  status      BulkAnalyzeStatus  @default(RUNNING)
+  total       Int                @default(0)
+  completed   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, status])
+}
+
+enum BulkAnalyzeStatus {
+  RUNNING
+  CANCELLED
+  DONE
 }
 
 enum ImportSource {
@@ -309,4 +402,17 @@ model WeeklyPlanSlot {
 
   @@unique([planId, day])
   @@index([postId])
+}
+
+model PostRating {
+  id        String   @id @default(cuid())
+  postId    String   @unique
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  stars     Int
+  reasons   String[] @default([])
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stars])
 }

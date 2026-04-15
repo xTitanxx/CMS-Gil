@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
+import { LifecycleChip } from "./LifecycleChip";
 
 const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
 
@@ -43,6 +44,9 @@ export interface MediaItem {
   audioTrack?: AudioTrackRef | null;
 }
 
+type Lifecycle = "EVERGREEN" | "EPHEMERAL" | "SEASONAL" | "UNKNOWN";
+type Season = "SPRING" | "SUMMER" | "FALL" | "WINTER" | null;
+
 interface PostEditorProps {
   postId: string;
   initialBody: string;
@@ -50,6 +54,8 @@ interface PostEditorProps {
   initialTags: string[];
   initialMedia: MediaItem[];
   initialPostType: string;
+  initialLifecycle: Lifecycle;
+  initialSeason: Season;
   source: string;
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
@@ -81,6 +87,8 @@ export function PostEditor({
   initialTags,
   initialMedia,
   initialPostType,
+  initialLifecycle,
+  initialSeason,
   source,
   platformUrl,
   share,
@@ -519,9 +527,16 @@ export function PostEditor({
       {/* Tags — separate box */}
       <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
         <div className="mb-1.5 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-            Tags
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Tags
+            </p>
+            <LifecycleChip
+              postId={postId}
+              initialLifecycle={initialLifecycle}
+              initialSeason={initialSeason}
+            />
+          </div>
           <ReanalyzeButton postId={postId} />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

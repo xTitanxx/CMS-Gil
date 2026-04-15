@@ -191,6 +191,8 @@ export default async function PostDetailPage({
               initialTags={post.tags}
               initialMedia={mediaWithUrls}
               initialPostType={post.postType}
+              initialLifecycle={post.lifecycle}
+              initialSeason={post.season ?? null}
               source={post.source}
               platformUrl={post.platformUrl}
               share={post.share as { url?: string; source?: string; name?: string } | null}

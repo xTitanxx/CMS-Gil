@@ -11,9 +11,42 @@ cloudinary.config({
 
 const client = new Anthropic();
 
-const PROMPT = `Analyze this social media post and return a JSON array of descriptive lowercase tags.
-Include tags for: subjects, objects, scenes, locations, activities, mood, colors, people descriptors, and any other relevant concepts.
-Be thorough — aim for 10-20 tags. Return only the JSON array, no explanation.`;
+const PROMPT = `Analyze this social media post and return a JSON object with these fields:
+  "tags": array of 10-20 lowercase descriptive tags (subjects, scenes, mood, activities, seasonality like "spring"/"pesach"/"new-year"),
+  "lifecycle": one of "EVERGREEN" (reflective/teaching/poetic; re-postable anytime), "EPHEMERAL" (tied to a dated event or current news; do not re-post), "SEASONAL" (tied to a time of year; re-postable when season returns),
+  "season": one of "SPRING","SUMMER","FALL","WINTER" (only when lifecycle is SEASONAL; otherwise null).
+Return ONLY the JSON object, no prose.`;
+
+export type Lifecycle = "EVERGREEN" | "EPHEMERAL" | "SEASONAL" | "UNKNOWN";
+export type Season = "SPRING" | "SUMMER" | "FALL" | "WINTER" | null;
+
+export interface AnalyzeResult {
+  tags: string[];
+  lifecycle: Lifecycle;
+  season: Season;
+}
+
+const LIFECYCLES = new Set(["EVERGREEN", "EPHEMERAL", "SEASONAL"]);
+const SEASONS = new Set(["SPRING", "SUMMER", "FALL", "WINTER"]);
+
+export function parseAnalyzeResponse(text: string): AnalyzeResult {
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]) as Record<string, unknown>;
+      const tags = Array.isArray(parsed.tags)
+        ? parsed.tags.filter((t): t is string => typeof t === "string").map((t) => t.toLowerCase())
+        : [];
+      const lifecycle = typeof parsed.lifecycle === "string" && LIFECYCLES.has(parsed.lifecycle)
+        ? (parsed.lifecycle as Lifecycle) : "UNKNOWN";
+      const season = typeof parsed.season === "string" && SEASONS.has(parsed.season)
+        ? (parsed.season as Exclude<Season, null>) : null;
+      return { tags, lifecycle, season };
+    } catch { /* fall through */ }
+  }
+  const tags = parseTagsFromResponse(text);
+  return { tags, lifecycle: "UNKNOWN", season: null };
+}
 
 /** Pure function — extracts a string[] from Claude's raw text response. */
 export function parseTagsFromResponse(text: string): string[] {
@@ -108,9 +141,17 @@ export async function analyzePost(postId: string): Promise<string[]> {
 
   const rawText =
     response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "[]";
-  const tags = parseTagsFromResponse(rawText);
+  const result = parseAnalyzeResponse(rawText);
+  const data: {
+    tags: string[];
+    lifecycle?: Lifecycle;
+    season?: Season;
+  } = { tags: result.tags };
+  if (!post.lifecycleOverridden) {
+    data.lifecycle = result.lifecycle;
+    data.season = result.season;
+  }
+  await prisma.post.update({ where: { id: postId }, data });
 
-  await prisma.post.update({ where: { id: postId }, data: { tags } });
-
-  return tags;
+  return result.tags;
 }

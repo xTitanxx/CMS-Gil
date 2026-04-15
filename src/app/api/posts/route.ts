@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getThumbnailUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
+import { refreshReadiness } from "@/lib/readiness-service";
 import {
   buildCursorClause,
   buildPostsQuery,
@@ -276,6 +277,8 @@ export async function POST(req: NextRequest) {
       originalDate: originalDate ? new Date(originalDate) : new Date(),
     },
   });
+
+  await refreshReadiness(post.id).catch((e) => console.error("readiness refresh failed", e));
 
   return NextResponse.json(post, { status: 201 });
 }

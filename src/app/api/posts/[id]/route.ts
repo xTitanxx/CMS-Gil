@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, deleteObject } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
+import { refreshReadiness } from "@/lib/readiness-service";
 
 export async function GET(
   _req: NextRequest,
@@ -79,6 +80,8 @@ export async function PATCH(
 
   if (post.count === 0)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  await refreshReadiness(id).catch((e) => console.error("readiness refresh failed", e));
 
   return NextResponse.json({ ok: true });
 }

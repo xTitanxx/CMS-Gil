@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Music,
   AlertCircle,
+  Star,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -95,6 +96,19 @@ export function Sidebar() {
           <AlertCircle className="h-4 w-4" />
           Triage
           <TriageBadge />
+        </Link>
+
+        <Link
+          href="/admin/rate"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            pathname.startsWith("/admin/rate")
+              ? "bg-blue-50 text-blue-700"
+              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          )}
+        >
+          <Star className="h-4 w-4" />
+          Rate Posts
         </Link>
       </nav>
 

@@ -353,56 +353,77 @@ export function TriageCard({ post, onDismiss }: Props) {
           </div>
         )}
 
-        {/* Thumbnail + body header */}
-        <div className="flex gap-3 p-4">
-          {thumbUrl && (
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={thumbUrl}
-                alt=""
-                className="h-full w-full object-cover"
+        {/* Media preview — playable video or full-width image */}
+        {firstMedia && (
+          <div className="relative w-full overflow-hidden bg-black">
+            {isVideo && firstMedia.url ? (
+              <video
+                src={firstMedia.url}
+                poster={firstMedia.thumbnailUrl ?? undefined}
+                controls
+                playsInline
+                preload="metadata"
+                className="block max-h-[60vh] w-full bg-black"
               />
-              {isSilent && (
-                <div className="absolute bottom-0.5 left-0.5 rounded-full bg-black/60 p-0.5">
-                  <VolumeX className="h-3 w-3 text-white" />
-                </div>
-              )}
-            </div>
-          )}
+            ) : (
+              thumbUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={thumbUrl}
+                  alt=""
+                  className="block max-h-[60vh] w-full bg-black object-contain"
+                />
+              )
+            )}
+            {isSilent && (
+              <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[11px] font-medium text-white">
+                <VolumeX className="h-3 w-3" />
+                No audio
+              </div>
+            )}
+            {post.media.length > 1 && (
+              <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[11px] font-medium text-white">
+                +{post.media.length - 1} more
+              </div>
+            )}
+          </div>
+        )}
 
-          <div className="min-w-0 flex-1">
-            {/* Reason chips */}
-            <div className="mb-2 flex flex-wrap gap-1">
-              {post.notReadyReasons.map((r) => {
-                const meta = REASON_META[r];
-                if (!meta) return null;
-                return (
-                  <span
-                    key={r}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.color}`}
-                  >
-                    {meta.icon}
-                    {meta.label}
-                  </span>
-                );
-              })}
-            </div>
+        {/* Header: reason chips + body + date */}
+        <div className="p-4">
+          {/* Reason chips */}
+          <div className="mb-2 flex flex-wrap gap-1">
+            {post.notReadyReasons.map((r) => {
+              const meta = REASON_META[r];
+              if (!meta) return null;
+              return (
+                <span
+                  key={r}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.color}`}
+                >
+                  {meta.icon}
+                  {meta.label}
+                </span>
+              );
+            })}
+          </div>
 
-            {/* Body preview */}
-            <p className="line-clamp-2 text-sm text-gray-700">
-              {post.body || <span className="italic text-gray-400">No caption</span>}
-            </p>
+          {/* Body preview */}
+          <p className="line-clamp-3 whitespace-pre-wrap text-sm text-gray-700">
+            {post.body || <span className="italic text-gray-400">No caption</span>}
+          </p>
 
-            {/* Date */}
-            <p className="mt-1 text-[11px] text-gray-400">
+          {/* Date + post id for reference */}
+          <p className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
+            <span>
               {new Date(post.originalDate).toLocaleDateString(undefined, {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
               })}
-            </p>
-          </div>
+            </span>
+            <span className="font-mono opacity-70">{post.id.slice(-6)}</span>
+          </p>
         </div>
 
         {/* Primary fix area */}

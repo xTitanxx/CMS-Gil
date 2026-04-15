@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
+import { parsePostTypeFilter, postTypeWhere } from "@/lib/post-type-filter";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -9,11 +10,13 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const bucket = url.searchParams.get("bucket");
   const cursor = url.searchParams.get("cursor");
+  const type = parsePostTypeFilter(url.searchParams.get("type"));
 
   const where = {
     userId: session.user.id,
     readiness: "NOT_READY" as const,
     ...(bucket ? { notReadyReasons: { has: bucket } } : {}),
+    ...postTypeWhere(type),
   };
 
   const posts = await prisma.post.findMany({

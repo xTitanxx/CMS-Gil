@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
+import { parsePostTypeFilter, postTypeWhere } from "@/lib/post-type-filter";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "unauth" }, { status: 401 });
-  const limit = Number(new URL(req.url).searchParams.get("limit") ?? 20);
+  const url = new URL(req.url);
+  const limit = Number(url.searchParams.get("limit") ?? 20);
+  const type = parsePostTypeFilter(url.searchParams.get("type"));
+  const typeWhere = postTypeWhere(type);
   const userId = session.user.id;
 
   const unrated = await prisma.post.findMany({
-    where: { userId, readiness: "READY", rating: null },
+    where: { userId, readiness: "READY", rating: null, ...typeWhere },
     include: { media: true, rating: true },
     take: limit,
     orderBy: { originalDate: "desc" },
@@ -37,6 +41,7 @@ export async function GET(req: NextRequest) {
       userId,
       readiness: "READY",
       rating: { is: { updatedAt: { lt: sixMo } } },
+      ...typeWhere,
     },
     include: { media: true, rating: true },
     take: limit - unrated.length,

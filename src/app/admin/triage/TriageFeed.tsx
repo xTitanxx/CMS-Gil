@@ -30,6 +30,14 @@ const BUCKETS = [
 
 type BucketSlug = (typeof BUCKETS)[number]["slug"];
 
+const TYPE_TABS = [
+  { value: "video", label: "Videos", emoji: "🎬" },
+  { value: "image", label: "Images", emoji: "🖼️" },
+  { value: "story", label: "Stories", emoji: "📖" },
+] as const;
+
+type TypeTab = (typeof TYPE_TABS)[number]["value"];
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 interface Toast {
@@ -52,6 +60,9 @@ export function TriageFeed({ initialBucket }: Props) {
 
   const activeBucket: BucketSlug =
     (BUCKETS.find((b) => b.slug === initialBucket)?.slug) ?? undefined;
+
+  const activeType: TypeTab =
+    (TYPE_TABS.find((t) => t.value === searchParams.get("type"))?.value) ?? "video";
 
   const [counts, setCounts] = useState<CountData | null>(null);
   const [posts, setPosts] = useState<TriagePost[]>([]);
@@ -86,12 +97,13 @@ export function TriageFeed({ initialBucket }: Props) {
     async (cursor?: string) => {
       const params = new URLSearchParams();
       if (activeBucket) params.set("bucket", activeBucket);
+      if (activeType) params.set("type", activeType);
       if (cursor) params.set("cursor", cursor);
       const res = await fetch(`/api/triage?${params}`);
       if (!res.ok) throw new Error("Failed to fetch triage");
       return (await res.json()) as FeedPage;
     },
-    [activeBucket]
+    [activeBucket, activeType]
   );
 
   // Initial load / bucket change
@@ -144,6 +156,12 @@ export function TriageFeed({ initialBucket }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (slug) params.set("bucket", slug);
     else params.delete("bucket");
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  function selectType(t: TypeTab) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("type", t);
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -212,6 +230,23 @@ export function TriageFeed({ initialBucket }: Props) {
 
   return (
     <div className="relative">
+      {/* Type tabs */}
+      <div className="mb-3 flex gap-2">
+        {TYPE_TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => selectType(t.value)}
+            className={`flex-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeType === t.value
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {t.emoji} {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filter pills */}
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
         {BUCKETS.map(({ slug, label }) => {

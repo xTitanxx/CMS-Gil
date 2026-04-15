@@ -31,7 +31,9 @@ export async function POST(
 
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
-    include: { media: true },
+    include: {
+      media: { include: { audioTrack: { select: { storageKey: true } } } },
+    },
   });
 
   if (!post) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -70,7 +72,7 @@ export async function POST(
 export async function publishNow(
   recordId: string,
   userId: string,
-  post: { id: string; body: string; postType: string; media: { storageKey: string; mimeType: string }[] },
+  post: { id: string; body: string; postType: string; media: { storageKey: string; mimeType: string; audioTrack?: { storageKey: string } | null }[] },
   platform: Platform
 ) {
   await prisma.publishRecord.update({
@@ -105,6 +107,10 @@ export async function publishNow(
     }
 
     const mediaKeys = post.media.map((m) => m.storageKey);
+    const audioOverlayMap = new Map<string, string>();
+    for (const m of post.media) {
+      if (m.audioTrack?.storageKey) audioOverlayMap.set(m.storageKey, m.audioTrack.storageKey);
+    }
 
     let result: { platformPostId: string; platformUrl?: string };
 
@@ -114,14 +120,16 @@ export async function publishNow(
           { accessToken, platformUserId: platformUserId! },
           post.body,
           mediaKeys,
-          post.postType
+          post.postType,
+          audioOverlayMap
         );
         break;
       case "LINKEDIN":
         result = await postToLinkedIn(
           { accessToken, platformUserId: platformUserId! },
           post.body,
-          mediaKeys
+          mediaKeys,
+          audioOverlayMap
         );
         break;
       case "YOUTUBE":
@@ -129,18 +137,20 @@ export async function publishNow(
           { accessToken, refreshToken },
           post.body.slice(0, 100),
           post.body,
-          mediaKeys
+          mediaKeys,
+          audioOverlayMap
         );
         break;
       case "TIKTOK":
-        result = await postToTikTok({ accessToken }, post.body, mediaKeys);
+        result = await postToTikTok({ accessToken }, post.body, mediaKeys, audioOverlayMap);
         break;
       case "FACEBOOK_PAGE":
         result = await postToFacebook(
           { accessToken, platformUserId: platformUserId! },
           post.body,
           mediaKeys,
-          post.postType
+          post.postType,
+          audioOverlayMap
         );
         break;
       default:

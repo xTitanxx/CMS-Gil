@@ -17,6 +17,7 @@ import {
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
 import { LifecycleChip } from "./LifecycleChip";
+import { StarRow } from "@/components/StarRow";
 
 const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
 
@@ -59,6 +60,7 @@ interface PostEditorProps {
   source: string;
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
+  rating: { stars: number; reasons: string[]; note: string | null } | null;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -92,8 +94,10 @@ export function PostEditor({
   source,
   platformUrl,
   share,
+  rating,
 }: PostEditorProps) {
   const [body, setBody] = useState(initialBody);
+  const [currentStars, setCurrentStars] = useState<number | null>(rating?.stars ?? null);
   const [postType, setPostType] = useState(initialPostType);
   const [date, setDate] = useState(() => toDatetimeLocal(new Date(initialOriginalDate)));
   const [tags, setTags] = useState<string[]>(initialTags);
@@ -537,7 +541,27 @@ export function PostEditor({
               initialSeason={initialSeason}
             />
           </div>
-          <ReanalyzeButton postId={postId} />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">Rating:</span>
+              <StarRow
+                value={currentStars}
+                onChange={async (v) => {
+                  setCurrentStars(v);
+                  await fetch("/api/ratings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      postId,
+                      stars: v,
+                      reasons: rating?.reasons ?? [],
+                    }),
+                  });
+                }}
+              />
+            </div>
+            <ReanalyzeButton postId={postId} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {tags.map((tag) => (

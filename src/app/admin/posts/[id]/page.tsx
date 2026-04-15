@@ -59,6 +59,7 @@ export default async function PostDetailPage({
       publishes: { orderBy: { createdAt: "desc" } },
       parentPost: { select: { id: true, body: true, _count: { select: { media: true } } } },
       _count: { select: { childPosts: true } },
+      rating: true,
     },
   });
 
@@ -196,6 +197,7 @@ export default async function PostDetailPage({
               source={post.source}
               platformUrl={post.platformUrl}
               share={post.share as { url?: string; source?: string; name?: string } | null}
+              rating={post.rating ? { stars: post.rating.stars, reasons: post.rating.reasons, note: post.rating.note } : null}
             />
           </div>
 

@@ -1,5 +1,6 @@
 import type { CandidateRow, Recommendation, RecommendOptions } from "./types";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
+import { classifyContent } from "./classify";
 import { currentSeason, seasonFit } from "./season";
 
 export const WEIGHTS = {
@@ -122,6 +123,7 @@ export function scorePost(
     stars: post.stars,
     lifecycle: post.lifecycle,
     thumbUrl: post.thumbUrl,
+    contentKind: post.contentKind,
   };
 }
 
@@ -171,9 +173,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
           select: { publishedAt: true },
         },
         media: {
-          where: { mimeType: { startsWith: "image/" } },
           orderBy: { id: "asc" },
-          take: 1,
           select: { storageKey: true, mimeType: true },
         },
       },
@@ -195,20 +195,25 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     `.catch(() => [] as { reason: string; count: bigint }[]),
   ]);
 
-  const rows = posts.map((p) => ({
-    id: p.id,
-    body: p.body,
-    tags: p.tags,
-    originalDate: p.originalDate,
-    lifecycle: p.lifecycle,
-    season: p.season,
-    postType: p.postType,
-    publishCount: p.publishCount,
-    stars: p.rating?.stars ?? null,
-    ratingReasons: p.rating?.reasons ?? [],
-    lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
-    thumbUrl: buildThumbUrl(p.media[0]?.storageKey, p.media[0]?.mimeType),
-  }));
+  const rows: CandidateRow[] = posts.map((p) => {
+    const mimes = p.media.map((m) => m.mimeType);
+    const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
+    return {
+      id: p.id,
+      body: p.body,
+      tags: p.tags,
+      originalDate: p.originalDate,
+      lifecycle: p.lifecycle,
+      season: p.season,
+      postType: p.postType,
+      publishCount: p.publishCount,
+      stars: p.rating?.stars ?? null,
+      ratingReasons: p.rating?.reasons ?? [],
+      lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
+      thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
+      contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
+    };
+  });
 
   const recentTags = recentPublishes.map((r) => r.post.tags);
   const recentKinds = recentPublishes.map((r) => r.post.postType);
@@ -218,7 +223,8 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     negativeReasonFrequency.set(row.reason, Number(row.count));
   }
 
-  const scored = rows.map((r) =>
+  const filtered = opts.contentKind ? rows.filter((r) => r.contentKind === opts.contentKind) : rows;
+  const scored = filtered.map((r) =>
     scorePost(r, when, { recentTags, recentKinds, negativeReasonFrequency }),
   );
   scored.sort((a, b) => b.score - a.score);

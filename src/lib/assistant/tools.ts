@@ -34,6 +34,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
           enum: ["instagram", "facebook", "linkedin", "tiktok", "youtube"],
         },
         kind: { type: "string", enum: ["POST", "STORY", "REEL"] },
+        contentKind: {
+          type: "string",
+          enum: ["video", "image", "short-text", "long-text"],
+          description:
+            "Filter by content type. 'video' = REELs + any post with video media. 'image' = posts with image media, no video. 'short-text' = text-only posts ≤400 chars. 'long-text' = text-only posts >400 chars.",
+        },
         limit: { type: "number", description: "Default 10, max 20." },
       },
     },
@@ -51,6 +57,10 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
           enum: ["EVERGREEN", "EPHEMERAL", "SEASONAL", "UNKNOWN"],
         },
         season: { type: "string", enum: ["SPRING", "SUMMER", "FALL", "WINTER"] },
+        contentKind: {
+          type: "string",
+          enum: ["video", "image", "short-text", "long-text"],
+        },
       },
       required: ["query"],
     },
@@ -176,6 +186,7 @@ export async function handleTool(
         when: typeof input.when === "string" ? new Date(input.when) : undefined,
         platform: input.platform as never,
         kind: input.kind as never,
+        contentKind: input.contentKind as never,
         limit: typeof input.limit === "number" ? Math.min(20, input.limit) : undefined,
       });
       return { ok: true, data };
@@ -187,6 +198,7 @@ export async function handleTool(
         limit: typeof input.limit === "number" ? Math.min(50, input.limit) : undefined,
         lifecycle: input.lifecycle as never,
         season: input.season as never,
+        contentKind: input.contentKind as never,
       });
       return { ok: true, data };
     }

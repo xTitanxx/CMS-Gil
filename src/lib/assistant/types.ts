@@ -1,6 +1,9 @@
 import type { Lifecycle, PostType, Season } from "@prisma/client";
+import type { ContentKind } from "./classify";
 
 export type Platform = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
+
+export type { ContentKind } from "./classify";
 
 export interface ScoreBreakdown {
   ratingScore: number;
@@ -23,6 +26,7 @@ export interface Recommendation {
   stars: number | null;
   lifecycle: Lifecycle;
   thumbUrl: string | null;
+  contentKind: ContentKind;
 }
 
 export interface RecommendOptions {
@@ -30,6 +34,7 @@ export interface RecommendOptions {
   when?: Date;
   platform?: Platform;
   kind?: PostType;
+  contentKind?: ContentKind;
   excludePostIds?: string[];
   limit?: number;
 }
@@ -40,6 +45,7 @@ export interface RetrieveOptions {
   limit?: number;
   lifecycle?: Lifecycle;
   season?: Season;
+  contentKind?: ContentKind;
   dateRange?: { from?: Date; to?: Date };
 }
 
@@ -53,6 +59,7 @@ export interface RetrieveHit {
   stars: number | null;
   lifecycle: Lifecycle;
   thumbUrl: string | null;
+  contentKind: ContentKind;
 }
 
 export interface CandidateRow {
@@ -68,4 +75,5 @@ export interface CandidateRow {
   ratingReasons: string[];
   lastPublishedAt: Date | null;
   thumbUrl: string | null;
+  contentKind: ContentKind;
 }

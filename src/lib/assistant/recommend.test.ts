@@ -16,6 +16,7 @@ function row(overrides: Partial<CandidateRow> = {}): CandidateRow {
     ratingReasons: [],
     lastPublishedAt: null,
     thumbUrl: null,
+    contentKind: "short-text",
     ...overrides,
   };
 }

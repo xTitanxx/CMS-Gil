@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
-import type { Lifecycle } from "@prisma/client";
+import type { Lifecycle, PostType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { RetrieveHit, RetrieveOptions } from "./types";
+import type { ContentKind, RetrieveHit, RetrieveOptions } from "./types";
+import { classifyContent } from "./classify";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
 
 const anthropic = new Anthropic();
@@ -14,6 +15,7 @@ interface PostSlim {
   stars: number | null;
   lifecycle: Lifecycle;
   thumbUrl: string | null;
+  contentKind: ContentKind;
 }
 
 interface MappedQuery {
@@ -80,6 +82,7 @@ export function rankHits(posts: PostSlim[], q: MappedQuery): RetrieveHit[] {
         stars: p.stars,
         lifecycle: p.lifecycle,
         thumbUrl: p.thumbUrl,
+        contentKind: p.contentKind,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -133,25 +136,30 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       body: true,
       tags: true,
       lifecycle: true,
+      postType: true,
       rating: { select: { stars: true } },
       media: {
-        where: { mimeType: { startsWith: "image/" } },
         orderBy: { id: "asc" },
-        take: 1,
         select: { storageKey: true, mimeType: true },
       },
     },
     take: 200,
   });
 
-  const slim: PostSlim[] = posts.map((p) => ({
-    id: p.id,
-    body: p.body,
-    tags: p.tags,
-    stars: p.rating?.stars ?? null,
-    lifecycle: p.lifecycle,
-    thumbUrl: buildThumbUrl(p.media[0]?.storageKey, p.media[0]?.mimeType),
-  }));
+  const slim: PostSlim[] = posts.map((p: { id: string; body: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
+    const mimes = p.media.map((m) => m.mimeType);
+    const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
+    return {
+      id: p.id,
+      body: p.body,
+      tags: p.tags,
+      stars: p.rating?.stars ?? null,
+      lifecycle: p.lifecycle,
+      thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
+      contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
+    };
+  });
 
-  return rankHits(slim, mapped).slice(0, limit);
+  const filtered = opts.contentKind ? slim.filter((p) => p.contentKind === opts.contentKind) : slim;
+  return rankHits(filtered, mapped).slice(0, limit);
 }

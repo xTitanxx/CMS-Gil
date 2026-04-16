@@ -9,6 +9,7 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       delete: vi.fn(),
     },
+    postRating: { upsert: vi.fn() },
   },
 }));
 vi.mock("./recommend", () => ({ recommend: vi.fn() }));
@@ -132,5 +133,28 @@ describe("handleTool update_post", () => {
     (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
     const out = await handleTool("update_post", { postId: "p1", patch: {} }, { userId: "u1" });
     expect(out.ok).toBe(false);
+  });
+});
+
+describe("handleTool rate_post", () => {
+  it("rejects stars outside 1-5", async () => {
+    const out = await handleTool("rate_post", { postId: "p1", stars: 7 }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("upserts rating with reasons", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    (prisma.postRating.upsert as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "r1" });
+    const out = await handleTool(
+      "rate_post",
+      { postId: "p1", stars: 5, reasons: ["timeless"], note: "great" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.postRating.upsert as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.postId).toBe("p1");
+    expect(call.create.stars).toBe(5);
+    expect(call.create.reasons).toEqual(["timeless"]);
+    expect(call.create.note).toBe("great");
   });
 });

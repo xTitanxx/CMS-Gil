@@ -124,6 +124,21 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       required: ["postId", "patch"],
     },
   },
+  {
+    name: "rate_post",
+    description:
+      "Sets the 1-5 star rating on a post. Only call after the user has confirmed the rating in chat.",
+    input_schema: {
+      type: "object",
+      properties: {
+        postId: { type: "string" },
+        stars: { type: "number", description: "Integer 1-5." },
+        reasons: { type: "array", items: { type: "string" } },
+        note: { type: "string" },
+      },
+      required: ["postId", "stars"],
+    },
+  },
 ];
 
 export async function handleTool(
@@ -253,6 +268,30 @@ export async function handleTool(
       const updated = await prisma.post.update({ where: { id: post.id }, data });
       console.log("[assistant] update_post", { userId: ctx.userId, postId: post.id, fields: Object.keys(data) });
       return { ok: true, data: { id: updated.id, updated: Object.keys(data) } };
+    }
+    case "rate_post": {
+      const stars = Number(input.stars);
+      if (!Number.isInteger(stars) || stars < 1 || stars > 5)
+        return { ok: false, error: "stars must be integer 1-5" };
+
+      const post = await prisma.post.findFirst({
+        where: { id: String(input.postId), userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!post) return { ok: false, error: "post not found" };
+
+      const reasons = Array.isArray(input.reasons)
+        ? (input.reasons as unknown[]).filter((r): r is string => typeof r === "string")
+        : [];
+      const note = typeof input.note === "string" ? input.note : null;
+
+      const record = await prisma.postRating.upsert({
+        where: { postId: post.id },
+        create: { postId: post.id, stars, reasons, note },
+        update: { stars, reasons, note },
+      });
+      console.log("[assistant] rate_post", { userId: ctx.userId, postId: post.id, stars });
+      return { ok: true, data: { id: record.id, stars } };
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

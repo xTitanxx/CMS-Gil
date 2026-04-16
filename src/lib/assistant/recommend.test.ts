@@ -142,3 +142,59 @@ describe("scorePost", () => {
     expect(r.breakdown.penaltyReasons).toBe(0.15);
   });
 });
+
+import { vi } from "vitest";
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    post: { findMany: vi.fn() },
+    publishRecord: { findMany: vi.fn() },
+    postRating: { groupBy: vi.fn() },
+  },
+}));
+
+import { recommend } from "./recommend";
+import { prisma } from "@/lib/prisma";
+
+describe("recommend", () => {
+  it("ranks READY posts and excludes given ids", async () => {
+    (prisma.post.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "p1",
+        body: "x",
+        tags: ["a"],
+        originalDate: new Date("2024-01-01"),
+        lifecycle: "EVERGREEN",
+        season: null,
+        postType: "POST",
+        publishCount: 0,
+        rating: { stars: 5, reasons: [] },
+        publishes: [],
+      },
+      {
+        id: "p2",
+        body: "y",
+        tags: ["a"],
+        originalDate: new Date("2024-01-01"),
+        lifecycle: "EPHEMERAL",
+        season: null,
+        postType: "POST",
+        publishCount: 0,
+        rating: null,
+        publishes: [],
+      },
+    ]);
+    (prisma.publishRecord.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prisma.postRating.groupBy as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const recs = await recommend({
+      userId: "u1",
+      when: new Date("2026-04-16"),
+      excludePostIds: [],
+      limit: 5,
+    });
+
+    expect(recs.map((r) => r.postId)).toEqual(["p1", "p2"]);
+    expect(recs[0].score).toBeGreaterThan(recs[1].score);
+  });
+});

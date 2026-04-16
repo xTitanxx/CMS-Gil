@@ -1,4 +1,4 @@
-import type { CandidateRow, Recommendation } from "./types";
+import type { CandidateRow, Recommendation, RecommendOptions } from "./types";
 import { currentSeason, seasonFit } from "./season";
 
 export const WEIGHTS = {
@@ -117,4 +117,103 @@ export function scorePost(
     },
     reasons,
   };
+}
+
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { subDays } from "date-fns";
+
+const RECENCY_DAYS = 90;
+const RECENT_HISTORY_N = 10;
+
+export async function recommend(opts: RecommendOptions): Promise<Recommendation[]> {
+  const when = opts.when ?? new Date();
+  const cutoff = subDays(when, RECENCY_DAYS);
+  const limit = opts.limit ?? 10;
+
+  const [posts, recentPublishes, negativeReasonRows] = await Promise.all([
+    prisma.post.findMany({
+      where: {
+        userId: opts.userId,
+        readiness: "READY",
+        share: { equals: Prisma.DbNull },
+        ...(opts.kind ? { postType: opts.kind } : {}),
+        ...(opts.excludePostIds?.length ? { NOT: { id: { in: opts.excludePostIds } } } : {}),
+        publishes: {
+          none: {
+            OR: [
+              { status: "PUBLISHED", publishedAt: { gte: cutoff } },
+              { status: "PENDING", scheduledAt: { gte: when } },
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        body: true,
+        tags: true,
+        originalDate: true,
+        lifecycle: true,
+        season: true,
+        postType: true,
+        publishCount: true,
+        rating: { select: { stars: true, reasons: true } },
+        publishes: {
+          where: { status: "PUBLISHED" },
+          orderBy: { publishedAt: "desc" },
+          take: 1,
+          select: { publishedAt: true },
+        },
+      },
+      orderBy: [{ publishCount: "asc" }, { originalDate: "asc" }],
+      take: 200,
+    }),
+    prisma.publishRecord.findMany({
+      where: { status: "PUBLISHED", post: { userId: opts.userId } },
+      orderBy: { publishedAt: "desc" },
+      take: RECENT_HISTORY_N,
+      select: { post: { select: { tags: true, postType: true } } },
+    }),
+    // groupBy on an array column is not supported by every Prisma backend; fall back to empty if it throws.
+    prisma.postRating
+      .groupBy({
+        by: ["reasons"],
+        where: { post: { userId: opts.userId } },
+        _count: true,
+      })
+      .catch(() => [] as Array<{ reasons: string[]; _count: number }>),
+  ]);
+
+  const rows = posts.map((p) => ({
+    id: p.id,
+    body: p.body,
+    tags: p.tags,
+    originalDate: p.originalDate,
+    lifecycle: p.lifecycle,
+    season: p.season,
+    postType: p.postType,
+    publishCount: p.publishCount,
+    stars: p.rating?.stars ?? null,
+    ratingReasons: p.rating?.reasons ?? [],
+    lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
+  }));
+
+  const recentTags = recentPublishes.map((r) => r.post.tags);
+  const recentKinds = recentPublishes.map((r) => r.post.postType);
+
+  const negativeReasonFrequency = new Map<string, number>();
+  for (const row of negativeReasonRows as Array<{ reasons: string[]; _count: number }>) {
+    for (const reason of row.reasons) {
+      negativeReasonFrequency.set(
+        reason,
+        (negativeReasonFrequency.get(reason) ?? 0) + (row._count ?? 0),
+      );
+    }
+  }
+
+  const scored = rows.map((r) =>
+    scorePost(r, when, { recentTags, recentKinds, negativeReasonFrequency }),
+  );
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
 }

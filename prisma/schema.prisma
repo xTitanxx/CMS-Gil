@@ -51,6 +51,7 @@ model User {
   driveSync      DriveSync?
   weeklyPlans    WeeklyPlan[]
   audioTracks    AudioTrack[]
+  dailyBriefs    DailyBrief[]
 }
 
 model VerificationToken {
@@ -415,4 +416,16 @@ model PostRating {
   updatedAt DateTime @updatedAt
 
   @@index([stars])
+}
+
+model DailyBrief {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }

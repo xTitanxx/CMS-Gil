@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { WeeklyPlanView } from "./WeeklyPlanView";
-import { PlannerChat } from "./PlannerChat";
 import type { WeeklyPlanData } from "@/lib/planner/types";
 
 interface Stats {
@@ -116,15 +117,15 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
           />
         </div>
 
-        {/* Right: Planner chat (full on mobile, 2/5 on md+) */}
-        <div className="min-h-[400px] shrink-0 overflow-hidden p-4 md:w-2/5 md:min-h-0 md:shrink md:overflow-hidden md:p-6 md:pl-3">
-          {plan ? (
-            <PlannerChat planId={plan.id} onPlanUpdated={refreshPlan} />
-          ) : (
-            <div className="flex h-full min-h-[200px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
-              Generate a plan to start chatting
-            </div>
-          )}
+        {/* Right: Link to the new assistant (replaces the old planner chat) */}
+        <div className="min-h-[200px] shrink-0 overflow-hidden p-4 md:w-2/5 md:min-h-0 md:shrink md:overflow-hidden md:p-6 md:pl-3">
+          <Link
+            href="/admin/assistant"
+            className="flex h-full min-h-[200px] items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:bg-white hover:text-gray-900"
+          >
+            <Sparkles className="h-4 w-4" />
+            Open the Assistant →
+          </Link>
         </div>
       </div>
     </div>

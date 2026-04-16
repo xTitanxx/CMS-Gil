@@ -186,14 +186,13 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
       take: RECENT_HISTORY_N,
       select: { post: { select: { tags: true, postType: true } } },
     }),
-    // groupBy on an array column is not supported by every Prisma backend; fall back to empty if it throws.
-    prisma.postRating
-      .groupBy({
-        by: ["reasons"],
-        where: { post: { userId: opts.userId } },
-        _count: true,
-      })
-      .catch(() => [] as Array<{ reasons: string[]; _count: number }>),
+    prisma.$queryRaw<{ reason: string; count: bigint }[]>`
+      SELECT unnest(r.reasons) AS reason, COUNT(*)::bigint AS count
+      FROM "PostRating" r
+      JOIN "Post" p ON p.id = r."postId"
+      WHERE p."userId" = ${opts.userId}
+      GROUP BY reason
+    `.catch(() => [] as { reason: string; count: bigint }[]),
   ]);
 
   const rows = posts.map((p) => ({
@@ -215,13 +214,8 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
   const recentKinds = recentPublishes.map((r) => r.post.postType);
 
   const negativeReasonFrequency = new Map<string, number>();
-  for (const row of negativeReasonRows as Array<{ reasons: string[]; _count: number }>) {
-    for (const reason of row.reasons) {
-      negativeReasonFrequency.set(
-        reason,
-        (negativeReasonFrequency.get(reason) ?? 0) + (row._count ?? 0),
-      );
-    }
+  for (const row of negativeReasonRows as Array<{ reason: string; count: bigint }>) {
+    negativeReasonFrequency.set(row.reason, Number(row.count));
   }
 
   const scored = rows.map((r) =>

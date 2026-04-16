@@ -71,6 +71,9 @@ interface Post {
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
   rating: { stars: number } | null;
+  captionQuality: number | null;
+  captionEvergreen: boolean | null;
+  captionSuggestion: string | null;
 }
 
 type KindFilter = "posts" | "stories";
@@ -1114,6 +1117,22 @@ export function PostsList({
                       {post.rating && (
                         <span className="text-yellow-500 text-xs" title={`${post.rating.stars}/5`}>
                           {"★".repeat(post.rating.stars)}
+                        </span>
+                      )}
+                      {post.captionQuality != null && (
+                        <span
+                          className={`text-xs rounded px-1 py-0.5 ${
+                            post.captionQuality >= 4
+                              ? "bg-green-100 text-green-700"
+                              : post.captionQuality <= 2
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-gray-100 text-gray-600"
+                          }`}
+                          title={`Caption quality: ${post.captionQuality}/5${post.captionEvergreen === false ? " · non-evergreen" : ""}${post.captionSuggestion ? " · has suggestion" : ""}`}
+                        >
+                          C{post.captionQuality}
+                          {post.captionEvergreen === false && "⏳"}
+                          {post.captionSuggestion && "✨"}
                         </span>
                       )}
                       {(() => {

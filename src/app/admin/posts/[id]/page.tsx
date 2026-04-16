@@ -203,7 +203,7 @@ export default async function PostDetailPage({
           </div>
 
           <div className="min-w-0 space-y-3">
-            {post.captionSuggestion && (
+            {(post.captionQuality != null || post.captionSuggestion) && (
               <CaptionSuggestionPanel
                 postId={id}
                 currentBody={post.body}

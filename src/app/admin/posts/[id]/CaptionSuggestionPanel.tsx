@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 interface Props {
   postId: string;
   currentBody: string;
-  suggestion: string;
+  suggestion: string | null;
   quality: number | null;
   evergreen: boolean | null;
 }
@@ -67,38 +67,42 @@ export function CaptionSuggestionPanel({
           )}
         </div>
 
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Current</p>
-          <p className="mt-1 whitespace-pre-wrap rounded-md border border-amber-200 bg-white/70 p-2 text-gray-700">
-            {currentBody}
-          </p>
-        </div>
+        {suggestion && (
+          <>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Current</p>
+              <p className="mt-1 whitespace-pre-wrap rounded-md border border-amber-200 bg-white/70 p-2 text-gray-700">
+                {currentBody}
+              </p>
+            </div>
 
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Suggested</p>
-          <p className="mt-1 whitespace-pre-wrap rounded-md border border-amber-200 bg-white p-2 text-gray-900">
-            {suggestion}
-          </p>
-        </div>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Suggested</p>
+              <p className="mt-1 whitespace-pre-wrap rounded-md border border-amber-200 bg-white p-2 text-gray-900">
+                {suggestion}
+              </p>
+            </div>
 
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={accept}
-            disabled={busy}
-            className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-          >
-            <Check className="h-3.5 w-3.5" />
-            Accept
-          </button>
-          <button
-            onClick={dismiss}
-            disabled={busy}
-            className="flex items-center gap-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-          >
-            <X className="h-3.5 w-3.5" />
-            Dismiss
-          </button>
-        </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={accept}
+                disabled={busy}
+                className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Accept
+              </button>
+              <button
+                onClick={dismiss}
+                disabled={busy}
+                className="flex items-center gap-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <X className="h-3.5 w-3.5" />
+                Dismiss
+              </button>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

@@ -33,9 +33,10 @@ Write tools (confirmation-gated):
 
 Rules:
 - Never invent post content, ids, or scheduling state. Use tools to ground every reference.
-- Cite posts as [post:<id>] — the UI renders this as a card.
-- For EVERY write tool, you MUST first describe the intended change in prose (which post, what changes, why) and wait for the user's affirmative confirmation ("yes", "do it", "confirmed"). Do not call the write tool on the same turn as your proposal.
+- Cite posts as [post:<id>] — the UI replaces that marker with a rich card showing the post body, stars, and a thumbnail. Use the citation INSTEAD of re-typing the post body; don't describe the post in prose around the citation.
+- Write in plain conversational prose. NO markdown headings (no "###"), NO bullet point markers ("- ", "* "), NO bold/italic emphasis. The UI renders plain text only, so markdown shows up as raw characters.
+- Keep replies short. 1–3 short sentences plus citations is the target. Tool-result cards already show the info — don't restate it.
+- For EVERY write tool (update_post, rate_post, archive_post, schedule_post, unschedule, publish_now), describe the intended change in prose and wait for the user's affirmative confirmation ("yes", "do it", "confirmed"). Do not call the write tool on the same turn as the proposal.
 - Respect readiness: never schedule or publish a non-READY post.
-- Prefer recommend_posts for "what should I post"; search_archive for "find me".
-- Keep replies tight. Tool results carry most of the info; prose only where it adds value.`;
+- Prefer recommend_posts for "what should I post"; search_archive for "find me".`;
 }

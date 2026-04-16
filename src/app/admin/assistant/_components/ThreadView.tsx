@@ -22,10 +22,64 @@ type UiMsg =
 
 const SUGGESTIONS = [
   "What should I post today?",
-  "Find me a post about breathwork",
   "Show me next week's schedule",
-  "Rate my last 5 posts",
 ];
+
+interface CachedPost {
+  postId: string;
+  body?: string;
+  tags?: string[];
+  stars?: number | null;
+  lifecycle?: string | null;
+  thumbUrl?: string | null;
+}
+
+const POST_REF_RE = /\[post:([a-zA-Z0-9_-]+)\]/g;
+
+function InlinePostRef({ post, id }: { post: CachedPost | undefined; id: string }) {
+  const href = `/admin/posts/${id}`;
+  if (!post?.body) {
+    return (
+      <a
+        href={href}
+        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs text-gray-600 hover:bg-gray-100"
+      >
+        post:{id.slice(0, 6)}…
+      </a>
+    );
+  }
+  const preview = post.body.replace(/\s+/g, " ").slice(0, 60);
+  return (
+    <a
+      href={href}
+      className="my-0.5 inline-flex max-w-full items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 align-middle text-xs text-gray-700 hover:border-blue-300 hover:bg-blue-50"
+    >
+      {post.thumbUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={post.thumbUrl} alt="" className="h-6 w-6 flex-shrink-0 rounded object-cover" />
+      ) : (
+        <div className="h-6 w-6 flex-shrink-0 rounded bg-gray-200" />
+      )}
+      <span className="truncate">{preview}</span>
+      {post.stars ? <span className="flex-shrink-0 text-amber-500">{"★".repeat(post.stars)}</span> : null}
+    </a>
+  );
+}
+
+function renderTextWithRefs(text: string, cache: Map<string, CachedPost>): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let keyN = 0;
+  for (const match of text.matchAll(POST_REF_RE)) {
+    const start = match.index ?? 0;
+    if (start > last) out.push(text.slice(last, start));
+    const id = match[1];
+    out.push(<InlinePostRef key={`ref-${keyN++}`} post={cache.get(id)} id={id} />);
+    last = start + match[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
 
 function defaultWhen(): string {
   const d = new Date();
@@ -40,8 +94,36 @@ export function ThreadView() {
   const [streaming, setStreaming] = useState(false);
   const [input, setInput] = useState("");
   const [pendingPlan, setPendingPlan] = useState<PlanProposal | null>(null);
+  const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function seedCacheFromToolResult(result: { ok: boolean; data?: unknown }) {
+    if (!result.ok) return;
+    const data = result.data as unknown;
+    const entries: CachedPost[] = [];
+    if (Array.isArray(data)) {
+      for (const item of data as CachedPost[]) if (item?.postId) entries.push(item);
+    } else if (data && typeof data === "object" && "id" in data) {
+      const p = data as { id: string; body?: string; tags?: string[]; rating?: { stars?: number } | null; lifecycle?: string; media?: { storageKey?: string }[] };
+      entries.push({
+        postId: p.id,
+        body: p.body,
+        tags: p.tags,
+        stars: p.rating?.stars ?? null,
+        lifecycle: p.lifecycle ?? null,
+      });
+    }
+    if (!entries.length) return;
+    setPostCache((prev) => {
+      const next = new Map(prev);
+      for (const e of entries) {
+        const existing = next.get(e.postId);
+        next.set(e.postId, { ...existing, ...e });
+      }
+      return next;
+    });
+  }
 
   // Resume latest thread on mount
   useEffect(() => {
@@ -67,11 +149,13 @@ export function ThreadView() {
                 ...(b as unknown as { id: string; name: string; input: Record<string, unknown> }),
               });
             } else if (b.kind === "tool_result") {
+              const tr = b as unknown as { toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } };
               rehydrated.push({
                 role: "assistant",
                 kind: "tool_result",
-                ...(b as unknown as { toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } }),
+                ...tr,
               });
+              seedCacheFromToolResult(tr.result);
             }
           }
         }
@@ -146,6 +230,7 @@ export function ThreadView() {
                 result: evt.result,
               },
             ]);
+            seedCacheFromToolResult(evt.result);
           }
         } catch {
           /* swallow partial/bad lines */
@@ -184,7 +269,7 @@ export function ThreadView() {
                 : "border border-gray-200 bg-white text-gray-800 shadow-sm rounded-bl-sm"
             }`}
           >
-            {m.text}
+            {m.role === "assistant" ? renderTextWithRefs(m.text, postCache) : m.text}
           </div>
         </div>
       );

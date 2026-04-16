@@ -57,6 +57,7 @@ export function scorePost(
   if (!post.lastPublishedAt) {
     freshnessRaw = 1.0;
   } else {
+    // 30-day months: ~1.4% error at 24mo — negligible on the smooth exp curve.
     const months =
       (when.getTime() - post.lastPublishedAt.getTime()) /
       (1000 * 60 * 60 * 24 * 30);
@@ -64,7 +65,8 @@ export function scorePost(
   }
   const freshness = freshnessRaw * WEIGHTS.freshness;
 
-  // Tag variety (0 = full overlap → penalty; WEIGHTS.variety = zero overlap → reward)
+  // Tag variety: ranges [0, WEIGHTS.variety]. Full overlap → 0 (no reward);
+  // zero overlap → full WEIGHTS.variety. A "reward floor of 0", not a penalty.
   const jaccardSum = ctx.recentTags.reduce(
     (s, t) => s + jaccard(post.tags, t),
     0,
@@ -99,7 +101,7 @@ export function scorePost(
     );
   }
   if (freshnessRaw > 0.8) reasons.push("rarely reposted");
-  if (last3SameKind) reasons.push("breaks kind streak");
+  if (last3SameKind) reasons.push("same kind × 3 recent");
 
   return {
     postId: post.id,

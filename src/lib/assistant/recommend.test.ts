@@ -114,6 +114,15 @@ describe("scorePost", () => {
     expect(r.breakdown.tagVariety).toBe(0);
   });
 
+  it("rewards tag variety when no overlap with recent publishes", () => {
+    const r = scorePost(row({ tags: ["breath"] }), now, {
+      recentTags: [["cooking", "outdoor"]], // jaccard = 0
+      recentKinds: [],
+      negativeReasonFrequency: new Map(),
+    });
+    expect(r.breakdown.tagVariety).toBeCloseTo(WEIGHTS.variety);
+  });
+
   it("penalizes kind repetition when last 3 publishes share kind", () => {
     const r = scorePost(row({ postType: "POST" }), now, {
       recentTags: [],

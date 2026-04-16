@@ -1,4 +1,5 @@
 import type { CandidateRow, Recommendation, RecommendOptions } from "./types";
+import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import { currentSeason, seasonFit } from "./season";
 
 export const WEIGHTS = {
@@ -116,6 +117,11 @@ export function scorePost(
       total,
     },
     reasons,
+    body: post.body,
+    tags: post.tags,
+    stars: post.stars,
+    lifecycle: post.lifecycle,
+    thumbUrl: post.thumbUrl,
   };
 }
 
@@ -164,6 +170,12 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
           take: 1,
           select: { publishedAt: true },
         },
+        media: {
+          where: { mimeType: { startsWith: "image/" } },
+          orderBy: { id: "asc" },
+          take: 1,
+          select: { storageKey: true, mimeType: true },
+        },
       },
       orderBy: [{ publishCount: "asc" }, { originalDate: "asc" }],
       take: 200,
@@ -196,6 +208,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     stars: p.rating?.stars ?? null,
     ratingReasons: p.rating?.reasons ?? [],
     lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
+    thumbUrl: buildThumbUrl(p.media[0]?.storageKey, p.media[0]?.mimeType),
   }));
 
   const recentTags = recentPublishes.map((r) => r.post.tags);

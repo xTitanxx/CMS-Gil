@@ -15,6 +15,7 @@ function row(overrides: Partial<CandidateRow> = {}): CandidateRow {
     stars: null,
     ratingReasons: [],
     lastPublishedAt: null,
+    thumbUrl: null,
     ...overrides,
   };
 }
@@ -149,7 +150,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     post: { findMany: vi.fn() },
     publishRecord: { findMany: vi.fn() },
-    postRating: { groupBy: vi.fn() },
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    postRating: { groupBy: vi.fn() }, // kept for backward compat; unused now
   },
 }));
 
@@ -170,6 +172,7 @@ describe("recommend", () => {
         publishCount: 0,
         rating: { stars: 5, reasons: [] },
         publishes: [],
+        media: [],
       },
       {
         id: "p2",
@@ -182,6 +185,7 @@ describe("recommend", () => {
         publishCount: 0,
         rating: null,
         publishes: [],
+        media: [],
       },
     ]);
     (prisma.publishRecord.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);

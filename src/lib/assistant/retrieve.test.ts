@@ -5,8 +5,8 @@ describe("rankHits", () => {
   it("sorts by tag matches > keyword hits", () => {
     const ranked = rankHits(
       [
-        { id: "a", body: "foo bar", tags: ["x"], stars: null },
-        { id: "b", body: "foo bar baz", tags: ["x", "y"], stars: null },
+        { id: "a", body: "foo bar", tags: ["x"], stars: null, lifecycle: "EVERGREEN" as const, thumbUrl: null },
+        { id: "b", body: "foo bar baz", tags: ["x", "y"], stars: null, lifecycle: "EVERGREEN" as const, thumbUrl: null },
       ],
       { tags: ["x", "y"], keywords: ["foo"] },
     );
@@ -16,8 +16,8 @@ describe("rankHits", () => {
   it("adds rating boost", () => {
     const ranked = rankHits(
       [
-        { id: "a", body: "foo", tags: ["x"], stars: 5 },
-        { id: "b", body: "foo", tags: ["x"], stars: null },
+        { id: "a", body: "foo", tags: ["x"], stars: 5, lifecycle: "EVERGREEN" as const, thumbUrl: null },
+        { id: "b", body: "foo", tags: ["x"], stars: null, lifecycle: "EVERGREEN" as const, thumbUrl: null },
       ],
       { tags: ["x"], keywords: [] },
     );

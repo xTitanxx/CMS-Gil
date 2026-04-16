@@ -17,6 +17,12 @@ export interface Recommendation {
   score: number;
   breakdown: ScoreBreakdown;
   reasons: string[];
+  // UI-facing preview fields — populated by `recommend()` and `retrieve()`:
+  body: string;
+  tags: string[];
+  stars: number | null;
+  lifecycle: Lifecycle;
+  thumbUrl: string | null;
 }
 
 export interface RecommendOptions {
@@ -42,6 +48,11 @@ export interface RetrieveHit {
   score: number;
   matchReasons: string[];
   highlightSnippet: string;
+  body: string;
+  tags: string[];
+  stars: number | null;
+  lifecycle: Lifecycle;
+  thumbUrl: string | null;
 }
 
 export interface CandidateRow {
@@ -56,4 +67,5 @@ export interface CandidateRow {
   stars: number | null;
   ratingReasons: string[];
   lastPublishedAt: Date | null;
+  thumbUrl: string | null;
 }

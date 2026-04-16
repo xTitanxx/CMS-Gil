@@ -1121,18 +1121,18 @@ export function PostsList({
                       )}
                       {post.captionQuality != null && (
                         <span
-                          className={`text-xs rounded px-1 py-0.5 ${
+                          className={`text-xs rounded-full px-2 py-0.5 ${
                             post.captionQuality >= 4
                               ? "bg-green-100 text-green-700"
                               : post.captionQuality <= 2
                                 ? "bg-amber-100 text-amber-700"
                                 : "bg-gray-100 text-gray-600"
                           }`}
-                          title={`Caption quality: ${post.captionQuality}/5${post.captionEvergreen === false ? " · non-evergreen" : ""}${post.captionSuggestion ? " · has suggestion" : ""}`}
+                          title={`Caption quality: ${post.captionQuality}/5${post.captionEvergreen === false ? " · non-evergreen caption" : ""}${post.captionSuggestion ? " · AI rewrite available" : ""}`}
                         >
-                          C{post.captionQuality}
-                          {post.captionEvergreen === false && "⏳"}
-                          {post.captionSuggestion && "✨"}
+                          {post.captionQuality >= 4 ? "Good" : post.captionQuality === 3 ? "OK" : "Weak"} caption
+                          {post.captionEvergreen === false ? " · dated" : ""}
+                          {post.captionSuggestion ? " · rewrite" : ""}
                         </span>
                       )}
                       {(() => {

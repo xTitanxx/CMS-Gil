@@ -16,7 +16,8 @@ interface LinkedInCredentials {
 export async function postToLinkedIn(
   creds: LinkedInCredentials,
   body: string,
-  mediaKeys: string[]
+  mediaKeys: string[],
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
   const { accessToken, platformUserId } = creds;
   const authorUrn = `urn:li:person:${platformUserId}`;
@@ -31,7 +32,7 @@ export async function postToLinkedIn(
 
   for (const key of mediaKeys.slice(0, 9)) {
     const isVideo = key.match(/\.(mp4|mov|avi|webm)$/i);
-    const mediaUrl = await getSignedDownloadUrl(key, 3600);
+    const mediaUrl = await getSignedDownloadUrl(key, 3600, undefined, audioOverlayMap?.get(key));
 
     if (isVideo) {
       shareMediaCategory = "VIDEO";

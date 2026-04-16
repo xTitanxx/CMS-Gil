@@ -22,8 +22,10 @@ export async function postToFacebook(
   creds: FacebookCredentials,
   body: string,
   mediaKeys: string[],
-  postType: string = "POST"
+  postType: string = "POST",
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
+  const overlayFor = (k: string) => audioOverlayMap?.get(k);
   const { accessToken, platformUserId: pageId } = creds;
 
   // Text-only feed post
@@ -33,7 +35,7 @@ export async function postToFacebook(
 
   // Single photo
   if (mediaKeys.length === 1 && !VIDEO_RE.test(mediaKeys[0])) {
-    const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    const url = await getSignedDownloadUrl(mediaKeys[0], 3600, undefined, overlayFor(mediaKeys[0]));
     if (postType === "STORY") {
       return storyPost(pageId, accessToken, { url, isVideo: false });
     }
@@ -42,7 +44,7 @@ export async function postToFacebook(
 
   // Single video
   if (mediaKeys.length === 1 && VIDEO_RE.test(mediaKeys[0])) {
-    const url = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    const url = await getSignedDownloadUrl(mediaKeys[0], 3600, undefined, overlayFor(mediaKeys[0]));
     if (postType === "REEL") {
       return reelPost(pageId, accessToken, { file_url: url, description: body });
     }
@@ -55,7 +57,7 @@ export async function postToFacebook(
   // Multiple files — if all photos, make one multi-photo feed post.
   const allPhotos = mediaKeys.every((k) => !VIDEO_RE.test(k));
   if (allPhotos) {
-    return multiPhotoPost(pageId, accessToken, mediaKeys, body);
+    return multiPhotoPost(pageId, accessToken, mediaKeys, body, audioOverlayMap);
   }
 
   // Mixed media or multiple videos — fall back to one post per file.
@@ -66,7 +68,7 @@ export async function postToFacebook(
   for (let i = 0; i < mediaKeys.length; i++) {
     const key = mediaKeys[i];
     const caption = i === 0 ? body : "";
-    const url = await getSignedDownloadUrl(key, 3600);
+    const url = await getSignedDownloadUrl(key, 3600, undefined, overlayFor(key));
     const result = VIDEO_RE.test(key)
       ? await videoPost(pageId, accessToken, { file_url: url, description: caption })
       : await photoPost(pageId, accessToken, { url, caption });
@@ -234,12 +236,13 @@ async function multiPhotoPost(
   pageId: string,
   accessToken: string,
   keys: string[],
-  caption: string
+  caption: string,
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
   // 1. Upload each photo unpublished and collect media_fbid values.
   const mediaFbids: string[] = [];
   for (const key of keys) {
-    const url = await getSignedDownloadUrl(key, 3600);
+    const url = await getSignedDownloadUrl(key, 3600, undefined, audioOverlayMap?.get(key));
     const form = new URLSearchParams({
       url,
       published: "false",

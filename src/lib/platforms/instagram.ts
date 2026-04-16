@@ -18,7 +18,8 @@ export async function postToInstagram(
   creds: InstagramCredentials,
   body: string,
   mediaKeys: string[],
-  postType: string = "POST"
+  postType: string = "POST",
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
   const { accessToken, platformUserId } = creds;
   const baseUrl = "https://graph.instagram.com/v21.0";
@@ -29,7 +30,7 @@ export async function postToInstagram(
   }
 
   if (mediaKeys.length === 1) {
-    const mediaUrl = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    const mediaUrl = await getSignedDownloadUrl(mediaKeys[0], 3600, undefined, audioOverlayMap?.get(mediaKeys[0]));
     const isVideo = mediaKeys[0].match(/\.(mp4|mov|avi|webm)$/i);
 
     // Determine media_type based on postType
@@ -74,7 +75,7 @@ export async function postToInstagram(
   // Carousel post (multiple media)
   const itemIds: string[] = [];
   for (const key of mediaKeys.slice(0, 10)) {
-    const mediaUrl = await getSignedDownloadUrl(key, 3600);
+    const mediaUrl = await getSignedDownloadUrl(key, 3600, undefined, audioOverlayMap?.get(key));
     const isVideo = key.match(/\.(mp4|mov|avi|webm)$/i);
     const itemRes = await fetch(
       `${baseUrl}/${platformUserId}/media`,

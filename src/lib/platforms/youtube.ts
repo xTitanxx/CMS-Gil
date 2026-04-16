@@ -2,7 +2,7 @@
 // Scopes: https://www.googleapis.com/auth/youtube.upload
 
 import { google } from "googleapis";
-import { getObject } from "@/lib/storage";
+import { getObject, getSignedDownloadUrl } from "@/lib/storage";
 import { Readable } from "stream";
 
 interface PublishResult {
@@ -19,7 +19,8 @@ export async function postToYouTube(
   creds: YouTubeCredentials,
   title: string,
   body: string,
-  mediaKeys: string[]
+  mediaKeys: string[],
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
   const videoKey = mediaKeys.find((k) =>
     k.match(/\.(mp4|mov|avi|webm|mkv)$/i)
@@ -27,6 +28,7 @@ export async function postToYouTube(
   if (!videoKey) {
     throw new Error("YouTube requires a video file");
   }
+  const overlayKey = audioOverlayMap?.get(videoKey);
 
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -39,7 +41,15 @@ export async function postToYouTube(
 
   const youtube = google.youtube({ version: "v3", auth });
 
-  const videoBuffer = await getObject(videoKey);
+  let videoBuffer: Buffer;
+  if (overlayKey) {
+    const url = await getSignedDownloadUrl(videoKey, 3600, "video/mp4", overlayKey);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Failed to fetch composed video: ${r.status}`);
+    videoBuffer = Buffer.from(await r.arrayBuffer());
+  } else {
+    videoBuffer = await getObject(videoKey);
+  }
   const stream = Readable.from(videoBuffer);
 
   const description = body.includes("#Shorts")

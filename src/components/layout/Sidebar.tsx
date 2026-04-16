@@ -13,6 +13,7 @@ import {
   LogOut,
   CheckSquare,
   Music,
+  Sparkles,
   AlertCircle,
   Star,
   Menu,
@@ -22,6 +23,7 @@ import { signOut } from "next-auth/react";
 
 const nav = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/assistant", label: "Assistant", icon: Sparkles },
   { href: "/admin/posts", label: "All Posts", icon: FileText },
   { href: "/admin/import", label: "Import", icon: Upload },
   { href: "/admin/audio", label: "Audio Library", icon: Music },

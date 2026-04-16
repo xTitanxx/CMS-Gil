@@ -29,7 +29,10 @@ Read-only tools (call freely):
 - recommend_posts, search_archive, get_post, list_scheduled
 
 Write tools (confirmation-gated):
-- update_post, rate_post, archive_post, schedule_post, unschedule, publish_now
+- update_post, rate_post, archive_post, schedule_post, unschedule, publish_now, analyze_captions
+
+Read-only:
+- caption_job_status — check progress of the latest caption-analysis run.
 
 Content categories (every post has exactly one):
 - video       — REELs and any post with video media. Target: 2 per day.

@@ -11,6 +11,7 @@ import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
 import { PostNavKeys } from "./PostNavKeys";
+import { CaptionSuggestionPanel } from "./CaptionSuggestionPanel";
 import {
   buildNeighborQueries,
   buildPostsQuery,
@@ -202,6 +203,15 @@ export default async function PostDetailPage({
           </div>
 
           <div className="min-w-0 space-y-3">
+            {post.captionSuggestion && (
+              <CaptionSuggestionPanel
+                postId={id}
+                currentBody={post.body}
+                suggestion={post.captionSuggestion}
+                quality={post.captionQuality}
+                evergreen={post.captionEvergreen}
+              />
+            )}
             <PublishPanelWithRefresh
               postId={id}
               body={post.body}

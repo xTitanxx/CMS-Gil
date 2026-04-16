@@ -172,6 +172,31 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       required: ["postId", "platform"],
     },
   },
+  {
+    name: "analyze_captions",
+    description:
+      "Kicks off a background job that rates every media post's caption for quality (1-5) and caption-evergreen, then generates AI rewrite suggestions for low-quality or non-evergreen captions using the user's own high-quality captions as style reference. Only call after the user has confirmed. Pass postIds to limit to specific posts; omit for a full DB sweep.",
+    input_schema: {
+      type: "object",
+      properties: {
+        postIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of post ids to scope the run to. Omit for a full run.",
+        },
+        reanalyze: {
+          type: "boolean",
+          description: "If true, re-analyze posts that already have captionAnalyzedAt set. Default false.",
+        },
+      },
+    },
+  },
+  {
+    name: "caption_job_status",
+    description:
+      "Returns the latest caption-analysis job (status, total, completed) so the user can check progress.",
+    input_schema: { type: "object", properties: {} },
+  },
 ];
 
 export async function handleTool(
@@ -363,6 +388,139 @@ export async function handleTool(
       });
       console.log("[assistant] publish_now", { userId: ctx.userId, postId: post.id, platform: platformEnum });
       return { ok: true, data: record };
+    }
+    case "analyze_captions": {
+      const existing = await prisma.bulkCaptionAnalyzeJob.findFirst({
+        where: { userId: ctx.userId, status: "RUNNING" },
+      });
+      if (existing) {
+        return { ok: false, error: "a caption-analysis job is already running" };
+      }
+
+      const postIds = Array.isArray(input.postIds)
+        ? (input.postIds as unknown[]).filter((x): x is string => typeof x === "string")
+        : undefined;
+      const reanalyze = input.reanalyze === true;
+
+      let toAnalyze: { id: string }[];
+      if (postIds && postIds.length > 0) {
+        toAnalyze = await prisma.post.findMany({
+          where: { userId: ctx.userId, id: { in: postIds } },
+          select: { id: true },
+        });
+      } else {
+        toAnalyze = await prisma.post.findMany({
+          where: {
+            userId: ctx.userId,
+            media: { some: {} },
+            ...(reanalyze ? {} : { captionAnalyzedAt: null }),
+          },
+          select: { id: true },
+        });
+      }
+      if (toAnalyze.length === 0) {
+        return { ok: false, error: "no matching posts to analyze" };
+      }
+
+      const job = await prisma.bulkCaptionAnalyzeJob.create({
+        data: { userId: ctx.userId, total: toAnalyze.length, status: "RUNNING" },
+      });
+
+      // Fire-and-forget: do the actual work on the /api/posts/bulk-caption-analyze
+      // worker by POSTing to ourselves. But to avoid re-running the candidate query
+      // and losing the job we just created, do the work inline via the same pattern.
+      // We reuse the background-analysis code path by importing directly.
+      const { analyzeCaption, getHighQualityExamples, suggestCaption } = await import(
+        "@/lib/analyze-caption"
+      );
+      const { after: nextAfter } = await import("next/server");
+
+      nextAfter(async () => {
+        const CONCURRENCY = 3;
+        let i = 0;
+        while (i < toAnalyze.length) {
+          const current = await prisma.bulkCaptionAnalyzeJob.findUnique({
+            where: { id: job.id },
+            select: { status: true },
+          });
+          if (!current || current.status === "CANCELLED") return;
+          const batch = toAnalyze.slice(i, i + CONCURRENCY);
+          await Promise.allSettled(
+            batch.map((p) =>
+              analyzeCaption(p.id).catch((err) => console.error(`[caption-analyze] ${p.id}:`, err)),
+            ),
+          );
+          i += batch.length;
+          await prisma.bulkCaptionAnalyzeJob
+            .update({ where: { id: job.id }, data: { completed: i } })
+            .catch(() => {});
+        }
+
+        const examples = await getHighQualityExamples(ctx.userId, 6);
+        if (examples.length === 0) {
+          await prisma.bulkCaptionAnalyzeJob
+            .update({ where: { id: job.id }, data: { status: "DONE" } })
+            .catch(() => {});
+          return;
+        }
+        const flagged = await prisma.post.findMany({
+          where: {
+            userId: ctx.userId,
+            media: { some: {} },
+            id: { in: toAnalyze.map((p) => p.id) },
+            OR: [{ captionQuality: { lte: 2 } }, { captionEvergreen: false }],
+          },
+          select: { id: true },
+        });
+        await prisma.bulkCaptionAnalyzeJob
+          .update({
+            where: { id: job.id },
+            data: { total: toAnalyze.length + flagged.length, completed: toAnalyze.length },
+          })
+          .catch(() => {});
+
+        let j = 0;
+        while (j < flagged.length) {
+          const current = await prisma.bulkCaptionAnalyzeJob.findUnique({
+            where: { id: job.id },
+            select: { status: true },
+          });
+          if (!current || current.status === "CANCELLED") return;
+          const batch = flagged.slice(j, j + CONCURRENCY);
+          await Promise.allSettled(
+            batch.map((p) =>
+              suggestCaption({ postId: p.id, examples }).catch((err) =>
+                console.error(`[caption-suggest] ${p.id}:`, err),
+              ),
+            ),
+          );
+          j += batch.length;
+          await prisma.bulkCaptionAnalyzeJob
+            .update({
+              where: { id: job.id },
+              data: { completed: toAnalyze.length + j },
+            })
+            .catch(() => {});
+        }
+
+        await prisma.bulkCaptionAnalyzeJob
+          .update({ where: { id: job.id }, data: { status: "DONE" } })
+          .catch(() => {});
+      });
+
+      console.log("[assistant] analyze_captions", {
+        userId: ctx.userId,
+        total: toAnalyze.length,
+        jobId: job.id,
+      });
+      return { ok: true, data: { jobId: job.id, total: toAnalyze.length } };
+    }
+    case "caption_job_status": {
+      const job = await prisma.bulkCaptionAnalyzeJob.findFirst({
+        where: { userId: ctx.userId },
+        orderBy: { createdAt: "desc" },
+      });
+      return { ok: true, data: job };
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

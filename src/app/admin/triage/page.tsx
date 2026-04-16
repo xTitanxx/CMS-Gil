@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { TriageFeed } from "./TriageFeed";
+import { TriageTabs } from "./TriageTabs";
 
 export const metadata = { title: "Triage — CMS Gil" };
 
@@ -17,12 +18,13 @@ export default async function TriagePage({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Triage</h1>
         <p className="mt-1 text-sm text-gray-500">
           Fix or dismiss posts that aren&apos;t ready to publish.
         </p>
       </div>
+      <TriageTabs active="readiness" />
       <TriageFeed initialBucket={bucket} />
     </div>
   );

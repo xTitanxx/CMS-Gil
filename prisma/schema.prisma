@@ -122,6 +122,16 @@ model Post {
   readinessCheckedAt  DateTime?
   archivedAt          DateTime?
 
+  // Caption-only analysis (independent of media): does the caption itself
+  // stand on its own as evergreen, and how much craft went into it?
+  captionQuality      Int?       // 1..5 (1 = low-effort, 5 = poetic/high-craft)
+  captionEvergreen    Boolean?   // true if the caption text is timeless on its own
+  captionAnalyzedAt   DateTime?
+  // AI-generated rewrite for low-quality captions, using a few-shot corpus
+  // of this user's own high-quality evergreen captions as style reference.
+  // Only populated for posts flagged as low-quality or non-evergreen.
+  captionSuggestion   String?
+
   rating              PostRating?
 
   // Populated when the imported post is a share/crosspost of another post or
@@ -296,6 +306,18 @@ model ImportJob {
 }
 
 model BulkAnalyzeJob {
+  id          String             @id @default(cuid())
+  userId      String
+  status      BulkAnalyzeStatus  @default(RUNNING)
+  total       Int                @default(0)
+  completed   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, status])
+}
+
+model BulkCaptionAnalyzeJob {
   id          String             @id @default(cuid())
   userId      String
   status      BulkAnalyzeStatus  @default(RUNNING)

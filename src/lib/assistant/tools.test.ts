@@ -158,3 +158,50 @@ describe("handleTool rate_post", () => {
     expect(call.create.note).toBe("great");
   });
 });
+
+describe("handleTool archive_post", () => {
+  it("sets readiness=ARCHIVED and archivedAt", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    const out = await handleTool("archive_post", { postId: "p1" }, { userId: "u1" });
+    expect(out.ok).toBe(true);
+    const call = (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].data.readiness === "ARCHIVED",
+    );
+    expect(call).toBeDefined();
+    expect(call![0].data.archivedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("handleTool publish_now", () => {
+  it("rejects unknown platform", async () => {
+    const out = await handleTool("publish_now", { postId: "p1", platform: "myspace" }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("rejects non-READY posts", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1", readiness: "NOT_READY" });
+    const out = await handleTool(
+      "publish_now",
+      { postId: "p1", platform: "instagram" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(false);
+  });
+
+  it("creates a PENDING PublishRecord with scheduledAt ≈ now", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1", readiness: "READY" });
+    (prisma.publishRecord.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "pr1" });
+    const out = await handleTool(
+      "publish_now",
+      { postId: "p1", platform: "instagram" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.publishRecord.create as unknown as ReturnType<typeof vi.fn>).mock.calls.slice(-1)[0][0];
+    expect(call.data.platform).toBe("INSTAGRAM");
+    expect(call.data.status).toBe("PENDING");
+    const scheduled = call.data.scheduledAt as Date;
+    expect(Math.abs(scheduled.getTime() - Date.now())).toBeLessThan(5_000);
+  });
+});

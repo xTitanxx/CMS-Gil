@@ -139,6 +139,29 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       required: ["postId", "stars"],
     },
   },
+  {
+    name: "archive_post",
+    description:
+      "Archives a post — sets readiness=ARCHIVED and archivedAt=now. Only call after the user has confirmed.",
+    input_schema: {
+      type: "object",
+      properties: { postId: { type: "string" } },
+      required: ["postId"],
+    },
+  },
+  {
+    name: "publish_now",
+    description:
+      "Queues a post to be published on the next cron tick (scheduledAt=now). Only call after the user has confirmed platform and target post. Requires readiness=READY.",
+    input_schema: {
+      type: "object",
+      properties: {
+        postId: { type: "string" },
+        platform: { type: "string", enum: ["instagram", "facebook", "linkedin", "tiktok", "youtube"] },
+      },
+      required: ["postId", "platform"],
+    },
+  },
 ];
 
 export async function handleTool(
@@ -292,6 +315,42 @@ export async function handleTool(
       });
       console.log("[assistant] rate_post", { userId: ctx.userId, postId: post.id, stars });
       return { ok: true, data: { id: record.id, stars } };
+    }
+    case "archive_post": {
+      const post = await prisma.post.findFirst({
+        where: { id: String(input.postId), userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!post) return { ok: false, error: "post not found" };
+      const updated = await prisma.post.update({
+        where: { id: post.id },
+        data: { readiness: "ARCHIVED", archivedAt: new Date() },
+      });
+      console.log("[assistant] archive_post", { userId: ctx.userId, postId: post.id });
+      return { ok: true, data: { id: updated.id } };
+    }
+    case "publish_now": {
+      const platformSlug = String(input.platform ?? "").toLowerCase();
+      const platformEnum = PLATFORM_MAP[platformSlug];
+      if (!platformEnum) return { ok: false, error: "unknown platform" };
+
+      const post = await prisma.post.findFirst({
+        where: { id: String(input.postId), userId: ctx.userId },
+        select: { id: true, readiness: true },
+      });
+      if (!post) return { ok: false, error: "post not found" };
+      if (post.readiness !== "READY") return { ok: false, error: "post is not READY" };
+
+      const record = await prisma.publishRecord.create({
+        data: {
+          postId: post.id,
+          platform: platformEnum,
+          status: "PENDING",
+          scheduledAt: new Date(),
+        },
+      });
+      console.log("[assistant] publish_now", { userId: ctx.userId, postId: post.id, platform: platformEnum });
+      return { ok: true, data: record };
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

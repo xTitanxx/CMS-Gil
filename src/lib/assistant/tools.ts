@@ -102,6 +102,28 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       required: ["recordId"],
     },
   },
+  {
+    name: "update_post",
+    description:
+      "Edits a post. Only call after the user has confirmed the change in chat. Accepts a partial patch of body/tags/lifecycle/season/readiness.",
+    input_schema: {
+      type: "object",
+      properties: {
+        postId: { type: "string" },
+        patch: {
+          type: "object",
+          properties: {
+            body: { type: "string" },
+            tags: { type: "array", items: { type: "string" } },
+            lifecycle: { type: "string", enum: ["EVERGREEN", "EPHEMERAL", "SEASONAL", "UNKNOWN"] },
+            season: { type: "string", enum: ["SPRING", "SUMMER", "FALL", "WINTER"] },
+            readiness: { type: "string", enum: ["READY", "NOT_READY", "ARCHIVED", "UNCHECKED"] },
+          },
+        },
+      },
+      required: ["postId", "patch"],
+    },
+  },
 ];
 
 export async function handleTool(
@@ -204,6 +226,33 @@ export async function handleTool(
       if (!record) return { ok: false, error: "record not found or not owned" };
       await prisma.publishRecord.delete({ where: { id: record.id } });
       return { ok: true, data: { id: record.id } };
+    }
+    case "update_post": {
+      const post = await prisma.post.findFirst({
+        where: { id: String(input.postId), userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!post) return { ok: false, error: "post not found" };
+
+      const patch = (input.patch ?? {}) as Record<string, unknown>;
+      const data: Record<string, unknown> = {};
+      if (typeof patch.body === "string") data.body = patch.body;
+      if (Array.isArray(patch.tags)) data.tags = patch.tags.filter((t) => typeof t === "string");
+      if (typeof patch.lifecycle === "string") {
+        data.lifecycle = patch.lifecycle;
+        data.lifecycleOverridden = true;
+      }
+      if (typeof patch.season === "string") {
+        data.season = patch.season;
+        data.lifecycleOverridden = true;
+      }
+      if (typeof patch.readiness === "string") data.readiness = patch.readiness;
+
+      if (Object.keys(data).length === 0) return { ok: false, error: "empty patch" };
+
+      const updated = await prisma.post.update({ where: { id: post.id }, data });
+      console.log("[assistant] update_post", { userId: ctx.userId, postId: post.id, fields: Object.keys(data) });
+      return { ok: true, data: { id: updated.id, updated: Object.keys(data) } };
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

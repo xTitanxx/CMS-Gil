@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    post: { findFirst: vi.fn() },
+    post: { findFirst: vi.fn(), update: vi.fn() },
     publishRecord: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -88,6 +88,49 @@ describe("handleTool recommend_posts / search_archive", () => {
 describe("handleTool unknown tool", () => {
   it("returns error for unknown tool name", async () => {
     const out = await handleTool("wat", {}, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+});
+
+describe("handleTool update_post", () => {
+  it("rejects unknown posts", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const out = await handleTool("update_post", { postId: "x", patch: { body: "hi" } }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("updates body and tags", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    const out = await handleTool(
+      "update_post",
+      { postId: "p1", patch: { body: "new body", tags: ["a", "b"] } },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.body).toBe("new body");
+    expect(call.data.tags).toEqual(["a", "b"]);
+    expect(call.data.lifecycleOverridden).toBeUndefined();
+  });
+
+  it("sets lifecycleOverridden when lifecycle or season is patched", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    const out = await handleTool(
+      "update_post",
+      { postId: "p1", patch: { lifecycle: "EVERGREEN" } },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.post.update as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.lifecycle).toBe("EVERGREEN");
+    expect(call.data.lifecycleOverridden).toBe(true);
+  });
+
+  it("rejects an empty patch", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    const out = await handleTool("update_post", { postId: "p1", patch: {} }, { userId: "u1" });
     expect(out.ok).toBe(false);
   });
 });

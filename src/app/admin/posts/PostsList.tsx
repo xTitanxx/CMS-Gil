@@ -303,6 +303,9 @@ export function PostsList({
   const bulkAnalyze = useAsync();
   const [analyzeQueued, setAnalyzeQueued] = useState<number | null>(null);
   const [analyzeJob, setAnalyzeJob] = useState<{ id: string; status: "RUNNING" | "CANCELLED" | "DONE"; total: number; completed: number } | null>(null);
+  const bulkCaption = useAsync();
+  const [captionQueued, setCaptionQueued] = useState<number | null>(null);
+  const [captionJob, setCaptionJob] = useState<{ id: string; status: "RUNNING" | "CANCELLED" | "DONE"; total: number; completed: number } | null>(null);
   const lastSelectedIndexRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -572,6 +575,24 @@ export function PostsList({
   }, [analyzeJob?.status]);
 
   useEffect(() => {
+    let cancelled = false;
+    async function checkCaption() {
+      try {
+        const res = await fetch("/api/posts/bulk-caption-analyze");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setCaptionJob(data.job ?? null);
+      } catch {}
+    }
+    checkCaption();
+    const interval = setInterval(() => {
+      if (captionJob?.status === "RUNNING") checkCaption();
+    }, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [captionJob?.status]);
+
+  useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !nextCursor) return;
     let root: Element | null = el.parentElement;
@@ -721,6 +742,47 @@ export function PostsList({
               <span className="hidden sm:inline">{bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}</span>
             </Button>
           )}
+          {captionJob?.status === "RUNNING" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await fetch("/api/posts/bulk-caption-analyze", { method: "DELETE" });
+                const res = await fetch("/api/posts/bulk-caption-analyze");
+                const data = await res.json();
+                setCaptionJob(data.job ?? null);
+              }}
+            >
+              <X className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Cancel captions ({captionJob.completed}/{captionJob.total})</span>
+              <span className="sm:hidden">Cancel ({captionJob.completed}/{captionJob.total})</span>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkCaption.isLoading}
+              onClick={async () => {
+                await bulkCaption.run(async () => {
+                  const body = selectedIds.size > 0
+                    ? { postIds: Array.from(selectedIds) }
+                    : {};
+                  const res = await fetch("/api/posts/bulk-caption-analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                  });
+                  if (!res.ok) throw new Error("Failed to start caption analysis");
+                  const data = await res.json();
+                  setCaptionQueued(data.queued);
+                  setCaptionJob(data.job ?? null);
+                });
+              }}
+            >
+              {bulkCaption.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              <span className="hidden sm:inline">{bulkCaption.isLoading ? "Starting..." : selectedIds.size > 0 ? `Caption (${selectedIds.size})` : "Caption All"}</span>
+            </Button>
+          )}
           <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4 shrink-0" />
@@ -736,6 +798,15 @@ export function PostsList({
           {analyzeQueued > 0
             ? `AI tagging started for ${analyzeQueued} untagged posts. Tags will appear as they're processed.`
             : "All posts already have tags."}
+        </div>
+      )}
+
+      {captionQueued !== null && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <Sparkles className="h-4 w-4 shrink-0 text-amber-500" />
+          {captionQueued > 0
+            ? `Caption analysis started for ${captionQueued} posts. Phase A rates all captions, Phase B generates rewrite suggestions for low-quality ones.`
+            : "All media posts already analyzed."}
         </div>
       )}
 

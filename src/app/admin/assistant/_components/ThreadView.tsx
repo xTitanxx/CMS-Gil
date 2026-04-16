@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { PostCard } from "./PostCard";
+import { PlanCard, type PlanProposal } from "./PlanCard";
 
 type UiMsg =
   | { role: "user" | "assistant"; kind: "text"; text: string }
@@ -18,9 +19,17 @@ type UiMsg =
       result: { ok: boolean; data?: unknown; error?: string };
     };
 
+function defaultWhen(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  return d.toISOString();
+}
+
 export function ThreadView() {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<PlanProposal | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   async function send(text: string) {
@@ -100,12 +109,100 @@ export function ThreadView() {
     setStreaming(false);
   }
 
+  function renderMsg(m: UiMsg, key: number) {
+    if (m.kind === "text") {
+      return (
+        <div key={key} className={m.role === "user" ? "text-right" : ""}>
+          <span
+            className={
+              "inline-block px-3 py-2 rounded-lg text-sm " +
+              (m.role === "user" ? "bg-blue-100" : "bg-gray-100")
+            }
+          >
+            {m.text}
+          </span>
+        </div>
+      );
+    }
+    if (m.kind === "tool_use") {
+      return (
+        <div key={key} className="text-xs text-gray-500">
+          → {m.name}(…)
+        </div>
+      );
+    }
+    if (m.kind === "tool_result") {
+      if (!m.result.ok)
+        return (
+          <div key={key} className="text-xs text-red-600">
+            error: {m.result.error}
+          </div>
+        );
+      const data = m.result.data as unknown;
+      if (Array.isArray(data)) {
+        return (
+          <div key={key} className="space-y-2">
+            {(
+              data as {
+                postId: string;
+                reasons?: string[];
+                score?: number;
+                matchReasons?: string[];
+                body?: string;
+                tags?: string[];
+                stars?: number | null;
+                lifecycle?: string | null;
+                thumbUrl?: string | null;
+              }[]
+            )
+              .slice(0, 5)
+              .map((r) => (
+                <PostCard
+                  key={r.postId}
+                  data={{
+                    postId: r.postId,
+                    reasons: r.reasons ?? r.matchReasons,
+                    score: r.score,
+                    body: r.body,
+                    tags: r.tags,
+                    stars: r.stars,
+                    lifecycle: r.lifecycle,
+                    thumbUrl: r.thumbUrl,
+                  }}
+                  onSchedule={(postId) =>
+                    setPendingPlan({
+                      postId,
+                      platform: "instagram",
+                      scheduledAt: defaultWhen(),
+                    })
+                  }
+                />
+              ))}
+          </div>
+        );
+      }
+      return null;
+    }
+    return null;
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto space-y-3 p-4">
         {messages.map((m, i) => renderMsg(m, i))}
         {streaming && <p className="text-xs text-gray-400">…</p>}
       </div>
+      {pendingPlan && (
+        <PlanCard
+          proposal={pendingPlan}
+          onConfirm={async () => {
+            const msg = `Schedule post ${pendingPlan.postId} on ${pendingPlan.platform} at ${pendingPlan.scheduledAt}.`;
+            setPendingPlan(null);
+            await send(msg);
+          }}
+          onCancel={() => setPendingPlan(null)}
+        />
+      )}
       <form
         className="border-t p-2 flex gap-2"
         onSubmit={(e) => {
@@ -131,64 +228,4 @@ export function ThreadView() {
       </form>
     </div>
   );
-}
-
-function renderMsg(m: UiMsg, key: number) {
-  if (m.kind === "text") {
-    return (
-      <div key={key} className={m.role === "user" ? "text-right" : ""}>
-        <span
-          className={
-            "inline-block px-3 py-2 rounded-lg text-sm " +
-            (m.role === "user" ? "bg-blue-100" : "bg-gray-100")
-          }
-        >
-          {m.text}
-        </span>
-      </div>
-    );
-  }
-  if (m.kind === "tool_use") {
-    return (
-      <div key={key} className="text-xs text-gray-500">
-        → {m.name}(…)
-      </div>
-    );
-  }
-  if (m.kind === "tool_result") {
-    if (!m.result.ok)
-      return (
-        <div key={key} className="text-xs text-red-600">
-          error: {m.result.error}
-        </div>
-      );
-    const data = m.result.data as unknown;
-    if (Array.isArray(data)) {
-      return (
-        <div key={key} className="space-y-2">
-          {(
-            data as {
-              postId: string;
-              reasons?: string[];
-              score?: number;
-              matchReasons?: string[];
-            }[]
-          )
-            .slice(0, 5)
-            .map((r) => (
-              <PostCard
-                key={r.postId}
-                data={{
-                  postId: r.postId,
-                  reasons: r.reasons ?? r.matchReasons,
-                  score: r.score,
-                }}
-              />
-            ))}
-        </div>
-      );
-    }
-    return null;
-  }
-  return null;
 }

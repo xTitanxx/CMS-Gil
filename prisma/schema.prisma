@@ -425,7 +425,7 @@ model DailyBrief {
   date      DateTime @db.Date
   payload   Json
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, date])
-  @@index([userId, date])
 }

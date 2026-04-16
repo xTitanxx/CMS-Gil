@@ -52,6 +52,7 @@ model User {
   weeklyPlans    WeeklyPlan[]
   audioTracks    AudioTrack[]
   dailyBriefs    DailyBrief[]
+  conversations  Conversation[]
 }
 
 model VerificationToken {
@@ -428,4 +429,27 @@ model DailyBrief {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, date])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        Json
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }

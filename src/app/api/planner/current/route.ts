@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { startOfWeek, format } from "date-fns";
+import { format } from "date-fns";
+import { getMondayUTC } from "@/lib/planner/week";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
@@ -12,7 +13,7 @@ export async function GET() {
   }
   const userId = session.user.id;
 
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekStart = getMondayUTC();
 
   // Find or create the WeeklyPlan for this user+weekStart
   let plan = await prisma.weeklyPlan.findUnique({

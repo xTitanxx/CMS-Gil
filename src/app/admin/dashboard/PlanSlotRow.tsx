@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp, Film, CheckCircle, RefreshCw, X, Sparkles } fro
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { format } from "date-fns";
+import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData } from "@/lib/planner/types";
 
 const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -38,7 +39,7 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
   const dayName = format(day, "EEE");
   const dayNum = format(day, "d");
   const dayMonth = format(day, "MMM");
-  const dayKey = format(day, "yyyy-MM-dd");
+  const dayKey = utcDateString(day);
 
   // Day column (always visible on left) — consistent styling across states
   const dayColumn = (

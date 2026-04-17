@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Sparkles, CalendarCheck, Loader2 } from "lucide-react";
-import { startOfWeek, addDays, format } from "date-fns";
+import { format } from "date-fns";
+import { getMondayUTC, utcDateString } from "@/lib/planner/week";
 import { PlanSlotRow } from "./PlanSlotRow";
 import type { WeeklyPlanData, PlanSlotData } from "@/lib/planner/types";
 
@@ -25,8 +26,10 @@ export function WeeklyPlanView({
   onSwapSlot,
   onScheduleAll,
 }: WeeklyPlanViewProps) {
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const monday = getMondayUTC();
+  const days = Array.from({ length: 7 }, (_, i) =>
+    new Date(monday.getTime() + i * 86400000)
+  );
 
   const weekRange = `${format(days[0], "MMM d")} – ${format(days[6], "MMM d, yyyy")}`;
 
@@ -81,7 +84,7 @@ export function WeeklyPlanView({
         ) : (
           <div className="space-y-2">
             {days.map((day) => {
-              const dayKey = format(day, "yyyy-MM-dd");
+              const dayKey = utcDateString(day);
               const slot = slotByDay.get(dayKey) ?? null;
               return (
                 <PlanSlotRow

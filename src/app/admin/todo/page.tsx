@@ -7,39 +7,46 @@ interface Todo {
   id: string;
   text: string;
   done: boolean;
-  createdAt: number;
+  createdAt: string;
 }
 
 export default function TodoPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem("cms-todos");
-    if (stored) setTodos(JSON.parse(stored));
+    fetch("/api/todo")
+      .then((r) => r.json())
+      .then((data: Todo[]) => setTodos(data))
+      .finally(() => setLoading(false));
   }, []);
 
-  function save(next: Todo[]) {
-    setTodos(next);
-    localStorage.setItem("cms-todos", JSON.stringify(next));
-  }
-
-  function add() {
+  async function add() {
     const text = input.trim();
     if (!text) return;
-    save([
-      ...todos,
-      { id: crypto.randomUUID(), text, done: false, createdAt: Date.now() },
-    ]);
     setInput("");
+    const res = await fetch("/api/todo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const todo = await res.json() as Todo;
+    setTodos((prev) => [...prev, todo]);
   }
 
-  function toggle(id: string) {
-    save(todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  async function toggle(id: string, done: boolean) {
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done } : t)));
+    await fetch(`/api/todo/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done }),
+    });
   }
 
-  function remove(id: string) {
-    save(todos.filter((t) => t.id !== id));
+  async function remove(id: string) {
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+    await fetch(`/api/todo/${id}`, { method: "DELETE" });
   }
 
   const open = todos.filter((t) => !t.done);
@@ -67,14 +74,18 @@ export default function TodoPage() {
         </button>
       </div>
 
-      {open.length > 0 && (
+      {loading && (
+        <p className="text-sm text-gray-400 text-center mt-16">Loading...</p>
+      )}
+
+      {!loading && open.length > 0 && (
         <ul className="space-y-2 mb-8">
           {open.map((t) => (
             <li key={t.id} className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2">
               <input
                 type="checkbox"
                 checked={false}
-                onChange={() => toggle(t.id)}
+                onChange={() => toggle(t.id, true)}
                 className="h-4 w-4 cursor-pointer accent-blue-600"
               />
               <span className="flex-1 text-sm text-gray-800">{t.text}</span>
@@ -86,7 +97,7 @@ export default function TodoPage() {
         </ul>
       )}
 
-      {done.length > 0 && (
+      {!loading && done.length > 0 && (
         <>
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Done</p>
           <ul className="space-y-2">
@@ -95,7 +106,7 @@ export default function TodoPage() {
                 <input
                   type="checkbox"
                   checked={true}
-                  onChange={() => toggle(t.id)}
+                  onChange={() => toggle(t.id, false)}
                   className="h-4 w-4 cursor-pointer accent-blue-600"
                 />
                 <span className="flex-1 text-sm text-gray-500 line-through">{t.text}</span>
@@ -108,7 +119,7 @@ export default function TodoPage() {
         </>
       )}
 
-      {todos.length === 0 && (
+      {!loading && todos.length === 0 && (
         <p className="text-sm text-gray-400 text-center mt-16">No tasks yet. Add one above.</p>
       )}
     </div>

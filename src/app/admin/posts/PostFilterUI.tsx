@@ -32,6 +32,9 @@ export type ShareValue = (typeof SHARE_VALUES)[number];
 export const QUALITY_VALUES = ["clean", "issues"] as const;
 export type QualityValue = (typeof QUALITY_VALUES)[number];
 
+export const CAPTION_QUALITY_VALUES = ["good", "ok", "weak", "not-analyzed", "has-rewrite"] as const;
+export type CaptionQualityValue = (typeof CAPTION_QUALITY_VALUES)[number];
+
 export const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
   { value: "caption", label: "Caption only" },
   { value: "image", label: "Image" },
@@ -70,6 +73,14 @@ export const SHARE_OPTIONS: { value: ShareValue; label: string }[] = [
 export const QUALITY_OPTIONS: { value: QualityValue; label: string }[] = [
   { value: "clean", label: "No issues (has link + audio)" },
   { value: "issues", label: "Has issues (missing link or audio)" },
+];
+
+export const CAPTION_QUALITY_OPTIONS: { value: CaptionQualityValue; label: string }[] = [
+  { value: "good", label: "Good caption (4-5)" },
+  { value: "ok", label: "OK caption (3)" },
+  { value: "weak", label: "Weak caption (1-2)" },
+  { value: "not-analyzed", label: "Not analyzed" },
+  { value: "has-rewrite", label: "Has AI rewrite" },
 ];
 
 export const SORT_OPTIONS = [
@@ -114,6 +125,7 @@ export function countActiveFilters(filters: {
   tagged: Set<TaggedValue>;
   share: Set<ShareValue>;
   quality: Set<QualityValue>;
+  captionQuality: Set<CaptionQualityValue>;
 }): number {
   let n = 0;
   if (filters.sort !== "originalDate_desc") n++;
@@ -124,6 +136,7 @@ export function countActiveFilters(filters: {
   if (filters.tagged.size !== TAGGED_VALUES.length) n++;
   if (filters.share.size !== SHARE_VALUES.length) n++;
   if (filters.quality.size !== QUALITY_VALUES.length) n++;
+  if (filters.captionQuality.size !== CAPTION_QUALITY_VALUES.length) n++;
   return n;
 }
 
@@ -139,6 +152,7 @@ export function buildFilterParams(f: {
   tagged: Set<TaggedValue>;
   share: Set<ShareValue>;
   quality: Set<QualityValue>;
+  captionQuality: Set<CaptionQualityValue>;
   kind: string;
   subKind?: string;
 }): URLSearchParams {
@@ -149,6 +163,7 @@ export function buildFilterParams(f: {
   const taggedParam = serializeSet(f.tagged, TAGGED_VALUES);
   const shareParam = serializeSet(f.share, SHARE_VALUES);
   const qualityParam = serializeSet(f.quality, QUALITY_VALUES);
+  const captionQualityParam = serializeSet(f.captionQuality, CAPTION_QUALITY_VALUES);
   const params = new URLSearchParams({
     ...(f.search ? { search: f.search } : {}),
     ...(f.sort !== "originalDate_desc" ? { sort: f.sort } : {}),
@@ -160,6 +175,7 @@ export function buildFilterParams(f: {
     ...(taggedParam ? { tagged: taggedParam } : {}),
     ...(shareParam ? { share: shareParam } : {}),
     ...(qualityParam ? { quality: qualityParam } : {}),
+    ...(captionQualityParam ? { captionQuality: captionQualityParam } : {}),
     ...(f.kind !== "posts" ? { kind: f.kind } : {}),
     ...(f.subKind ? { subKind: f.subKind } : {}),
   });
@@ -308,6 +324,8 @@ export interface FilterMenuProps {
   setShare: (s: Set<ShareValue>) => void;
   quality: Set<QualityValue>;
   setQuality: (s: Set<QualityValue>) => void;
+  captionQuality: Set<CaptionQualityValue>;
+  setCaptionQuality: (s: Set<CaptionQualityValue>) => void;
   activeCount: number;
   onReset: () => void;
 }
@@ -404,6 +422,26 @@ export function FilterMenu(props: FilterMenuProps) {
                       toggleIn(props.quality, o.value, props.setQuality)
                     }
                     onOnly={() => props.setQuality(new Set([o.value]))}
+                    label={o.label}
+                  />
+                ))}
+              </FilterSection>
+            </div>
+            <div className="py-3">
+              <FilterSection
+                title="Caption rating"
+                selected={props.captionQuality.size}
+                total={CAPTION_QUALITY_VALUES.length}
+                onSelectAll={() => props.setCaptionQuality(new Set(CAPTION_QUALITY_VALUES))}
+              >
+                {CAPTION_QUALITY_OPTIONS.map((o) => (
+                  <CheckRow
+                    key={o.value}
+                    checked={props.captionQuality.has(o.value)}
+                    onChange={() =>
+                      toggleIn(props.captionQuality, o.value, props.setCaptionQuality)
+                    }
+                    onOnly={() => props.setCaptionQuality(new Set([o.value]))}
                     label={o.label}
                   />
                 ))}

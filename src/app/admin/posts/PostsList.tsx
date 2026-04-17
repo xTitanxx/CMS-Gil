@@ -48,11 +48,13 @@ import {
   TAGGED_VALUES,
   SHARE_VALUES,
   QUALITY_VALUES,
+  CAPTION_QUALITY_VALUES,
   type LinkValue,
   type MultiMediaValue,
   type TaggedValue,
   type ShareValue,
   type QualityValue,
+  type CaptionQualityValue,
 } from "./PostFilterUI";
 
 interface Post {
@@ -281,6 +283,9 @@ export function PostsList({
   const [quality, setQuality] = useState<Set<QualityValue>>(() =>
     parseCsvToSet(initialQuality, QUALITY_VALUES),
   );
+  const [captionQuality, setCaptionQuality] = useState<Set<CaptionQualityValue>>(() =>
+    new Set(CAPTION_QUALITY_VALUES),
+  );
   // When set, the next fetchInitial uses this as the starting cursor (jump-to-date).
   const [jumpCursor, setJumpCursor] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -349,8 +354,8 @@ export function PostsList({
   }
 
   const activeFilterCount = useMemo(
-    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality }),
-    [sort, content, audio, link, multiMedia, tagged, share, quality],
+    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality }),
+    [sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality],
   );
 
   function resetFilters() {
@@ -362,12 +367,13 @@ export function PostsList({
     setTagged(new Set(TAGGED_VALUES));
     setShare(new Set(SHARE_VALUES));
     setQuality(new Set(QUALITY_VALUES));
+    setCaptionQuality(new Set(CAPTION_QUALITY_VALUES));
   }
 
   const buildQuery = useCallback(
     (cursor: string | null) => {
       const params = buildFilterParams({
-        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
       });
       params.set("limit", "20");
       if (sort === "originalDate_desc") params.delete("sort");
@@ -375,7 +381,7 @@ export function PostsList({
       if (cursor) params.set("cursor", cursor);
       return params;
     },
-    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind],
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
   );
 
   const fetchInitial = useCallback(async () => {
@@ -426,9 +432,9 @@ export function PostsList({
   const cacheKey = useMemo(
     () =>
       buildFilterParams({
-        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
       }).toString(),
-    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind],
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
   );
   const initialisedKeyRef = useRef<string | null>(null);
 
@@ -542,19 +548,18 @@ export function PostsList({
   // Sync filter state to URL so ViewToggle preserves filters when switching views
   useEffect(() => {
     const params = buildFilterParams({
-      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind,
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind,
     });
     const url = new URL(window.location.href);
-    // Clear existing filter keys then apply current state
     for (const key of [
       "search", "sort", "tags", "content", "audio", "link",
-      "multiMedia", "tagged", "share", "quality", "kind",
+      "multiMedia", "tagged", "share", "quality", "captionQuality", "kind",
     ]) {
       url.searchParams.delete(key);
     }
     params.forEach((v, k) => url.searchParams.set(k, v));
     window.history.replaceState(null, "", url.toString());
-  }, [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind]);
+  }, [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -620,10 +625,10 @@ export function PostsList({
 
   const detailQueryString = useMemo(() => {
     return buildFilterParams({
-      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, kind,
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind,
       subKind: subKind !== "all" ? subKind : undefined,
     }).toString();
-  }, [search, sort, content, audio, link, multiMedia, tagged, share, quality, aiTags, kind, subKind]);
+  }, [search, sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, aiTags, kind, subKind]);
 
   const postHref = useCallback(
     (id: string) => `/admin/posts/${id}?${detailQueryString}`,
@@ -783,7 +788,7 @@ export function PostsList({
               }}
             >
               {bulkCaption.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
-              <span className="hidden sm:inline">{bulkCaption.isLoading ? "Starting..." : selectedIds.size > 0 ? `Caption (${selectedIds.size})` : "Caption All"}</span>
+              <span className="hidden sm:inline">{bulkCaption.isLoading ? "Starting..." : "Rate Captions"}</span>
             </Button>
           )}
           <Link href="/admin/posts/new">
@@ -901,6 +906,8 @@ export function PostsList({
             setShare={setShare}
             quality={quality}
             setQuality={setQuality}
+            captionQuality={captionQuality}
+            setCaptionQuality={setCaptionQuality}
             activeCount={activeFilterCount}
             onReset={resetFilters}
           />
@@ -930,6 +937,12 @@ export function PostsList({
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 md:gap-3 md:px-4">
             <span className="text-sm font-medium text-blue-700">
               {selectAllMode ? filteredTotal : selectedIds.size} selected
+              {allSelected && !selectAllMode && filteredTotal > posts.length && (
+                <> · <button className="underline hover:text-blue-900" onClick={() => setSelectAllMode(true)}>Select all {filteredTotal}</button></>
+              )}
+              {selectAllMode && (
+                <> · <button className="underline hover:text-blue-900" onClick={() => { setSelectAllMode(false); setSelectedIds(new Set()); }}>Clear all</button></>
+              )}
             </span>
             <Button
               size="sm"
@@ -940,10 +953,10 @@ export function PostsList({
             >
               {bulkDelete.isLoading ? <Spinner /> : <Trash2 className="h-4 w-4 shrink-0" />}
               {bulkDelete.isLoading
-                ? "Deleting..."
+                ? "Trashing..."
                 : bulkConfirming
                 ? "Sure?"
-                : "Delete"}
+                : "Trash"}
             </Button>
             <Button
               size="sm"
@@ -965,6 +978,27 @@ export function PostsList({
               {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
               {bulkAnalyze.isLoading ? "Starting..." : "Tag"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkCaption.isLoading}
+              onClick={async () => {
+                await bulkCaption.run(async () => {
+                  const res = await fetch("/api/posts/bulk-caption-analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ postIds: [...selectedIds] }),
+                  });
+                  if (!res.ok) throw new Error("Failed");
+                  const data = await res.json();
+                  setCaptionQueued(data.queued);
+                  setCaptionJob(data.job ?? null);
+                });
+              }}
+            >
+              {bulkCaption.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              {bulkCaption.isLoading ? "Starting..." : "Rate Captions"}
+            </Button>
             <button
               className="ml-auto text-sm text-blue-600 hover:underline"
               onClick={() => { setSelectedIds(new Set()); setSelectAllMode(false); lastSelectedIndexRef.current = null; }}
@@ -977,28 +1011,6 @@ export function PostsList({
           )}
           {bulkDelete.status === "error" && (
             <p className="text-sm text-red-600 px-1">{bulkDelete.message}</p>
-          )}
-          {allSelected && !selectAllMode && filteredTotal > posts.length && (
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-              All {posts.length} posts on this page are selected.{" "}
-              <button
-                className="font-medium underline hover:text-blue-900"
-                onClick={() => setSelectAllMode(true)}
-              >
-                Select all {filteredTotal} posts
-              </button>
-            </div>
-          )}
-          {selectAllMode && (
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-              All {filteredTotal} posts are selected.{" "}
-              <button
-                className="font-medium underline hover:text-blue-900"
-                onClick={() => { setSelectAllMode(false); setSelectedIds(new Set()); }}
-              >
-                Clear selection
-              </button>
-            </div>
           )}
         </div>
       )}

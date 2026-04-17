@@ -49,6 +49,7 @@ export interface PostsFilters {
    *   "issues" — missing FB link OR has at least one silent video
    */
   quality?: string;
+  captionQuality?: string;
 }
 
 const STORY_SOURCE_ID_PREFIX = "fb_story_";
@@ -96,6 +97,7 @@ export function parsePostsFilters(sp: SearchParamsLike): PostsFilters {
     subKind: getParam(sp, "subKind") || undefined,
     share: getParam(sp, "share") || undefined,
     quality: getParam(sp, "quality") || undefined,
+    captionQuality: getParam(sp, "captionQuality") || undefined,
   };
 }
 
@@ -321,6 +323,18 @@ export function buildPostsQuery(
     }
   }
 
+  // caption quality filter — CSV of {good, ok, weak, not-analyzed, has-rewrite}
+  const captionSet = parseCsvSet(filters.captionQuality, ["good", "ok", "weak", "not-analyzed", "has-rewrite"] as const);
+  if (captionSet && captionSet.size < 5) {
+    const orClauses: Prisma.PostWhereInput[] = [];
+    if (captionSet.has("good")) orClauses.push({ captionQuality: { gte: 4 } });
+    if (captionSet.has("ok")) orClauses.push({ captionQuality: 3 });
+    if (captionSet.has("weak")) orClauses.push({ captionQuality: { lte: 2, not: null } });
+    if (captionSet.has("not-analyzed")) orClauses.push({ captionAnalyzedAt: null });
+    if (captionSet.has("has-rewrite")) orClauses.push({ captionSuggestion: { not: null } });
+    if (orClauses.length > 0) extraAnds.push({ OR: orClauses });
+  }
+
   if (filters.kind === "stories") {
     extraAnds.push({ postType: "STORY" });
   } else {
@@ -515,6 +529,7 @@ export const POST_FILTER_KEYS = [
   "share",
   "subKind",
   "quality",
+  "captionQuality",
 ] as const;
 
 export function serializeFilters(

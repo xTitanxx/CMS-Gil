@@ -40,11 +40,13 @@ import {
   TAGGED_VALUES,
   SHARE_VALUES,
   QUALITY_VALUES,
+  CAPTION_QUALITY_VALUES,
   type LinkValue,
   type MultiMediaValue,
   type TaggedValue,
   type ShareValue,
   type QualityValue,
+  type CaptionQualityValue,
 } from "./PostFilterUI";
 
 interface FeedPost {
@@ -127,6 +129,9 @@ export function PostsFeed() {
   const [quality, setQuality] = useState<Set<QualityValue>>(() =>
     parseCsvToSet(searchParams.get("quality") ?? undefined, QUALITY_VALUES),
   );
+  const [captionQuality] = useState<Set<CaptionQualityValue>>(() =>
+    new Set(CAPTION_QUALITY_VALUES),
+  );
   const [aiTags] = useState<string[]>(() => {
     const t = searchParams.get("tags");
     return t ? t.split(",").filter(Boolean) : [];
@@ -172,7 +177,7 @@ export function PostsFeed() {
   }
 
   const activeFilterCount = useMemo(
-    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality }),
+    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality }),
     [sort, content, audio, link, multiMedia, tagged, share, quality],
   );
 
@@ -190,9 +195,9 @@ export function PostsFeed() {
   // --- cache key based on all filters ---
   const cacheKey = useMemo(() => {
     return buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
     }).toString();
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
 
   const [posts, setPosts] = useState<FeedPost[]>(
     () => feedCache.get(cacheKey)?.posts ?? [],
@@ -212,11 +217,11 @@ export function PostsFeed() {
 
   const detailQueryString = useMemo(() => {
     const qs = buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
     });
     qs.set("view", "feed");
     return qs.toString();
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
 
   const fetchPage = useCallback(
     async (cursor: string | null) => {
@@ -226,7 +231,7 @@ export function PostsFeed() {
       setErrorMessage(null);
       try {
         const qs = buildFilterParams({
-          search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+          search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
         });
         qs.set("limit", "20");
         if (sort === "originalDate_desc") qs.delete("sort");
@@ -252,7 +257,7 @@ export function PostsFeed() {
         isLoadingRef.current = false;
       }
     },
-    [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind],
+    [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
   );
 
   // Fetch on filter change or initial mount
@@ -300,7 +305,7 @@ export function PostsFeed() {
   // Sync filter state back to URL
   useEffect(() => {
     const params = buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
     });
     params.set("view", "feed");
     const url = new URL(window.location.href);
@@ -312,7 +317,7 @@ export function PostsFeed() {
     }
     params.forEach((v, k) => url.searchParams.set(k, v));
     window.history.replaceState(null, "", url.toString());
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -451,6 +456,8 @@ export function PostsFeed() {
             setShare={setShare}
             quality={quality}
             setQuality={setQuality}
+            captionQuality={captionQuality}
+            setCaptionQuality={() => {}}
             activeCount={activeFilterCount}
             onReset={resetFilters}
           />

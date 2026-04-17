@@ -35,7 +35,7 @@ interface ImportOptions {
 }
 
 function isStorageConfigured(): boolean {
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
+  return !!process.env.R2_ENDPOINT;
 }
 
 export async function runImportJob(opts: ImportOptions): Promise<void> {

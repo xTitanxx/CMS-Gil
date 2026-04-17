@@ -65,7 +65,9 @@ describe("buildPostsQuery", () => {
   it("applies audio=silent clause", () => {
     const { where } = buildPostsQuery({ audio: "silent" }, "user_1");
     const w = where as Record<string, unknown>;
-    expect(w.media).toBeDefined();
+    const andClauses = w.AND as Array<Record<string, unknown>> | undefined;
+    const audioClause = andClauses?.find((c) => Array.isArray(c.OR));
+    expect(audioClause).toBeDefined();
   });
 });
 

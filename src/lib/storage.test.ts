@@ -106,14 +106,12 @@ describe("getSignedDownloadUrl", () => {
   });
 });
 
-// Integration tests that require a real Blob store
-describe.runIf(process.env.BLOB_READ_WRITE_TOKEN)(
+// Integration tests that require a real R2 store
+describe.runIf(process.env.R2_ENDPOINT)(
   "uploadBuffer (integration)",
   () => {
-    // Dynamic import to avoid loading @vercel/blob in unit-test mode
     it("uploads a tiny image and returns url + hasAudio", async () => {
       const { uploadBuffer, deleteObject } = await import("./storage");
-      // 1x1 transparent PNG
       const png = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
         "base64"
@@ -124,7 +122,6 @@ describe.runIf(process.env.BLOB_READ_WRITE_TOKEN)(
       });
       expect(result.url).toMatch(/^https:\/\//);
       expect(result.hasAudio).toBe(null);
-      // Clean up
       await deleteObject(result.url);
     });
   }

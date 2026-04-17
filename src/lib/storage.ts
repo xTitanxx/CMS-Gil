@@ -1,5 +1,26 @@
-import { put, del } from "@vercel/blob";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
 import { probeHasAudio } from "./video-processing";
+
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT!,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
+
+const R2_BUCKET = process.env.R2_BUCKET_NAME ?? "cms-gil-media";
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
+
+function r2Url(key: string): string {
+  if (!R2_PUBLIC_URL) throw new Error("R2_PUBLIC_URL env var is required");
+  return `${R2_PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
+}
 
 function legacyCloudinaryUrl(storageKey: string, mimeType?: string): string {
   const cloud = process.env.CLOUDINARY_CLOUD_NAME;
@@ -10,22 +31,10 @@ function legacyCloudinaryUrl(storageKey: string, mimeType?: string): string {
   return `https://res.cloudinary.com/${cloud}/${resourceType}/upload/${publicId}`;
 }
 
-/**
- * Determines whether a Cloudinary video resource has an audio track.
- *
- * Shape of Cloudinary's actual response (verified against live admin API):
- *   - Audible video: { resource_type: "video", has_audio: true, audio_codec: "aac", ... }
- *   - Silent video:  { resource_type: "video" }  — has_audio and all audio_* fields omitted
- *
- * Silent videos don't get `has_audio: false`; the fields are simply absent.
- * This helper treats an absent `has_audio` on a known video as "silent," with
- * `audio_codec` as a secondary signal for robustness across API versions.
- *
- * Returns:
- *   - true:  video has an audio track
- *   - false: video is silent (no audio track)
- *   - null:  not a video (field doesn't apply)
- */
+function isLegacyPath(key: string): boolean {
+  return !key.startsWith("http");
+}
+
 export function hasAudioFromResource(
   resource:
     | { resource_type?: string; has_audio?: boolean; audio_codec?: string }
@@ -36,7 +45,6 @@ export function hasAudioFromResource(
   if (resource.resource_type !== "video") return null;
   if (resource.has_audio === true) return true;
   if (resource.has_audio === false) return false;
-  // has_audio omitted — fall back to audio_codec presence
   if (typeof resource.audio_codec === "string" && resource.audio_codec.length > 0) {
     return true;
   }
@@ -44,9 +52,7 @@ export function hasAudioFromResource(
 }
 
 export interface UploadResult {
-  /** The full Blob URL of the uploaded file */
   url: string;
-  /** Whether the uploaded resource has an audio track (null for non-videos) */
   hasAudio: boolean | null;
 }
 
@@ -67,12 +73,14 @@ export async function uploadBuffer(
 ): Promise<UploadResult> {
   const isVideo = isVideoContent(pathname, opts?.contentType);
 
-  const blob = await put(pathname, body, {
-    access: "public",
-    addRandomSuffix: false,
-    contentType: opts?.contentType,
-    allowOverwrite: true,
-  });
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: pathname,
+      Body: body,
+      ContentType: opts?.contentType,
+    })
+  );
 
   let hasAudio: boolean | null = null;
   if (isVideo) {
@@ -80,18 +88,12 @@ export async function uploadBuffer(
       hasAudio = await probeHasAudio(body);
     } catch (err) {
       console.warn("Audio probe failed, defaulting to null:", err);
-      hasAudio = null;
     }
   }
 
-  return { url: blob.url, hasAudio };
+  return { url: r2Url(pathname), hasAudio };
 }
 
-/**
- * Fetches a video's audio-track status by downloading and probing it.
- * Used by scripts/backfill-audio.ts to retroactively check videos that were
- * uploaded before hasAudio was captured at upload time.
- */
 export async function fetchVideoAudioStatus(url: string): Promise<boolean | null> {
   try {
     const buffer = await getObject(url);
@@ -102,15 +104,6 @@ export async function fetchVideoAudioStatus(url: string): Promise<boolean | null
   }
 }
 
-/**
- * Returns a download URL for the given media.
- *
- * For full Blob URLs (new uploads / post-backfill), returns as-is since
- * Blob URLs are publicly accessible.
- *
- * For legacy Cloudinary pathnames (pre-backfill), logs a warning and returns
- * the path unchanged — the backfill script will replace these with Blob URLs.
- */
 export async function getSignedDownloadUrl(
   urlOrPath: string,
   _expiresIn = 3600,
@@ -123,13 +116,6 @@ export async function getSignedDownloadUrl(
   return legacyCloudinaryUrl(urlOrPath, mimeType);
 }
 
-/**
- * Convenience wrapper for media rows that may carry an AudioTrack overlay.
- * Pass the media object with its (optional) audioTrack relation.
- *
- * Note: audioTrack overlay is no longer supported after Cloudinary removal.
- * The audioTrack parameter is accepted but ignored.
- */
 export function getMediaUrl(media: {
   storageKey: string;
   mimeType: string;
@@ -142,35 +128,21 @@ export function audioKey(userId: string, filename: string): string {
   return `audio/${userId}/${Date.now()}-${filename}`;
 }
 
-/**
- * Returns a thumbnail URL for the given media.
- *
- * For videos: derives a poster URL by replacing the file extension with `.poster.jpg`.
- * For images: returns the URL unchanged.
- *
- * For legacy Cloudinary pathnames, returns unchanged with a warning.
- */
 export async function getThumbnailUrl(
   url: string,
   mimeType?: string
 ): Promise<string> {
-  if (!url.startsWith("http")) {
+  if (isLegacyPath(url)) {
     return legacyCloudinaryUrl(url, mimeType);
   }
-  const isVideo = mimeType?.startsWith("video");
-  if (isVideo) {
+  if (mimeType?.startsWith("video")) {
     return url.replace(/\.[^/.]+$/, ".poster.jpg");
   }
   return url;
 }
 
-/**
- * Fetches the content of a stored object as a Buffer.
- *
- * Only works with full Blob URLs. Legacy Cloudinary pathnames will throw.
- */
 export async function getObject(url: string, mimeType?: string): Promise<Buffer> {
-  const resolved = url.startsWith("http") ? url : legacyCloudinaryUrl(url, mimeType);
+  const resolved = isLegacyPath(url) ? legacyCloudinaryUrl(url, mimeType) : url;
   const response = await fetch(resolved);
   if (!response.ok) {
     throw new Error(`Failed to fetch ${resolved}: ${response.statusText}`);
@@ -178,19 +150,13 @@ export async function getObject(url: string, mimeType?: string): Promise<Buffer>
   return Buffer.from(await response.arrayBuffer());
 }
 
-/**
- * Deletes an object from Vercel Blob storage.
- * Errors are swallowed — deletion is best-effort.
- */
 export async function deleteObject(url: string, _mimeType?: string): Promise<void> {
-  if (!url.startsWith("http")) {
-    console.warn(
-      `deleteObject: cannot delete legacy Cloudinary path "${url}" — skipping`
-    );
-    return;
-  }
+  if (isLegacyPath(url)) return;
   try {
-    await del(url);
+    const key = new URL(url).pathname.replace(/^\/+/, "");
+    await s3.send(
+      new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })
+    );
   } catch (err) {
     console.warn("deleteObject failed (swallowed):", err);
   }

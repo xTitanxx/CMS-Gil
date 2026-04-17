@@ -83,12 +83,11 @@ describe("getThumbnailUrl", () => {
     expect(result).toBe(url);
   });
 
-  it("returns legacy Cloudinary path unchanged with warning", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await getThumbnailUrl("media/user1/photo", "video/mp4");
-    expect(result).toBe("media/user1/photo");
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
+  it("resolves legacy Cloudinary path to a Cloudinary URL", async () => {
+    process.env.CLOUDINARY_CLOUD_NAME = "testcloud";
+    const result = await getThumbnailUrl("media/user1/photo.mp4", "video/mp4");
+    expect(result).toContain("res.cloudinary.com/testcloud/video/upload/media/user1/photo");
+    delete process.env.CLOUDINARY_CLOUD_NAME;
   });
 });
 
@@ -99,12 +98,11 @@ describe("getSignedDownloadUrl", () => {
     expect(result).toBe(url);
   });
 
-  it("returns legacy Cloudinary paths unchanged with warning", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await getSignedDownloadUrl("media/user1/photo");
-    expect(result).toBe("media/user1/photo");
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
+  it("resolves legacy Cloudinary path to a Cloudinary URL", async () => {
+    process.env.CLOUDINARY_CLOUD_NAME = "testcloud";
+    const result = await getSignedDownloadUrl("media/user1/photo.jpg", 3600, "image/jpeg");
+    expect(result).toContain("res.cloudinary.com/testcloud/image/upload/media/user1/photo");
+    delete process.env.CLOUDINARY_CLOUD_NAME;
   });
 });
 

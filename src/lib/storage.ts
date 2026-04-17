@@ -1,6 +1,15 @@
 import { put, del } from "@vercel/blob";
 import { probeHasAudio } from "./video-processing";
 
+function legacyCloudinaryUrl(storageKey: string, mimeType?: string): string {
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+  if (!cloud) return storageKey;
+  const publicId = storageKey.replace(/\.[^/.]+$/, "");
+  const isVideoLike = mimeType?.startsWith("video/") || mimeType?.startsWith("audio/");
+  const resourceType = isVideoLike ? "video" : "image";
+  return `https://res.cloudinary.com/${cloud}/${resourceType}/upload/${publicId}`;
+}
+
 /**
  * Determines whether a Cloudinary video resource has an audio track.
  *
@@ -105,17 +114,13 @@ export async function fetchVideoAudioStatus(url: string): Promise<boolean | null
 export async function getSignedDownloadUrl(
   urlOrPath: string,
   _expiresIn = 3600,
-  _mimeType?: string,
+  mimeType?: string,
   _audioOverlayKey?: string | null
 ): Promise<string> {
   if (urlOrPath.startsWith("http")) {
     return urlOrPath;
   }
-  // Legacy Cloudinary pathname — can't resolve without the Cloudinary SDK
-  console.warn(
-    `getSignedDownloadUrl: legacy Cloudinary path "${urlOrPath}" — run backfill to migrate`
-  );
-  return urlOrPath;
+  return legacyCloudinaryUrl(urlOrPath, mimeType);
 }
 
 /**
@@ -150,15 +155,10 @@ export async function getThumbnailUrl(
   mimeType?: string
 ): Promise<string> {
   if (!url.startsWith("http")) {
-    console.warn(
-      `getThumbnailUrl: legacy Cloudinary path "${url}" — run backfill to migrate`
-    );
-    return url;
+    return legacyCloudinaryUrl(url, mimeType);
   }
-
   const isVideo = mimeType?.startsWith("video");
   if (isVideo) {
-    // Replace extension with .poster.jpg for video thumbnails
     return url.replace(/\.[^/.]+$/, ".poster.jpg");
   }
   return url;
@@ -169,15 +169,11 @@ export async function getThumbnailUrl(
  *
  * Only works with full Blob URLs. Legacy Cloudinary pathnames will throw.
  */
-export async function getObject(url: string): Promise<Buffer> {
-  if (!url.startsWith("http")) {
-    throw new Error(
-      `getObject: cannot fetch legacy Cloudinary path "${url}" — run backfill to migrate`
-    );
-  }
-  const response = await fetch(url);
+export async function getObject(url: string, mimeType?: string): Promise<Buffer> {
+  const resolved = url.startsWith("http") ? url : legacyCloudinaryUrl(url, mimeType);
+  const response = await fetch(resolved);
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    throw new Error(`Failed to fetch ${resolved}: ${response.statusText}`);
   }
   return Buffer.from(await response.arrayBuffer());
 }

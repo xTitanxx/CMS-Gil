@@ -65,7 +65,12 @@ export default function SettingsPage() {
   async function handleDelete(id: string) {
     if (!confirm("Remove this user?")) return;
     const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
-    if (res.ok) setUsers((prev) => prev.filter((u) => u.id !== id));
+    if (res.ok) {
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+    } else {
+      const data = await res.json();
+      alert(data.error || "Failed to remove user");
+    }
   }
 
   async function handleResetPassword(id: string) {
@@ -78,6 +83,10 @@ export default function SettingsPage() {
     if (res.ok) {
       setResetId(null);
       setResetPassword("");
+      alert("Password updated");
+    } else {
+      const data = await res.json();
+      alert(data.error || "Failed to reset password");
     }
   }
 

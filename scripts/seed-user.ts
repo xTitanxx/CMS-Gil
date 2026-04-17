@@ -11,17 +11,20 @@ function createPrisma() {
 
 const prisma = createPrisma();
 
+// Usage: npx tsx scripts/seed-user.ts <email> <password> [name]
 async function main() {
-  const email = "anavollmer4@gmail.com";
-  const password = "1234";
-  const name = "Ana";
+  const [email, password, name] = process.argv.slice(2);
+  if (!email || !password) {
+    console.error("Usage: npx tsx scripts/seed-user.ts <email> <password> [name]");
+    process.exit(1);
+  }
 
   const hash = await bcrypt.hash(password, 12);
 
   const user = await prisma.user.upsert({
     where: { email },
     update: { passwordHash: hash, name },
-    create: { email, name, passwordHash: hash },
+    create: { email, name: name || null, passwordHash: hash },
   });
 
   console.log(`Seeded user: ${user.email} (id: ${user.id})`);

@@ -43,6 +43,7 @@ model User {
   email          String?         @unique
   emailVerified  DateTime?
   image          String?
+  passwordHash   String?
   accounts       Account[]
   sessions       Session[]
   posts          Post[]
@@ -53,6 +54,7 @@ model User {
   audioTracks    AudioTrack[]
   dailyBriefs    DailyBrief[]
   conversations  Conversation[]
+  todos          Todo[]
 }
 
 model VerificationToken {
@@ -474,4 +476,16 @@ model Message {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+model Todo {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }

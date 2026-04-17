@@ -36,14 +36,9 @@ import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
 import * as path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { v2 as cloudinary } from "cloudinary";
 import { prisma } from "../src/lib/prisma";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { getObject } from "../src/lib/storage";
+import { extractFrames } from "../src/lib/video-processing";
 
 const client = new Anthropic();
 const TRASH_ROOT = path.join(process.cwd(), "trash");
@@ -204,56 +199,37 @@ type ImgBlock = {
   };
 };
 
-async function fetchAsBase64(url: string): Promise<ImgBlock | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const ct = res.headers.get("content-type") ?? "image/jpeg";
-    const media_type = (
-      ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(ct)
-        ? ct
-        : "image/jpeg"
-    ) as ImgBlock["source"]["media_type"];
-    return {
-      type: "image",
-      source: { type: "base64", media_type, data: buf.toString("base64") },
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function mediaBlocksFor(post: PostRow, maxBlocks: number): Promise<ImgBlock[]> {
   const out: ImgBlock[] = [];
   for (const m of post.media) {
     if (out.length >= maxBlocks) break;
-    const publicId = m.storageKey.replace(/\.[^/.]+$/, "");
-    if (m.mimeType.startsWith("image/")) {
-      const url = cloudinary.url(publicId, {
-        resource_type: "image",
-        type: "upload",
-        transformation: [{ width: 512, crop: "limit", quality: "auto" }],
-        format: "jpg",
-      });
-      const b = await fetchAsBase64(url);
-      if (b) out.push(b);
-    } else if (m.mimeType.startsWith("video/")) {
-      // Two frames: start + midpoint. Enough to disambiguate re-uploads.
-      for (const offset of ["0p", "50p"]) {
-        if (out.length >= maxBlocks) break;
-        const url = cloudinary.url(publicId, {
-          resource_type: "video",
-          type: "upload",
-          transformation: [
-            { start_offset: offset },
-            { width: 512, crop: "limit", quality: "auto" },
-          ],
-          format: "jpg",
+    try {
+      if (m.mimeType.startsWith("image/")) {
+        const buf = await getObject(m.storageKey);
+        const ct = m.mimeType;
+        const media_type = (
+          ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(ct)
+            ? ct
+            : "image/jpeg"
+        ) as ImgBlock["source"]["media_type"];
+        out.push({
+          type: "image",
+          source: { type: "base64", media_type, data: buf.toString("base64") },
         });
-        const b = await fetchAsBase64(url);
-        if (b) out.push(b);
+      } else if (m.mimeType.startsWith("video/")) {
+        // Two frames: start + midpoint. Enough to disambiguate re-uploads.
+        const videoBuf = await getObject(m.storageKey);
+        const frames = await extractFrames(videoBuf, [0, 0.5]);
+        for (const frame of frames) {
+          if (out.length >= maxBlocks) break;
+          out.push({
+            type: "image",
+            source: { type: "base64", media_type: "image/jpeg", data: frame.toString("base64") },
+          });
+        }
       }
+    } catch {
+      // Skip unreadable media
     }
   }
   return out;

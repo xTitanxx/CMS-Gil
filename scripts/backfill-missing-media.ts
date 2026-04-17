@@ -30,9 +30,8 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
 import { prisma } from "../src/lib/prisma";
-import { uploadBuffer, mediaKey, hasAudioFromResource } from "../src/lib/storage";
+import { uploadBuffer, mediaKey } from "../src/lib/storage";
 import { guessMimeType } from "../src/lib/facebook-parser";
 
 function fixFBEncoding(str: string): string {
@@ -44,17 +43,9 @@ function fixFBEncoding(str: string): string {
 }
 import { normalizeForSearch } from "../src/lib/search-normalize";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
 const EXPORT_ROOT =
   "/Users/eitan/Documents/Code-Projects/CMS-Gil.nosync/sample-exports";
 
-const LARGE_THRESHOLD = 90 * 1024 * 1024;
-const CLOUDINARY_MAX = 100 * 1024 * 1024;
 
 interface HtmlEntry {
   body: string;
@@ -141,28 +132,6 @@ function parseSections(html: string, sourceFile: string): HtmlEntry[] {
   }
 
   return out;
-}
-
-async function uploadLarge(key: string, filePath: string) {
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  const result = await new Promise<UploadApiResponse>((resolve, reject) => {
-    cloudinary.uploader.upload_large(
-      filePath,
-      {
-        public_id: publicId,
-        resource_type: "video",
-        type: "upload",
-        media_metadata: true,
-        chunk_size: 20 * 1024 * 1024,
-      },
-      (error, uploadResult) => {
-        if (error) return reject(error);
-        if (!uploadResult) return reject(new Error("Cloudinary returned no result"));
-        resolve(uploadResult);
-      }
-    );
-  });
-  return { hasAudio: hasAudioFromResource(result) };
 }
 
 async function main() {
@@ -393,11 +362,6 @@ async function main() {
       }
 
       const stat = await fs.stat(filePath);
-      if (stat.size > CLOUDINARY_MAX) {
-        console.log(`    [SKIP-SIZE] ${base} ${(stat.size / 1024 / 1024).toFixed(1)}MB`);
-        continue;
-      }
-
       const mimeType = guessMimeType(base);
 
       if (dryRun) {
@@ -409,12 +373,8 @@ async function main() {
       const key = mediaKey(post.userId, base);
       let hasAudio: boolean | null = null;
       try {
-        if (stat.size > LARGE_THRESHOLD) {
-          ({ hasAudio } = await uploadLarge(key, filePath));
-        } else {
-          const buf = await fs.readFile(filePath);
-          ({ hasAudio } = await uploadBuffer(key, buf));
-        }
+        const buf = await fs.readFile(filePath);
+        ({ hasAudio } = await uploadBuffer(key, buf));
       } catch (err) {
         const msg = (err as { message?: string })?.message ?? String(err);
         console.log(`    [FAIL-UPLOAD] ${base} — ${msg}`);

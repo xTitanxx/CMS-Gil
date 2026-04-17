@@ -1,13 +1,8 @@
 // src/lib/analyze-post.ts
 import Anthropic from "@anthropic-ai/sdk";
-import { v2 as cloudinary } from "cloudinary";
 import { prisma } from "@/lib/prisma";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { getObject } from "@/lib/storage";
+import { extractFrames } from "@/lib/video-processing";
 
 const client = new Anthropic();
 
@@ -63,23 +58,13 @@ export function parseTagsFromResponse(text: string): string[] {
   }
 }
 
-async function fetchAsBase64(
-  url: string
-): Promise<{ data: string; media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp" } | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const ct = res.headers.get("content-type") ?? "image/jpeg";
-    const media_type = (
-      ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(ct)
-        ? ct
-        : "image/jpeg"
-    ) as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-    return { data: buffer.toString("base64"), media_type };
-  } catch {
-    return null;
-  }
+function inferImageMediaType(
+  mimeType: string
+): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
+  if (mimeType === "image/png") return "image/png";
+  if (mimeType === "image/gif") return "image/gif";
+  if (mimeType === "image/webp") return "image/webp";
+  return "image/jpeg";
 }
 
 export async function analyzePost(postId: string): Promise<string[]> {
@@ -96,32 +81,32 @@ export async function analyzePost(postId: string): Promise<string[]> {
   }
 
   for (const media of post.media) {
-    const publicId = media.storageKey.replace(/\.[^/.]+$/, "");
-
     if (media.mimeType.startsWith("image/")) {
-      const url = cloudinary.url(publicId, { resource_type: "image", type: "upload" });
-      const img = await fetchAsBase64(url);
-      if (img) {
+      try {
+        const buf = await getObject(media.storageKey);
         contentBlocks.push({
           type: "image",
-          source: { type: "base64", media_type: img.media_type, data: img.data },
+          source: {
+            type: "base64",
+            media_type: inferImageMediaType(media.mimeType),
+            data: buf.toString("base64"),
+          },
         });
+      } catch {
+        // Skip unreadable media
       }
     } else if (media.mimeType.startsWith("video/")) {
-      for (const offset of ["0p", "25p", "50p", "75p", "100p"]) {
-        const url = cloudinary.url(publicId, {
-          resource_type: "video",
-          type: "upload",
-          transformation: [{ start_offset: offset }],
-          format: "jpg",
-        });
-        const img = await fetchAsBase64(url);
-        if (img) {
+      try {
+        const videoBuf = await getObject(media.storageKey);
+        const frames = await extractFrames(videoBuf, [0, 0.25, 0.5, 0.75, 1.0]);
+        for (const f of frames) {
           contentBlocks.push({
             type: "image",
-            source: { type: "base64", media_type: "image/jpeg", data: img.data },
+            source: { type: "base64", media_type: "image/jpeg", data: f.toString("base64") },
           });
         }
+      } catch {
+        // Skip unreadable video
       }
     }
   }

@@ -1,27 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { v2 as cloudinary } from "cloudinary";
 import { getReviewBatch } from "@/lib/trash-review";
 import { ReviewClient } from "./ReviewClient";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 export const dynamic = "force-dynamic";
 
 function thumbUrl(storageKey: string | null, mimeType: string | null): string | null {
   if (!storageKey) return null;
-  const publicId = storageKey.replace(/\.[^/.]+$/, "");
   const isVideo = mimeType?.startsWith("video");
-  return cloudinary.url(publicId, {
-    resource_type: isVideo ? "video" : "image",
-    type: "upload",
-    format: "jpg",
-    transformation: [{ width: 384, crop: "limit", quality: "auto" }],
-  });
+  if (isVideo) {
+    return storageKey.replace(/\.[^/.]+$/, ".poster.jpg");
+  }
+  return storageKey;
 }
 
 export default async function ReviewBatchPage({

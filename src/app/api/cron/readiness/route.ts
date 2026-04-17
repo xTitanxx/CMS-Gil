@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness } from "@/lib/readiness";
-import { v2 as cloudinary } from "cloudinary";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-async function isBroken(storageKey: string, mimeType: string): Promise<boolean> {
-  const publicId = storageKey.replace(/\.[^/.]+$/, "");
-  const resourceType = mimeType.startsWith("video/") ? "video" : "image";
-  const url = cloudinary.url(publicId, { resource_type: resourceType, type: "upload" });
+async function isBroken(storageKey: string, _mimeType: string): Promise<boolean> {
+  if (!storageKey.startsWith("http")) return true;
   try {
-    const res = await fetch(url, { method: "HEAD" });
+    const res = await fetch(storageKey, { method: "HEAD" });
     return !res.ok;
   } catch {
     return true;

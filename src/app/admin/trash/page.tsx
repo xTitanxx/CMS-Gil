@@ -16,7 +16,6 @@ import {
   Merge,
   HelpCircle,
 } from "lucide-react";
-import { v2 as cloudinary } from "cloudinary";
 import { Badge } from "@/components/ui/badge";
 import {
   listTrashBatches,
@@ -29,23 +28,14 @@ import { CopyIdChip } from "./CopyIdChip";
 import { TrashActions } from "./[dir]/TrashActions";
 import { TrashScrollContainer } from "./TrashScrollContainer";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
 function thumbUrlFor(post: TrashedPost): string | null {
   const first = post.media[0];
   if (!first) return null;
-  const publicId = first.storageKey.replace(/\.[^/.]+$/, "");
   const isVideo = first.mimeType?.startsWith("video");
-  return cloudinary.url(publicId, {
-    resource_type: isVideo ? "video" : "image",
-    type: "upload",
-    format: "jpg",
-    transformation: [{ width: 256, crop: "limit", quality: "auto" }],
-  });
+  if (isVideo) {
+    return first.storageKey.replace(/\.[^/.]+$/, ".poster.jpg");
+  }
+  return first.storageKey;
 }
 
 const RULE_STYLES: Record<string, { border: string; bg: string; badge: string; icon: React.ElementType }> = {

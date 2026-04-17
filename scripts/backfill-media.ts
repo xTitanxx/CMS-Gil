@@ -1,44 +1,9 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
 import { prisma } from "../src/lib/prisma";
 import { parseFacebookFile, guessMimeType } from "../src/lib/facebook-parser";
 import { uploadBuffer, mediaKey } from "../src/lib/storage";
-import { hasAudioFromResource } from "../src/lib/storage";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const LARGE_THRESHOLD = 90 * 1024 * 1024;
-const CLOUDINARY_MAX = 100 * 1024 * 1024;
-
-async function uploadLarge(
-  key: string,
-  filePath: string
-): Promise<{ hasAudio: boolean | null }> {
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  const result = await new Promise<UploadApiResponse>((resolve, reject) => {
-    cloudinary.uploader.upload_large(
-      filePath,
-      {
-        public_id: publicId,
-        resource_type: "video",
-        type: "upload",
-        media_metadata: true,
-        chunk_size: 20 * 1024 * 1024,
-      },
-      (error, uploadResult) => {
-        if (error) return reject(error);
-        if (!uploadResult) return reject(new Error("Cloudinary returned no result"));
-        resolve(uploadResult);
-      }
-    );
-  });
-  return { hasAudio: hasAudioFromResource(result) };
-}
 
 const EXPORT_ROOT = "/Users/eitan/Documents/Code-Projects/CMS-Gil.nosync/sample-exports/JSONs/Unzipped JSONs";
 
@@ -165,12 +130,6 @@ async function main() {
       const filename = base;
       const mimeType = guessMimeType(filename);
 
-      if (stat.size > CLOUDINARY_MAX) {
-        console.log(`  [SKIP] ${post.id} ${filename} (${(stat.size / 1024 / 1024).toFixed(1)}MB) exceeds Cloudinary cap`);
-        noFile++;
-        continue;
-      }
-
       if (dryRun) {
         console.log(`  [DRY] ${post.id} <- ${filePath} (${stat.size} bytes, ${mimeType})`);
         recovered++;
@@ -180,13 +139,8 @@ async function main() {
       const key = mediaKey(post.userId, filename);
       let hasAudio: boolean | null = null;
       try {
-        if (stat.size > LARGE_THRESHOLD) {
-          console.log(`  [LARGE] ${post.id} <- ${filename} (${(stat.size / 1024 / 1024).toFixed(1)}MB) streaming`);
-          ({ hasAudio } = await uploadLarge(key, filePath));
-        } else {
-          const buf = await fs.readFile(filePath);
-          ({ hasAudio } = await uploadBuffer(key, buf));
-        }
+        const buf = await fs.readFile(filePath);
+        ({ hasAudio } = await uploadBuffer(key, buf));
       } catch (err) {
         const msg = (err as { message?: string })?.message ?? String(err);
         console.log(`  [FAIL] ${post.id} ${filename} (${(stat.size / 1024 / 1024).toFixed(1)}MB) — ${msg}`);

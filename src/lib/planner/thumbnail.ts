@@ -1,15 +1,17 @@
+/**
+ * Build a thumbnail URL for a media item. With Blob storage, storageKey
+ * is a full URL. For videos, derive the poster URL by replacing the
+ * extension with ".poster.jpg". For images, return the URL as-is and
+ * rely on next/image for display-time resize.
+ */
 export function buildThumbUrl(
   storageKey: string | null | undefined,
   mimeType: string | null | undefined
 ): string | null {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  if (!storageKey || !cloudName) return null;
-
-  const publicId = storageKey.replace(/\.[^.]+$/, "");
+  if (!storageKey) return null;
   const isVideo = mimeType?.startsWith("video/");
-
   if (isVideo) {
-    return `https://res.cloudinary.com/${cloudName}/video/upload/c_fill,w_160,h_160,so_0/${publicId}.jpg`;
+    return storageKey.replace(/\.[^/.]+$/, ".poster.jpg");
   }
-  return `https://res.cloudinary.com/${cloudName}/image/upload/c_fill,w_160,h_160/${publicId}`;
+  return storageKey;
 }

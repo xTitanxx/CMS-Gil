@@ -35,11 +35,7 @@ interface ImportOptions {
 }
 
 function isStorageConfigured(): boolean {
-  return !!(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
-  );
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
 }
 
 export async function runImportJob(opts: ImportOptions): Promise<void> {
@@ -132,12 +128,25 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
               const mimeType = guessMimeType(filename);
               const key = mediaKey(userId, filename);
 
-              const { hasAudio } = await uploadBuffer(key, fileBuffer);
+              const { url: storageKey, hasAudio } = await uploadBuffer(key, fileBuffer, {
+                contentType: mimeType,
+              });
+
+              if (mimeType.startsWith("video/")) {
+                try {
+                  const { extractPoster } = await import("@/lib/video-processing");
+                  const posterBuffer = await extractPoster(fileBuffer);
+                  const posterPath = key.replace(/\.[^/.]+$/, "") + ".poster.jpg";
+                  await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
+                } catch (err) {
+                  errors.push(`Poster extraction failed for ${parsed.sourceId}: ${String(err)}`);
+                }
+              }
 
               await prisma.media.create({
                 data: {
                   postId: post.id,
-                  storageKey: key,
+                  storageKey,
                   originalUri: uri,
                   mimeType,
                   sizeBytes: fileBuffer.length,

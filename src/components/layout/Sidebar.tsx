@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
   FileText,
   Upload,
   Link2,
@@ -18,18 +17,28 @@ import {
   Star,
   Menu,
   X,
+  Settings,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
-const nav = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/assistant", label: "Assistant", icon: Sparkles },
-  { href: "/admin/posts", label: "All Posts", icon: FileText },
-  { href: "/admin/import", label: "Import", icon: Upload },
-  { href: "/admin/audio", label: "Audio Library", icon: Music },
-  { href: "/admin/connections", label: "Connections", icon: Link2 },
-  { href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
-  { href: "/admin/todo", label: "To-Do", icon: CheckSquare },
+type NavItem =
+  | { type: "link"; href: string; label: string; icon: typeof FileText; badge?: "triage" }
+  | { type: "separator" };
+
+const nav: NavItem[] = [
+  { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
+  { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
+  { type: "separator" },
+  { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
+  { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
+  { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
+  { type: "link", href: "/admin/rate", label: "Rate Posts", icon: Star },
+  { type: "separator" },
+  { type: "link", href: "/admin/import", label: "Import", icon: Upload },
+  { type: "link", href: "/admin/connections", label: "Connections", icon: Link2 },
+  { type: "separator" },
+  { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
+  { type: "link", href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 function TriageBadge() {
@@ -87,48 +96,28 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-1 flex-col gap-1">
-        {nav.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              pathname.startsWith(href)
-                ? "bg-blue-50 text-blue-700"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </Link>
-        ))}
-
-        <Link
-          href="/admin/triage"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            pathname.startsWith("/admin/triage")
-              ? "bg-blue-50 text-blue-700"
-              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          )}
-        >
-          <AlertCircle className="h-4 w-4" />
-          Triage
-          <TriageBadge />
-        </Link>
-
-        <Link
-          href="/admin/rate"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            pathname.startsWith("/admin/rate")
-              ? "bg-blue-50 text-blue-700"
-              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          )}
-        >
-          <Star className="h-4 w-4" />
-          Rate Posts
-        </Link>
+        {nav.map((item, i) => {
+          if (item.type === "separator") {
+            return <hr key={i} className="my-2 border-gray-200" />;
+          }
+          const { href, label, icon: Icon, badge } = item;
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                pathname.startsWith(href)
+                  ? "bg-blue-50 text-blue-700"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+              {badge === "triage" && <TriageBadge />}
+            </Link>
+          );
+        })}
       </nav>
 
       <button

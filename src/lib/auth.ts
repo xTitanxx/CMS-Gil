@@ -75,17 +75,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
   trustHost: true,
   callbacks: {
-    async jwt({ token, user }) {
+    jwt({ token, user }) {
       if (user?.id) {
         // All co-admins share the primary content owner's data.
-        // Resolve the owner (user who has posts) so every session
-        // sees the same content pool regardless of who logged in.
-        const owner = await prisma.user.findFirst({
-          where: { posts: { some: {} } },
-          orderBy: { posts: { _count: "desc" } },
-          select: { id: true },
-        });
-        token.sub = owner?.id ?? user.id;
+        // Use OWNER_USER_ID env var so auth doesn't depend on a DB call
+        // (Neon cold starts can cause the query to fail during sign-in).
+        token.sub = process.env.OWNER_USER_ID ?? user.id;
       }
       return token;
     },

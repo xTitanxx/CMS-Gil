@@ -1,10 +1,5 @@
-import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { put, del } from "@vercel/blob";
+import { probeHasAudio } from "./video-processing";
 
 /**
  * Determines whether a Cloudinary video resource has an audio track.
@@ -40,132 +35,169 @@ export function hasAudioFromResource(
 }
 
 export interface UploadResult {
+  /** The full Blob URL of the uploaded file */
+  url: string;
   /** Whether the uploaded resource has an audio track (null for non-videos) */
   hasAudio: boolean | null;
 }
 
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v", ".3gp", ".wmv",
+]);
+
+function isVideoContent(pathname: string, contentType?: string): boolean {
+  if (contentType?.startsWith("video")) return true;
+  const ext = pathname.match(/\.[^/.]+$/)?.[0]?.toLowerCase();
+  return ext ? VIDEO_EXTENSIONS.has(ext) : false;
+}
+
 export async function uploadBuffer(
-  key: string,
-  body: Buffer
+  pathname: string,
+  body: Buffer,
+  opts?: { contentType?: string }
 ): Promise<UploadResult> {
-  // Strip extension from public_id — Cloudinary appends the detected format automatically.
-  // Without this, the stored public_id would include the extension (e.g. "file.jpg"),
-  // causing URLs to resolve to "file.jpg.jpg" (double extension) → 404.
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  const result = await new Promise<UploadApiResponse>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: "auto", type: "upload", media_metadata: true },
-      (error, uploadResult) => {
-        if (error) return reject(error);
-        if (!uploadResult) return reject(new Error("Cloudinary returned no result"));
-        resolve(uploadResult);
-      }
-    );
-    stream.end(body);
+  const isVideo = isVideoContent(pathname, opts?.contentType);
+
+  const blob = await put(pathname, body, {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: opts?.contentType,
+    allowOverwrite: true,
   });
 
-  return { hasAudio: hasAudioFromResource(result) };
+  let hasAudio: boolean | null = null;
+  if (isVideo) {
+    try {
+      hasAudio = await probeHasAudio(body);
+    } catch (err) {
+      console.warn("Audio probe failed, defaulting to null:", err);
+      hasAudio = null;
+    }
+  }
+
+  return { url: blob.url, hasAudio };
 }
 
 /**
- * Fetches a video's audio-track status from Cloudinary's admin API.
+ * Fetches a video's audio-track status by downloading and probing it.
  * Used by scripts/backfill-audio.ts to retroactively check videos that were
  * uploaded before hasAudio was captured at upload time.
- *
- * Note: the admin API has tighter rate limits than the delivery API — the
- * caller should concurrency-limit this to ~5 parallel calls.
  */
-export async function fetchVideoAudioStatus(key: string): Promise<boolean | null> {
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  const resource = await cloudinary.api.resource(publicId, {
-    resource_type: "video",
-    type: "upload",
-    media_metadata: true,
-  });
-  return hasAudioFromResource(resource);
+export async function fetchVideoAudioStatus(url: string): Promise<boolean | null> {
+  try {
+    const buffer = await getObject(url);
+    return await probeHasAudio(buffer);
+  } catch (err) {
+    console.warn("fetchVideoAudioStatus failed:", err);
+    return null;
+  }
 }
 
+/**
+ * Returns a download URL for the given media.
+ *
+ * For full Blob URLs (new uploads / post-backfill), returns as-is since
+ * Blob URLs are publicly accessible.
+ *
+ * For legacy Cloudinary pathnames (pre-backfill), logs a warning and returns
+ * the path unchanged — the backfill script will replace these with Blob URLs.
+ */
 export async function getSignedDownloadUrl(
-  key: string,
+  urlOrPath: string,
   _expiresIn = 3600,
-  mimeType?: string,
-  audioOverlayKey?: string | null
+  _mimeType?: string,
+  _audioOverlayKey?: string | null
 ): Promise<string> {
-  const isVideo = mimeType?.startsWith("video");
-  const isAudio = mimeType?.startsWith("audio");
-  const resourceType = isVideo || isAudio ? "video" : "image";
-  // Strip extension — Cloudinary appends the format automatically; including it in
-  // the public_id would produce a double-extension URL (e.g. file.jpg.jpg).
-  const publicId = key.replace(/\.[^/.]+$/, "");
-
-  if (isVideo && audioOverlayKey) {
-    // Overlay a user-provided audio track onto the video. Cloudinary requires
-    // slashes in the overlay public_id to be escaped as colons.
-    const audioPublicId = audioOverlayKey.replace(/\.[^/.]+$/, "").replace(/\//g, ":");
-    return cloudinary.url(publicId, {
-      resource_type: "video",
-      type: "upload",
-      transformation: [
-        { overlay: `video:${audioPublicId}` },
-        { flags: "layer_apply" },
-      ],
-    });
+  if (urlOrPath.startsWith("http")) {
+    return urlOrPath;
   }
-
-  return cloudinary.url(publicId, { resource_type: resourceType, type: "upload" });
+  // Legacy Cloudinary pathname — can't resolve without the Cloudinary SDK
+  console.warn(
+    `getSignedDownloadUrl: legacy Cloudinary path "${urlOrPath}" — run backfill to migrate`
+  );
+  return urlOrPath;
 }
 
 /**
  * Convenience wrapper for media rows that may carry an AudioTrack overlay.
  * Pass the media object with its (optional) audioTrack relation.
+ *
+ * Note: audioTrack overlay is no longer supported after Cloudinary removal.
+ * The audioTrack parameter is accepted but ignored.
  */
 export function getMediaUrl(media: {
   storageKey: string;
   mimeType: string;
   audioTrack?: { storageKey: string } | null;
 }): Promise<string> {
-  return getSignedDownloadUrl(
-    media.storageKey,
-    3600,
-    media.mimeType,
-    media.audioTrack?.storageKey ?? null
-  );
+  return getSignedDownloadUrl(media.storageKey, 3600, media.mimeType);
 }
 
 export function audioKey(userId: string, filename: string): string {
   return `audio/${userId}/${Date.now()}-${filename}`;
 }
 
-// Returns a jpg poster frame for videos, or the image URL for images
+/**
+ * Returns a thumbnail URL for the given media.
+ *
+ * For videos: derives a poster URL by replacing the file extension with `.poster.jpg`.
+ * For images: returns the URL unchanged.
+ *
+ * For legacy Cloudinary pathnames, returns unchanged with a warning.
+ */
 export async function getThumbnailUrl(
-  key: string,
+  url: string,
   mimeType?: string
 ): Promise<string> {
-  const isVideo = mimeType?.startsWith("video");
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  if (isVideo) {
-    // Cloudinary auto-generates a jpg thumbnail for videos
-    return cloudinary.url(publicId, {
-      resource_type: "video",
-      type: "upload",
-      format: "jpg",
-    });
+  if (!url.startsWith("http")) {
+    console.warn(
+      `getThumbnailUrl: legacy Cloudinary path "${url}" — run backfill to migrate`
+    );
+    return url;
   }
-  return cloudinary.url(publicId, { resource_type: "image", type: "upload" });
+
+  const isVideo = mimeType?.startsWith("video");
+  if (isVideo) {
+    // Replace extension with .poster.jpg for video thumbnails
+    return url.replace(/\.[^/.]+$/, ".poster.jpg");
+  }
+  return url;
 }
 
-export async function getObject(key: string): Promise<Buffer> {
-  const url = cloudinary.url(key, { resource_type: "auto", type: "upload" });
+/**
+ * Fetches the content of a stored object as a Buffer.
+ *
+ * Only works with full Blob URLs. Legacy Cloudinary pathnames will throw.
+ */
+export async function getObject(url: string): Promise<Buffer> {
+  if (!url.startsWith("http")) {
+    throw new Error(
+      `getObject: cannot fetch legacy Cloudinary path "${url}" — run backfill to migrate`
+    );
+  }
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch ${key}: ${response.statusText}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+  }
   return Buffer.from(await response.arrayBuffer());
 }
 
-export async function deleteObject(key: string, mimeType?: string): Promise<void> {
-  const publicId = key.replace(/\.[^/.]+$/, "");
-  const isVideoLike = mimeType?.startsWith("video") || mimeType?.startsWith("audio");
-  const resourceType = isVideoLike ? "video" : "image";
-  await cloudinary.uploader.destroy(publicId, { resource_type: resourceType, type: "upload" });
+/**
+ * Deletes an object from Vercel Blob storage.
+ * Errors are swallowed — deletion is best-effort.
+ */
+export async function deleteObject(url: string, _mimeType?: string): Promise<void> {
+  if (!url.startsWith("http")) {
+    console.warn(
+      `deleteObject: cannot delete legacy Cloudinary path "${url}" — skipping`
+    );
+    return;
+  }
+  try {
+    await del(url);
+  } catch (err) {
+    console.warn("deleteObject failed (swallowed):", err);
+  }
 }
 
 export function mediaKey(userId: string, filename: string): string {

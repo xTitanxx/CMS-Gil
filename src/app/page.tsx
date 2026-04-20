@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getPublicFeedPage, getPublicStoriesPage } from "@/lib/public-posts";
-import { getMediaUrl } from "@/lib/storage";
+import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
 import { PublicFeed } from "./PublicFeed";
 import { StoriesRow } from "./StoriesRow";
 
@@ -40,20 +40,26 @@ export default async function HomePage() {
   );
 
   const storiesWithUrls = await Promise.all(
-    storiesPage.stories.map(async (s) => ({
-      id: s.id,
-      originalDate: s.originalDate.toISOString(),
-      media: await Promise.all(
+    storiesPage.stories.map(async (s) => {
+      const mediaWithUrls = await Promise.all(
         s.media.map(async (m) => ({
           id: m.id,
           mimeType: m.mimeType,
           hasAudio: m.hasAudio,
-          url: await getMediaUrl(m).catch(
-            () => null
-          ),
+          url: await getMediaUrl(m).catch(() => null),
         }))
-      ),
-    }))
+      );
+      const firstMedia = s.media[0];
+      const thumbUrl = firstMedia
+        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
+        : null;
+      return {
+        id: s.id,
+        originalDate: s.originalDate.toISOString(),
+        thumbUrl,
+        media: mediaWithUrls,
+      };
+    })
   );
 
   const initialFeed = {
@@ -113,12 +119,6 @@ export default async function HomePage() {
               </h1>
               <p className="text-sm text-gray-600">{BIO}</p>
             </div>
-            <Link
-              href="/chat"
-              className="hidden shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 sm:inline-flex"
-            >
-              @ Message
-            </Link>
           </div>
 
         </div>
@@ -129,11 +129,6 @@ export default async function HomePage() {
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           {/* Sidebar */}
           <aside className="space-y-4">
-            <section className="rounded-xl bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-bold text-gray-900">Intro</h2>
-              <p className="mt-2 text-sm text-gray-700">{BIO}</p>
-            </section>
-
             {sidebarPhotos.length > 0 && (
               <section className="rounded-xl bg-white p-4 shadow-sm">
                 <div className="mb-2 flex items-center justify-between">
@@ -159,24 +154,28 @@ export default async function HomePage() {
 
           {/* Feed column */}
           <div className="min-w-0 space-y-4">
-            <Link
-              href="/chat"
-              className="block rounded-xl bg-white p-3 shadow-sm hover:bg-gray-50"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={AVATAR_SRC}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <span className="flex-1 rounded-full bg-gray-100 px-4 py-2 text-sm text-gray-500">
-                  Write something to Gil…
-                </span>
+            <section className="rounded-xl bg-white shadow-sm overflow-hidden">
+              <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
+                <p className="text-xs font-medium text-amber-800">
+                  Experimental feature — Virtual Gil is an AI that generates responses based on
+                  Gil&apos;s posts. It is not Gil, may not always be accurate, and does not
+                  provide medical advice.
+                </p>
               </div>
-            </Link>
+              <div className="px-4 py-4">
+                <h2 className="text-base font-bold text-gray-900">Talk to Virtual Gil</h2>
+                <p className="mt-1.5 text-sm text-gray-600">
+                  An AI chatbot trained on Gil&apos;s archive. Ask about breathwork,
+                  living with MS, dealing with depression, and other topics Gil has written about.
+                </p>
+                <Link
+                  href="/chat"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                >
+                  Try it out
+                </Link>
+              </div>
+            </section>
 
             <StoriesRow initial={initialStories} />
             <PublicFeed initial={initialFeed} />

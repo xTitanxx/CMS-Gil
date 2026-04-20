@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2, Send, Sparkles, RotateCcw } from "lucide-react";
 import { PostCard } from "./PostCard";
 import { PlanCard, type PlanProposal } from "./PlanCard";
 
@@ -22,7 +22,7 @@ type UiMsg =
 
 const SUGGESTIONS = [
   "What should I post today?",
-  "Show me next week's schedule",
+  "Plan my week",
 ];
 
 interface CachedPost {
@@ -34,9 +34,53 @@ interface CachedPost {
   thumbUrl?: string | null;
 }
 
+// Separate regexes: one for testing (no /g), one for matching (with /g)
+const POST_REF_TEST = /\[post:([a-zA-Z0-9_-]+)\]/;
 const POST_REF_RE = /\[post:([a-zA-Z0-9_-]+)\]/g;
 
-function InlinePostRef({ post, id }: { post: CachedPost | undefined; id: string }) {
+function InlinePostRef({
+  post: initialPost,
+  id,
+  onFetched,
+}: {
+  post: CachedPost | undefined;
+  id: string;
+  onFetched?: (post: CachedPost) => void;
+}) {
+  const [post, setPost] = useState(initialPost);
+  const fetchedRef = useRef(false);
+
+  // Sync with prop updates (e.g. cache populated after initial render)
+  useEffect(() => {
+    if (initialPost?.body) setPost(initialPost);
+  }, [initialPost]);
+
+  // Fetch on-demand if not in cache
+  useEffect(() => {
+    if (post?.body || fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetch(`/api/posts/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        // Use first image media URL as thumbnail, fall back to first media
+        const imgMedia = data.media?.find((m: { mimeType: string }) => m.mimeType?.startsWith("image/"));
+        const firstMedia = data.media?.[0];
+        const thumb = imgMedia?.url ?? firstMedia?.url ?? null;
+        const fetched: CachedPost = {
+          postId: id,
+          body: data.body,
+          tags: data.tags,
+          stars: data.rating?.stars ?? null,
+          lifecycle: data.lifecycle,
+          thumbUrl: thumb,
+        };
+        setPost(fetched);
+        onFetched?.(fetched);
+      })
+      .catch(() => {});
+  }, [id, post?.body, onFetched]);
+
   const href = `/admin/posts/${id}`;
   if (!post?.body) {
     return (
@@ -48,33 +92,71 @@ function InlinePostRef({ post, id }: { post: CachedPost | undefined; id: string 
       </a>
     );
   }
-  const preview = post.body.replace(/\s+/g, " ").slice(0, 60);
+  const body = post.body.replace(/\s+/g, " ").trim();
+  const truncated = body.length > 120 ? body.slice(0, 120).trimEnd() + "…" : body;
+  const isVideo = post.thumbUrl?.includes("/video/") || post.thumbUrl?.endsWith(".mp4") || post.thumbUrl?.endsWith(".mov");
+
   return (
     <a
       href={href}
-      className="my-0.5 inline-flex max-w-full items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 align-middle text-xs text-gray-700 hover:border-blue-300 hover:bg-blue-50"
+      className="my-2 block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-blue-300"
     >
-      {post.thumbUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={post.thumbUrl} alt="" className="h-6 w-6 flex-shrink-0 rounded object-cover" />
-      ) : (
-        <div className="h-6 w-6 flex-shrink-0 rounded bg-gray-200" />
+      {post.thumbUrl && (
+        <div className="relative aspect-video w-full overflow-hidden bg-gray-100">
+          {isVideo ? (
+            <video
+              src={post.thumbUrl}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={post.thumbUrl} alt="" className="h-full w-full object-cover" />
+          )}
+        </div>
       )}
-      <span className="truncate">{preview}</span>
-      {post.stars ? <span className="flex-shrink-0 text-amber-500">{"★".repeat(post.stars)}</span> : null}
+      <div className="px-3 py-2.5">
+        <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
+        <div className="mt-1.5 flex items-center gap-2">
+          {post.stars ? (
+            <span className="text-xs text-amber-500">{"★".repeat(post.stars)}</span>
+          ) : null}
+          {post.lifecycle && post.lifecycle !== "UNKNOWN" ? (
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase">{post.lifecycle}</span>
+          ) : null}
+          {post.tags && post.tags.length > 0 ? (
+            <span className="truncate text-[11px] text-gray-400">{post.tags.slice(0, 3).join(", ")}</span>
+          ) : null}
+        </div>
+      </div>
     </a>
   );
 }
 
-function renderTextWithRefs(text: string, cache: Map<string, CachedPost>): React.ReactNode[] {
+function renderTextWithRefs(
+  text: string,
+  cache: Map<string, CachedPost>,
+  onPostFetched?: (post: CachedPost) => void,
+): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
   let keyN = 0;
-  for (const match of text.matchAll(POST_REF_RE)) {
+  // Create a fresh regex each time to avoid lastIndex issues
+  const re = /\[post:([a-zA-Z0-9_-]+)\]/g;
+  for (const match of text.matchAll(re)) {
     const start = match.index ?? 0;
     if (start > last) out.push(text.slice(last, start));
     const id = match[1];
-    out.push(<InlinePostRef key={`ref-${keyN++}`} post={cache.get(id)} id={id} />);
+    out.push(
+      <InlinePostRef
+        key={`ref-${keyN++}`}
+        post={cache.get(id)}
+        id={id}
+        onFetched={onPostFetched}
+      />,
+    );
     last = start + match[0].length;
   }
   if (last < text.length) out.push(text.slice(last));
@@ -88,7 +170,11 @@ function defaultWhen(): string {
   return d.toISOString();
 }
 
-export function ThreadView() {
+interface ThreadViewProps {
+  onPlanProposed?: () => void;
+}
+
+export function ThreadView({ onPlanProposed }: ThreadViewProps) {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
@@ -97,6 +183,8 @@ export function ThreadView() {
   const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Maps toolUseId → tool name so we can identify propose_to_planner results
+  const toolUseNamesRef = useRef<Map<string, string>>(new Map());
 
   function seedCacheFromToolResult(result: { ok: boolean; data?: unknown }) {
     if (!result.ok) return;
@@ -181,7 +269,11 @@ export function ThreadView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ conversationId, message: text }),
     });
-    if (!res.body) {
+    if (!res.ok || !res.body) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", kind: "text", text: "Something went wrong. Please try again." },
+      ]);
       setStreaming(false);
       return;
     }
@@ -210,6 +302,7 @@ export function ThreadView() {
               return [...prev, { role: "assistant", kind: "text", text: evt.text }];
             });
           } else if (evt.kind === "tool_use") {
+            toolUseNamesRef.current.set(evt.id, evt.name);
             setMessages((prev) => [
               ...prev,
               {
@@ -219,6 +312,11 @@ export function ThreadView() {
                 name: evt.name,
                 input: evt.input,
               },
+            ]);
+          } else if (evt.kind === "error") {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", kind: "text", text: evt.message ?? "Something went wrong. Try again." },
             ]);
           } else if (evt.kind === "tool_result") {
             setMessages((prev) => [
@@ -231,6 +329,10 @@ export function ThreadView() {
               },
             ]);
             seedCacheFromToolResult(evt.result);
+            // When a planner proposal succeeds, refresh the planner panel
+            if (evt.result.ok && toolUseNamesRef.current.get(evt.toolUseId) === "propose_to_planner") {
+              onPlanProposed?.();
+            }
           }
         } catch {
           /* swallow partial/bad lines */
@@ -248,8 +350,17 @@ export function ThreadView() {
     }
   }
 
+  const handlePostFetched = useCallback((fetched: CachedPost) => {
+    setPostCache((prev) => {
+      const next = new Map(prev);
+      next.set(fetched.postId, { ...prev.get(fetched.postId), ...fetched });
+      return next;
+    });
+  }, []);
+
   function renderMsg(m: UiMsg, key: number) {
     if (m.kind === "text") {
+      const hasPostRefs = m.role === "assistant" && POST_REF_TEST.test(m.text);
       return (
         <div
           key={key}
@@ -258,78 +369,42 @@ export function ThreadView() {
           }`}
         >
           {m.role === "assistant" && (
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white self-start mt-1">
               <Sparkles className="h-3.5 w-3.5" />
             </div>
           )}
-          <div
-            className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-              m.role === "user"
-                ? "bg-blue-600 text-white rounded-br-sm"
-                : "border border-gray-200 bg-white text-gray-800 shadow-sm rounded-bl-sm"
-            }`}
-          >
-            {m.role === "assistant" ? renderTextWithRefs(m.text, postCache) : m.text}
-          </div>
+          {m.role === "user" ? (
+            <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap bg-blue-600 text-white rounded-br-sm">
+              {m.text}
+            </div>
+          ) : (
+            <div
+              className={`text-sm leading-relaxed whitespace-pre-wrap text-gray-800 ${
+                hasPostRefs
+                  ? "max-w-[85%]"
+                  : "max-w-[80%] rounded-2xl px-4 py-2.5 border border-gray-200 bg-white shadow-sm rounded-bl-sm"
+              }`}
+            >
+              {hasPostRefs ? (
+                <div className="rounded-2xl px-4 py-2.5 border border-gray-200 bg-white shadow-sm rounded-bl-sm">
+                  {renderTextWithRefs(m.text, postCache, handlePostFetched)}
+                </div>
+              ) : (
+                renderTextWithRefs(m.text, postCache, handlePostFetched)
+              )}
+            </div>
+          )}
         </div>
       );
     }
-    if (m.kind === "tool_use") {
-      return (
-        <div key={key} className="flex items-center gap-1.5 pl-10 text-xs text-gray-400">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          <span>{m.name}</span>
-        </div>
-      );
-    }
+    // Tool use/result messages are hidden — the planner panel is the output surface.
+    // Only show errors so the user knows if something broke.
+    if (m.kind === "tool_use") return null;
     if (m.kind === "tool_result") {
       if (!m.result.ok) {
         return (
           <div key={key} className="pl-10 text-xs text-red-500">
             error: {m.result.error}
-          </div>
-        );
-      }
-      const data = m.result.data as unknown;
-      if (Array.isArray(data)) {
-        return (
-          <div key={key} className="ml-10 space-y-2">
-            {(
-              data as {
-                postId: string;
-                body?: string;
-                tags?: string[];
-                stars?: number | null;
-                lifecycle?: string | null;
-                thumbUrl?: string | null;
-                reasons?: string[];
-                matchReasons?: string[];
-                score?: number;
-              }[]
-            )
-              .slice(0, 5)
-              .map((r) => (
-                <PostCard
-                  key={r.postId}
-                  data={{
-                    postId: r.postId,
-                    body: r.body,
-                    tags: r.tags,
-                    stars: r.stars,
-                    lifecycle: r.lifecycle,
-                    thumbUrl: r.thumbUrl,
-                    reasons: r.reasons ?? r.matchReasons,
-                    score: r.score,
-                  }}
-                  onSchedule={(postId) =>
-                    setPendingPlan({
-                      postId,
-                      platform: "instagram",
-                      scheduledAt: defaultWhen(),
-                    })
-                  }
-                />
-              ))}
           </div>
         );
       }
@@ -351,6 +426,21 @@ export function ThreadView() {
             Ask about the archive, rate, edit, or schedule posts
           </p>
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={async () => {
+              await fetch("/api/assistant/thread", { method: "DELETE" });
+              setMessages([]);
+              setConversationId(null);
+              toolUseNamesRef.current.clear();
+            }}
+            disabled={streaming}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 transition-colors disabled:opacity-40"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            New chat
+          </button>
+        )}
       </div>
 
       {/* Messages */}

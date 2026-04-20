@@ -18,7 +18,7 @@ export async function getPostContext(): Promise<{ text: string; count: number }>
 
   const posts = await prisma.post.findMany({
     where: { userId: gilUserId },
-    select: { body: true, tags: true, originalDate: true },
+    select: { id: true, body: true, tags: true, originalDate: true },
     orderBy: { originalDate: "desc" },
     take: 500,
   });
@@ -31,7 +31,7 @@ export async function getPostContext(): Promise<{ text: string; count: number }>
     });
     const tags = p.tags.length > 0 ? ` [${p.tags.join(", ")}]` : "";
     const body = p.body?.trim() ?? "(no text)";
-    return `${date}${tags}\n${body}`;
+    return `[ID: ${p.id}] ${date}${tags}\n${body}`;
   });
 
   cachedContext = lines.join("\n---\n");

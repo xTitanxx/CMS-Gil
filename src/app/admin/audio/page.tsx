@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import { AudioLibrary } from "./AudioLibrary";
 
+export const metadata = { title: "Audio Library" };
+
 export default async function AudioLibraryPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");

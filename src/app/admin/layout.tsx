@@ -1,6 +1,21 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
+
+const DEV_ADMIN_FAVICON =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="url(#g)"/><defs><linearGradient id="g" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#f97316"/><stop offset="1" stop-color="#ef4444"/></linearGradient></defs><text x="16" y="23" font-family="system-ui,sans-serif" font-size="20" font-weight="800" fill="#fff" text-anchor="middle">L</text></svg>`,
+  );
+
+export const metadata: Metadata = {
+  title: { default: "Content Hub", template: "%s — Content Hub" },
+  icons:
+    process.env.NODE_ENV === "development"
+      ? { icon: DEV_ADMIN_FAVICON }
+      : { icon: "/admin/icon" },
+};
 
 export default async function DashboardLayout({
   children,

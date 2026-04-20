@@ -3,6 +3,8 @@ import { PostsFeed } from "./PostsFeed";
 import { StoriesReel } from "./StoriesReel";
 import { ReelsFeed } from "./ReelsFeed";
 
+export const metadata = { title: "All Posts" };
+
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pick(sp: SearchParams, key: string): string | undefined {

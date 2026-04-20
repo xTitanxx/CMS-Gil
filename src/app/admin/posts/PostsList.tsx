@@ -384,13 +384,25 @@ export function PostsList({
     [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
   );
 
-  const fetchInitial = useCallback(async () => {
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const fetchInitial = useCallback(async (retryCount = 0) => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
     setLoading(true);
+    setFetchError(null);
     try {
       const params = buildQuery(jumpCursor);
       const res = await fetch(`/api/posts?${params}`);
+      if (!res.ok) {
+        if (retryCount < 3) {
+          isLoadingRef.current = false;
+          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retryCount)));
+          return fetchInitial(retryCount + 1);
+        }
+        setFetchError("Failed to load posts. Server may be temporarily unavailable.");
+        return;
+      }
       const data = await res.json();
       setPosts(data.posts ?? []);
       setTotal(data.total ?? 0);
@@ -403,6 +415,13 @@ export function PostsList({
       setSelectedIds(new Set());
       setSelectAllMode(false);
       lastSelectedIndexRef.current = null;
+    } catch {
+      if (retryCount < 3) {
+        isLoadingRef.current = false;
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retryCount)));
+        return fetchInitial(retryCount + 1);
+      }
+      setFetchError("Failed to load posts. Check your connection.");
     } finally {
       setLoading(false);
       isLoadingRef.current = false;
@@ -747,6 +766,7 @@ export function PostsList({
               }}
             >
               {bulkAnalyze.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              <span className="sm:hidden">{bulkAnalyze.isLoading ? "..." : "Tags"}</span>
               <span className="hidden sm:inline">{bulkAnalyze.isLoading ? "Starting..." : "AI Tag All"}</span>
             </Button>
           )}
@@ -788,6 +808,7 @@ export function PostsList({
               }}
             >
               {bulkCaption.isLoading ? <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> : <Sparkles className="h-4 w-4 shrink-0" />}
+              <span className="sm:hidden">{bulkCaption.isLoading ? "..." : "Captions"}</span>
               <span className="hidden sm:inline">{bulkCaption.isLoading ? "Starting..." : "Rate Captions"}</span>
             </Button>
           )}
@@ -1024,10 +1045,24 @@ export function PostsList({
         </div>
       ) : !loading && posts.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
-          <p className="text-gray-500">No posts found.</p>
-          <Link href="/admin/import" className="mt-2 block text-sm text-blue-600 hover:underline">
-            Import posts
-          </Link>
+          {fetchError ? (
+            <>
+              <p className="text-red-600">{fetchError}</p>
+              <button
+                onClick={() => fetchInitial()}
+                className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-500">No posts found.</p>
+              <Link href="/admin/import" className="mt-2 block text-sm text-blue-600 hover:underline">
+                Import posts
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <div className="relative">

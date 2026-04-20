@@ -32,7 +32,7 @@ const nav: NavItem[] = [
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
   { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
-  { type: "link", href: "/admin/rate", label: "Rate Posts", icon: Star },
+  { type: "link", href: "/admin/rate", label: "Review Posts", icon: Star },
   { type: "separator" },
   { type: "link", href: "/admin/import", label: "Import", icon: Upload },
   { type: "link", href: "/admin/connections", label: "Connections", icon: Link2 },
@@ -81,14 +81,11 @@ export function Sidebar() {
   const navContent = (
     <>
       <div className="mb-6 flex items-center justify-between px-3">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">CMS Gil</h1>
-          <p className="text-xs text-gray-500">Personal content hub</p>
-        </div>
+        <h1 className="text-lg font-bold text-gray-900">Content Hub</h1>
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden touch-manipulation"
           aria-label="Close menu"
         >
           <X className="h-5 w-5" />
@@ -106,7 +103,7 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation",
                 pathname.startsWith(href)
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -137,12 +134,12 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="rounded-lg p-2 text-gray-700 hover:bg-gray-100"
+          className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 touch-manipulation"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="text-base font-semibold text-gray-900">CMS Gil</h1>
+        <h1 className="text-base font-semibold text-gray-900">Content Hub</h1>
       </div>
 
       {/* Desktop sidebar */}
@@ -154,7 +151,7 @@ export function Sidebar() {
       {mobileOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            className="fixed inset-0 z-40 bg-black/40 md:hidden touch-manipulation"
             onClick={() => setMobileOpen(false)}
           />
           <aside className="fixed left-0 top-0 z-50 flex h-dvh w-[85%] max-w-xs flex-col border-r border-gray-200 bg-white px-3 py-4 md:hidden">

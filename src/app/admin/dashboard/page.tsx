@@ -1,15 +1,18 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { startOfWeek, format } from "date-fns";
+import { format } from "date-fns";
 import { PlannerDashboard } from "./PlannerDashboard";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
+import { getMondayUTC } from "@/lib/planner/week";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
+
+export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const session = await auth();
   const userId = session!.user!.id!;
 
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekStart = getMondayUTC();
 
   const [totalPosts, published, scheduled, plan] = await Promise.all([
     prisma.post.count({ where: { userId } }),
@@ -30,7 +33,11 @@ export default async function DashboardPage() {
                 tags: true,
                 originalDate: true,
                 publishCount: true,
-                media: { select: { storageKey: true, mimeType: true }, take: 1 },
+                lifecycle: true,
+                season: true,
+                postType: true,
+                rating: { select: { stars: true } },
+                media: { select: { storageKey: true, mimeType: true, hasAudio: true } },
                 publishes: {
                   where: { status: "PUBLISHED" },
                   orderBy: { publishedAt: "desc" },
@@ -74,6 +81,12 @@ export default async function DashboardPage() {
           ),
           thumbUrl,
           hasVideo: s.post.media.some((m) => m.mimeType.startsWith("video/")),
+          lifecycle: (s.post.lifecycle ?? "UNKNOWN") as PlanSlotData["post"]["lifecycle"],
+          season: (s.post.season ?? null) as PlanSlotData["post"]["season"],
+          rating: s.post.rating?.stars ?? null,
+          postType: (s.post.postType ?? "POST") as PlanSlotData["post"]["postType"],
+          mediaCount: s.post.media.length,
+          hasAudio: s.post.media.some((m) => m.hasAudio === true),
         },
       };
     });

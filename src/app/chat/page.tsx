@@ -3,10 +3,53 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Send, ArrowLeft } from "lucide-react";
+import { PostPreviewCard, type PreviewPost } from "./PostPreviewCard";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  posts?: PreviewPost[];
+}
+
+const POST_MARKER_RE = /\[POST:([^\]]+)\]/g;
+
+function stripMarkers(text: string): string {
+  return text.replace(POST_MARKER_RE, "").replace(/\n{3,}/g, "\n\n");
+}
+
+function MessageContent({ content, posts }: { content: string; posts?: PreviewPost[] }) {
+  if (!posts || posts.length === 0) {
+    return <>{stripMarkers(content)}</>;
+  }
+
+  const postMap = new Map(posts.map((p) => [p.id, p]));
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const re = new RegExp(POST_MARKER_RE);
+
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const textBefore = content.slice(lastIndex, match.index).replace(/\n{3,}/g, "\n\n");
+      if (textBefore.trim()) {
+        parts.push(<span key={`t-${lastIndex}`}>{textBefore}</span>);
+      }
+    }
+    const post = postMap.get(match[1]);
+    if (post) {
+      parts.push(<PostPreviewCard key={post.id} post={post} />);
+    }
+    lastIndex = re.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex).replace(/\n{3,}/g, "\n\n");
+    if (remaining.trim()) {
+      parts.push(<span key={`t-${lastIndex}`}>{remaining}</span>);
+    }
+  }
+
+  return <>{parts}</>;
 }
 
 export default function GilChatPage() {
@@ -61,15 +104,46 @@ export default function GilChatPage() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let fullContent = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        fullContent += chunk;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }];
         });
+      }
+
+      // Extract post IDs and fetch previews
+      const ids: string[] = [];
+      let m: RegExpExecArray | null;
+      const re = new RegExp(POST_MARKER_RE);
+      while ((m = re.exec(fullContent)) !== null) {
+        if (!ids.includes(m[1])) ids.push(m[1]);
+      }
+
+      if (ids.length > 0) {
+        try {
+          const previewRes = await fetch(
+            `/api/posts/preview?ids=${ids.slice(0, 3).join(",")}`
+          );
+          if (previewRes.ok) {
+            const posts: PreviewPost[] = await previewRes.json();
+            setMessages((current) => {
+              const idx = current.length - 1;
+              if (idx < 0) return current;
+              return [
+                ...current.slice(0, idx),
+                { ...current[idx], posts },
+              ];
+            });
+          }
+        } catch {
+          // Preview fetch failed — cards just won't show, text remains
+        }
       }
     } catch {
       setMessages((prev) => [
@@ -92,10 +166,10 @@ export default function GilChatPage() {
   }
 
   const suggestions = [
-    "What's your experience with breathwork?",
-    "How do you deal with tough days?",
-    "Tell me about your MS journey",
-    "What helps you with depression?",
+    "What has Gil written about breathwork?",
+    "How does Gil deal with tough days?",
+    "What has Gil shared about MS?",
+    "What does Gil say about depression?",
   ];
 
   return (
@@ -114,8 +188,8 @@ export default function GilChatPage() {
           <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
         </div>
         <div>
-          <h1 className="text-sm font-semibold text-gray-900">Gil Alter</h1>
-          <p className="text-xs text-gray-500">Ask me anything about my journey</p>
+          <h1 className="text-sm font-semibold text-gray-900">Virtual Gil</h1>
+          <p className="text-xs text-gray-500">AI trained on Gil&apos;s posts — not the real Gil</p>
         </div>
       </div>
 
@@ -123,12 +197,13 @@ export default function GilChatPage() {
       <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-bold text-2xl">
-              G
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-gray-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-700">Chat with Gil</p>
-              <p className="text-xs text-gray-400 mt-1">Ask about MS, breathwork, depression, and more</p>
+              <p className="text-sm font-medium text-gray-700">Talk to Virtual Gil</p>
+              <p className="text-xs text-gray-400 mt-1">An AI guide to Gil&apos;s archive — ask about MS, breathwork, depression, and more</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 mt-2">
               {suggestions.map((s) => (
@@ -152,25 +227,41 @@ export default function GilChatPage() {
             className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.role === "assistant" && (
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-semibold">
-                G
+              <div className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 self-start mt-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
               </div>
             )}
-            <div
-              className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-sm"
-                  : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"
-              }`}
-            >
-              {msg.content}
-              {msg.role === "assistant" &&
-                streaming &&
-                i === messages.length - 1 &&
-                msg.content === "" && (
-                  <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-sm" />
+            {msg.role === "user" ? (
+              <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap bg-blue-600 text-white rounded-br-sm">
+                {msg.content}
+              </div>
+            ) : (
+              <div
+                className={`text-sm whitespace-pre-wrap text-gray-800 ${
+                  msg.posts && msg.posts.length > 0
+                    ? "max-w-[85%]"
+                    : "max-w-[75%] rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm"
+                }`}
+              >
+                {msg.posts && msg.posts.length > 0 ? (
+                  <div className="flex flex-col gap-0">
+                    <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm">
+                      <MessageContent content={msg.content} posts={msg.posts} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <MessageContent content={msg.content} />
+                    {streaming &&
+                      i === messages.length - 1 &&
+                      msg.content === "" && (
+                        <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-sm" />
+                      )}
+                  </>
                 )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
         <div ref={bottomRef} />
@@ -183,7 +274,7 @@ export default function GilChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message Gil..."
+            placeholder="Ask Virtual Gil..."
             rows={1}
             className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors"
             style={{ maxHeight: "120px", overflowY: "auto" }}

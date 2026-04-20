@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { TriageFeed } from "./TriageFeed";
 import { TriageTabs } from "./TriageTabs";
 
-export const metadata = { title: "Triage — CMS Gil" };
+export const metadata = { title: "Triage" };
 
 export default async function TriagePage({
   searchParams,

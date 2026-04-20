@@ -1,5 +1,7 @@
 import { ContentCalendar } from "./ContentCalendar";
 
+export const metadata = { title: "Scheduled" };
+
 export default function ScheduledPage() {
   return (
     <div className="flex flex-col h-full space-y-4">

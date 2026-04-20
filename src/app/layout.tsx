@@ -10,12 +10,12 @@ const DEV_FAVICON =
   );
 
 export const metadata: Metadata = {
-  title: "CMS Gil — Personal Content Hub",
-  description: "Import, manage and publish your content across social platforms",
+  title: { default: "Gil Alter", template: "%s — Gil Alter" },
+  description: "Archive of all posts by Gil Alter",
   icons:
     process.env.NODE_ENV === "development"
       ? { icon: DEV_FAVICON }
-      : undefined,
+      : { apple: "/icon.jpg" },
 };
 
 export default async function RootLayout({

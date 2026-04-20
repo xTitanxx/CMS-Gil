@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ImprovementsFeed } from "./ImprovementsFeed";
 import { TriageTabs } from "../TriageTabs";
 
-export const metadata = { title: "Post Improvements — CMS Gil" };
+export const metadata = { title: "Improvements" };
 
 export default async function ImprovementsPage() {
   const session = await auth();

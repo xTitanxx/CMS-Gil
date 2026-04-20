@@ -35,6 +35,9 @@ export type QualityValue = (typeof QUALITY_VALUES)[number];
 export const CAPTION_QUALITY_VALUES = ["good", "ok", "weak", "not-analyzed", "has-rewrite"] as const;
 export type CaptionQualityValue = (typeof CAPTION_QUALITY_VALUES)[number];
 
+export const ENRICHED_VALUES = ["yes", "no"] as const;
+export type EnrichedValue = (typeof ENRICHED_VALUES)[number];
+
 export const CONTENT_OPTIONS: { value: ContentCategory; label: string }[] = [
   { value: "caption", label: "Caption only" },
   { value: "image", label: "Image" },
@@ -83,6 +86,11 @@ export const CAPTION_QUALITY_OPTIONS: { value: CaptionQualityValue; label: strin
   { value: "has-rewrite", label: "Has AI rewrite" },
 ];
 
+export const ENRICHED_OPTIONS: { value: EnrichedValue; label: string }[] = [
+  { value: "yes", label: "Enriched (has FB analytics)" },
+  { value: "no", label: "Not enriched" },
+];
+
 export const SORT_OPTIONS = [
   { value: "originalDate_desc", label: "Post date (newest)" },
   { value: "originalDate_asc", label: "Post date (oldest)" },
@@ -126,6 +134,7 @@ export function countActiveFilters(filters: {
   share: Set<ShareValue>;
   quality: Set<QualityValue>;
   captionQuality: Set<CaptionQualityValue>;
+  enriched: Set<EnrichedValue>;
 }): number {
   let n = 0;
   if (filters.sort !== "originalDate_desc") n++;
@@ -137,6 +146,7 @@ export function countActiveFilters(filters: {
   if (filters.share.size !== SHARE_VALUES.length) n++;
   if (filters.quality.size !== QUALITY_VALUES.length) n++;
   if (filters.captionQuality.size !== CAPTION_QUALITY_VALUES.length) n++;
+  if (filters.enriched.size !== ENRICHED_VALUES.length) n++;
   return n;
 }
 
@@ -153,6 +163,7 @@ export function buildFilterParams(f: {
   share: Set<ShareValue>;
   quality: Set<QualityValue>;
   captionQuality: Set<CaptionQualityValue>;
+  enriched: Set<EnrichedValue>;
   kind: string;
   subKind?: string;
 }): URLSearchParams {
@@ -164,6 +175,7 @@ export function buildFilterParams(f: {
   const shareParam = serializeSet(f.share, SHARE_VALUES);
   const qualityParam = serializeSet(f.quality, QUALITY_VALUES);
   const captionQualityParam = serializeSet(f.captionQuality, CAPTION_QUALITY_VALUES);
+  const enrichedParam = serializeSet(f.enriched, ENRICHED_VALUES);
   const params = new URLSearchParams({
     ...(f.search ? { search: f.search } : {}),
     ...(f.sort !== "originalDate_desc" ? { sort: f.sort } : {}),
@@ -176,6 +188,7 @@ export function buildFilterParams(f: {
     ...(shareParam ? { share: shareParam } : {}),
     ...(qualityParam ? { quality: qualityParam } : {}),
     ...(captionQualityParam ? { captionQuality: captionQualityParam } : {}),
+    ...(enrichedParam ? { enriched: enrichedParam } : {}),
     ...(f.kind !== "posts" ? { kind: f.kind } : {}),
     ...(f.subKind ? { subKind: f.subKind } : {}),
   });
@@ -326,6 +339,8 @@ export interface FilterMenuProps {
   setQuality: (s: Set<QualityValue>) => void;
   captionQuality: Set<CaptionQualityValue>;
   setCaptionQuality: (s: Set<CaptionQualityValue>) => void;
+  enriched: Set<EnrichedValue>;
+  setEnriched: (s: Set<EnrichedValue>) => void;
   activeCount: number;
   onReset: () => void;
 }
@@ -547,7 +562,7 @@ export function FilterMenu(props: FilterMenuProps) {
                 ))}
               </FilterSection>
             </div>
-            <div className="pt-3">
+            <div className="py-3">
               <FilterSection
                 title="AI tags"
                 selected={props.tagged.size}
@@ -562,6 +577,26 @@ export function FilterMenu(props: FilterMenuProps) {
                       toggleIn(props.tagged, o.value, props.setTagged)
                     }
                     onOnly={() => props.setTagged(new Set([o.value]))}
+                    label={o.label}
+                  />
+                ))}
+              </FilterSection>
+            </div>
+            <div className="pt-3">
+              <FilterSection
+                title="FB analytics"
+                selected={props.enriched.size}
+                total={ENRICHED_VALUES.length}
+                onSelectAll={() => props.setEnriched(new Set(ENRICHED_VALUES))}
+              >
+                {ENRICHED_OPTIONS.map((o) => (
+                  <CheckRow
+                    key={o.value}
+                    checked={props.enriched.has(o.value)}
+                    onChange={() =>
+                      toggleIn(props.enriched, o.value, props.setEnriched)
+                    }
+                    onOnly={() => props.setEnriched(new Set([o.value]))}
                     label={o.label}
                   />
                 ))}

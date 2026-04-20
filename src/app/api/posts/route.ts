@@ -26,6 +26,9 @@ const POST_INCLUDE = {
     },
   },
   rating: true,
+  analytics: {
+    select: { platform: true, reactions: true, comments: true, shares: true },
+  },
 } as const;
 
 type PostWithIncludes = Awaited<
@@ -89,6 +92,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  try {
   const { searchParams } = new URL(req.url);
   const page = Number(searchParams.get("page") ?? "1");
   const limit = Number(searchParams.get("limit") ?? "20");
@@ -214,6 +218,13 @@ export async function GET(req: NextRequest) {
     subKindCounts,
     ...(subKindTotals ? { subKindTotals } : {}),
   });
+  } catch (err) {
+    console.error("[GET /api/posts] DB error:", err);
+    return NextResponse.json(
+      { error: "Database temporarily unavailable", posts: [], total: 0 },
+      { status: 503 },
+    );
+  }
 }
 
 export async function DELETE(req: NextRequest) {

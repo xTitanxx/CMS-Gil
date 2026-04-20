@@ -41,12 +41,14 @@ import {
   SHARE_VALUES,
   QUALITY_VALUES,
   CAPTION_QUALITY_VALUES,
+  ENRICHED_VALUES,
   type LinkValue,
   type MultiMediaValue,
   type TaggedValue,
   type ShareValue,
   type QualityValue,
   type CaptionQualityValue,
+  type EnrichedValue,
 } from "./PostFilterUI";
 
 interface FeedPost {
@@ -132,6 +134,9 @@ export function PostsFeed() {
   const [captionQuality] = useState<Set<CaptionQualityValue>>(() =>
     new Set(CAPTION_QUALITY_VALUES),
   );
+  const [enriched, setEnriched] = useState<Set<EnrichedValue>>(() =>
+    parseCsvToSet(searchParams.get("enriched") ?? undefined, ENRICHED_VALUES),
+  );
   const [aiTags] = useState<string[]>(() => {
     const t = searchParams.get("tags");
     return t ? t.split(",").filter(Boolean) : [];
@@ -177,8 +182,8 @@ export function PostsFeed() {
   }
 
   const activeFilterCount = useMemo(
-    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality }),
-    [sort, content, audio, link, multiMedia, tagged, share, quality],
+    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched }),
+    [sort, content, audio, link, multiMedia, tagged, share, quality, enriched],
   );
 
   function resetFilters() {
@@ -190,14 +195,15 @@ export function PostsFeed() {
     setTagged(new Set(TAGGED_VALUES));
     setShare(new Set(SHARE_VALUES));
     setQuality(new Set(QUALITY_VALUES));
+    setEnriched(new Set(ENRICHED_VALUES));
   }
 
   // --- cache key based on all filters ---
   const cacheKey = useMemo(() => {
     return buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
     }).toString();
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind]);
 
   const [posts, setPosts] = useState<FeedPost[]>(
     () => feedCache.get(cacheKey)?.posts ?? [],
@@ -217,11 +223,11 @@ export function PostsFeed() {
 
   const detailQueryString = useMemo(() => {
     const qs = buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
     });
     qs.set("view", "feed");
     return qs.toString();
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind]);
 
   const fetchPage = useCallback(
     async (cursor: string | null) => {
@@ -231,7 +237,7 @@ export function PostsFeed() {
       setErrorMessage(null);
       try {
         const qs = buildFilterParams({
-          search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+          search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
         });
         qs.set("limit", "20");
         if (sort === "originalDate_desc") qs.delete("sort");
@@ -257,7 +263,7 @@ export function PostsFeed() {
         isLoadingRef.current = false;
       }
     },
-    [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
+    [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind],
   );
 
   // Fetch on filter change or initial mount
@@ -305,19 +311,19 @@ export function PostsFeed() {
   // Sync filter state back to URL
   useEffect(() => {
     const params = buildFilterParams({
-      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+      search, sort, aiTags: localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
     });
     params.set("view", "feed");
     const url = new URL(window.location.href);
     for (const key of [
       "search", "sort", "tags", "content", "audio", "link",
-      "multiMedia", "tagged", "share", "quality", "kind", "subKind", "view",
+      "multiMedia", "tagged", "share", "quality", "enriched", "kind", "subKind", "view",
     ]) {
       url.searchParams.delete(key);
     }
     params.forEach((v, k) => url.searchParams.set(k, v));
     window.history.replaceState(null, "", url.toString());
-  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind]);
+  }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -458,6 +464,8 @@ export function PostsFeed() {
             setQuality={setQuality}
             captionQuality={captionQuality}
             setCaptionQuality={() => {}}
+            enriched={enriched}
+            setEnriched={setEnriched}
             activeCount={activeFilterCount}
             onReset={resetFilters}
           />

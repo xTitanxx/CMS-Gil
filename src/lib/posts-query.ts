@@ -50,6 +50,8 @@ export interface PostsFilters {
    */
   quality?: string;
   captionQuality?: string;
+  /** "yes" = has PostAnalytics with platform FACEBOOK, "no" = does not, else = no filter */
+  enriched?: string;
 }
 
 const STORY_SOURCE_ID_PREFIX = "fb_story_";
@@ -98,6 +100,7 @@ export function parsePostsFilters(sp: SearchParamsLike): PostsFilters {
     share: getParam(sp, "share") || undefined,
     quality: getParam(sp, "quality") || undefined,
     captionQuality: getParam(sp, "captionQuality") || undefined,
+    enriched: getParam(sp, "enriched") || undefined,
   };
 }
 
@@ -335,6 +338,16 @@ export function buildPostsQuery(
     if (orClauses.length > 0) extraAnds.push({ OR: orClauses });
   }
 
+  // enriched filter — CSV of {yes, no}. Both or neither = no filter.
+  const enrichedSet = parseCsvSet(filters.enriched, ["yes", "no"] as const);
+  if (enrichedSet && enrichedSet.size === 1) {
+    if (enrichedSet.has("yes")) {
+      extraAnds.push({ analytics: { some: { platform: "FACEBOOK" } } });
+    } else {
+      extraAnds.push({ analytics: { none: { platform: "FACEBOOK" } } });
+    }
+  }
+
   if (filters.kind === "stories") {
     extraAnds.push({ postType: "STORY" });
   } else {
@@ -530,6 +543,7 @@ export const POST_FILTER_KEYS = [
   "subKind",
   "quality",
   "captionQuality",
+  "enriched",
 ] as const;
 
 export function serializeFilters(

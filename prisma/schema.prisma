@@ -55,6 +55,7 @@ model User {
   dailyBriefs    DailyBrief[]
   conversations  Conversation[]
   todos          Todo[]
+  memories       UserMemory[]
 }
 
 model VerificationToken {
@@ -155,6 +156,7 @@ model Post {
   publishes    PublishRecord[]
   analytics    PostAnalytics[]
   planSlots    WeeklyPlanSlot[]
+  fbComments   FacebookComment[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -271,11 +273,35 @@ model PublishRecord {
   errorMessage   String?
   retryCount     Int           @default(0)
 
+  analytics      PublishAnalytics?
+
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([status, scheduledAt])
   @@index([postId, platform])
+}
+
+// ─── Publish Analytics ──────────────────────────────────────────────────────
+
+model PublishAnalytics {
+  id              String        @id @default(cuid())
+  publishRecord   PublishRecord @relation(fields: [publishRecordId], references: [id], onDelete: Cascade)
+  publishRecordId String        @unique
+
+  impressions     Int?
+  reach           Int?
+  likes           Int?
+  comments        Int?
+  shares          Int?
+  saves           Int?          // Instagram only
+  videoViews      Int?          // video platforms
+
+  fetchedAt       DateTime      @default(now())
+  rawJson         Json?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 enum PublishStatus {
@@ -387,6 +413,20 @@ model PostAnalytics {
   @@index([postId])
 }
 
+// ─── Facebook Comments (scraped) ────────────────────────────────────────────
+
+model FacebookComment {
+  id         String   @id @default(cuid())
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorName String
+  body       String
+  scrapedAt  DateTime @default(now())
+
+  @@index([postId])
+}
+
 // ─── Weekly Planner ─────────────────────────────────────────────────────────
 
 enum PlanStatus {
@@ -420,13 +460,14 @@ model WeeklyPlanSlot {
   planId    String
   plan      WeeklyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   postId    String
-  post      Post       @relation(fields: [postId], references: [id])
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   day       DateTime
   status    SlotStatus @default(PROPOSED)
   reasoning String?
   platforms String[]
 
-  @@unique([planId, day])
+  @@unique([planId, day, postId])
+  @@index([planId, day])
   @@index([postId])
 }
 
@@ -488,4 +529,17 @@ model Todo {
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
+}
+
+model UserMemory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }

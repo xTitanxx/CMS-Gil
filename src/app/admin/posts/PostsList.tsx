@@ -20,6 +20,7 @@ import {
   Images,
   FileText,
   Send,
+  BarChart3,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -49,12 +50,14 @@ import {
   SHARE_VALUES,
   QUALITY_VALUES,
   CAPTION_QUALITY_VALUES,
+  ENRICHED_VALUES,
   type LinkValue,
   type MultiMediaValue,
   type TaggedValue,
   type ShareValue,
   type QualityValue,
   type CaptionQualityValue,
+  type EnrichedValue,
 } from "./PostFilterUI";
 
 interface Post {
@@ -72,6 +75,7 @@ interface Post {
   share: { url?: string; source?: string; name?: string } | null;
   media: { id: string; mimeType: string; hasAudio: boolean | null }[];
   publishes: { platform: string; status: string }[];
+  analytics: { platform: string; reactions: number | null; comments: number | null; shares: number | null }[];
   rating: { stars: number } | null;
   captionQuality: number | null;
   captionEvergreen: boolean | null;
@@ -286,6 +290,9 @@ export function PostsList({
   const [captionQuality, setCaptionQuality] = useState<Set<CaptionQualityValue>>(() =>
     new Set(CAPTION_QUALITY_VALUES),
   );
+  const [enriched, setEnriched] = useState<Set<EnrichedValue>>(() =>
+    new Set(ENRICHED_VALUES),
+  );
   // When set, the next fetchInitial uses this as the starting cursor (jump-to-date).
   const [jumpCursor, setJumpCursor] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -354,8 +361,8 @@ export function PostsList({
   }
 
   const activeFilterCount = useMemo(
-    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality }),
-    [sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality],
+    () => countActiveFilters({ sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched }),
+    [sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched],
   );
 
   function resetFilters() {
@@ -368,12 +375,13 @@ export function PostsList({
     setShare(new Set(SHARE_VALUES));
     setQuality(new Set(QUALITY_VALUES));
     setCaptionQuality(new Set(CAPTION_QUALITY_VALUES));
+    setEnriched(new Set(ENRICHED_VALUES));
   }
 
   const buildQuery = useCallback(
     (cursor: string | null) => {
       const params = buildFilterParams({
-        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
       });
       params.set("limit", "20");
       if (sort === "originalDate_desc") params.delete("sort");
@@ -381,7 +389,7 @@ export function PostsList({
       if (cursor) params.set("cursor", cursor);
       return params;
     },
-    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind],
   );
 
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -451,9 +459,9 @@ export function PostsList({
   const cacheKey = useMemo(
     () =>
       buildFilterParams({
-        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind,
+        search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind,
       }).toString(),
-    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind, subKind],
+    [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind],
   );
   const initialisedKeyRef = useRef<string | null>(null);
 
@@ -567,18 +575,18 @@ export function PostsList({
   // Sync filter state to URL so ViewToggle preserves filters when switching views
   useEffect(() => {
     const params = buildFilterParams({
-      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind,
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind,
     });
     const url = new URL(window.location.href);
     for (const key of [
       "search", "sort", "tags", "content", "audio", "link",
-      "multiMedia", "tagged", "share", "quality", "captionQuality", "kind",
+      "multiMedia", "tagged", "share", "quality", "captionQuality", "enriched", "kind",
     ]) {
       url.searchParams.delete(key);
     }
     params.forEach((v, k) => url.searchParams.set(k, v));
     window.history.replaceState(null, "", url.toString());
-  }, [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind]);
+  }, [search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -644,10 +652,10 @@ export function PostsList({
 
   const detailQueryString = useMemo(() => {
     return buildFilterParams({
-      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, kind,
+      search, sort, aiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind,
       subKind: subKind !== "all" ? subKind : undefined,
     }).toString();
-  }, [search, sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, aiTags, kind, subKind]);
+  }, [search, sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, aiTags, kind, subKind]);
 
   const postHref = useCallback(
     (id: string) => `/admin/posts/${id}?${detailQueryString}`,
@@ -929,6 +937,8 @@ export function PostsList({
             setQuality={setQuality}
             captionQuality={captionQuality}
             setCaptionQuality={setCaptionQuality}
+            enriched={enriched}
+            setEnriched={setEnriched}
             activeCount={activeFilterCount}
             onReset={resetFilters}
           />
@@ -1253,6 +1263,20 @@ export function PostsList({
                           <span className="hidden sm:inline">{post.share.url ? "Shared link" : "Quoted FB post"}</span>
                         </span>
                       )}
+                      {(() => {
+                        const fbAnalytics = post.analytics?.find((a) => a.platform === "FACEBOOK");
+                        if (!fbAnalytics) return null;
+                        const total = (fbAnalytics.reactions ?? 0) + (fbAnalytics.comments ?? 0) + (fbAnalytics.shares ?? 0);
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
+                            title={`FB Analytics: ${fbAnalytics.reactions ?? 0} reactions, ${fbAnalytics.comments ?? 0} comments, ${fbAnalytics.shares ?? 0} shares`}
+                          >
+                            <BarChart3 className="h-3 w-3 shrink-0" />
+                            <span className="hidden sm:inline">{total > 0 ? total.toLocaleString() : "FB"}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                     {displayBody(post.body) ? (
                       <p className="mt-1 line-clamp-2 text-sm text-gray-700">

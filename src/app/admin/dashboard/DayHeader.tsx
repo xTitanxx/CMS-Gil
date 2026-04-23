@@ -1,35 +1,45 @@
 "use client";
 
 import { format } from "date-fns";
+import type { PlanSlotData } from "@/lib/planner/types";
 
 interface DayHeaderProps {
   day: Date;
   isToday: boolean;
   slotCount: number;
+  slots: PlanSlotData[];
+  onApproveAll?: () => void;
 }
 
-export function DayHeader({ day, isToday, slotCount }: DayHeaderProps) {
+export function DayHeader({ day, isToday, slots, onApproveAll }: DayHeaderProps) {
   const label = isToday
     ? `Today, ${format(day, "MMM d")}`
-    : format(day, "EEE, MMM d");
+    : format(day, "EEEE, MMM d");
+
+  const scheduled = slots.filter((s) => s.status === "SCHEDULED").length;
+  const proposed = slots.filter((s) => s.status === "PROPOSED" || s.status === "APPROVED").length;
+  const total = slots.length;
+
+  const parts: string[] = [];
+  if (total > 0) parts.push(`${total} post${total !== 1 ? "s" : ""}`);
+  if (scheduled > 0) parts.push(`${scheduled} scheduled`);
+  if (proposed > 0) parts.push(`${proposed} proposed`);
 
   return (
-    <div
-      className={`sticky top-0 z-10 flex items-center justify-between border-b bg-white/95 px-1 py-2 backdrop-blur-sm ${
-        isToday ? "border-blue-200" : "border-gray-100"
-      }`}
-    >
-      <span
-        className={`text-[13px] font-semibold uppercase tracking-wide ${
-          isToday ? "text-blue-600" : "text-gray-500"
-        }`}
-      >
-        {label}
-      </span>
-      {slotCount > 0 && (
-        <span className="text-[11px] text-gray-400">
-          {slotCount} {slotCount === 1 ? "post" : "posts"}
-        </span>
+    <div className="flex items-center justify-between border-b border-[#eae7df] pb-2">
+      <div className="min-w-0">
+        <h3 className="text-[17px] font-semibold leading-tight text-[#161513]">{label}</h3>
+        {parts.length > 0 && (
+          <p className="mt-0.5 text-[12px] text-[#7a7870]">{parts.join(" \u00b7 ")}</p>
+        )}
+      </div>
+      {proposed > 0 && onApproveAll && (
+        <button
+          onClick={onApproveAll}
+          className="shrink-0 rounded-full bg-[#161513] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-80"
+        >
+          Approve all
+        </button>
       )}
     </div>
   );

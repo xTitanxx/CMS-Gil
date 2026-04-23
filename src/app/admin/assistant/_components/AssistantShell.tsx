@@ -11,7 +11,7 @@ export function AssistantShell() {
   const [tab, setTab] = useState<Tab>("chat");
 
   return (
-    <div className="-m-4 flex h-[calc(100dvh-3rem)] flex-col md:-m-8 md:h-[calc(100vh-3.5rem)] md:flex-row">
+    <div className="flex h-full flex-col md:flex-row">
       {/* Planner panel — left on desktop, swappable on mobile */}
       <aside
         className={`${

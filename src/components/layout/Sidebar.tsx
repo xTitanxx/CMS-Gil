@@ -129,17 +129,16 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 md:hidden">
+      {/* Mobile menu button — floating, not sticky */}
+      <div className="absolute left-2 top-2 z-30 md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 touch-manipulation"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-sm backdrop-blur-sm hover:bg-white active:bg-gray-100 touch-manipulation"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="text-base font-semibold text-gray-900">Content Hub</h1>
       </div>
 
       {/* Desktop sidebar */}

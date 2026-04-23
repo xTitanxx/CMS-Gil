@@ -420,7 +420,7 @@ export function PostEditor({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="mt-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+              className="mt-2 rounded-md px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
             >
               {expanded ? "See less" : "See more"}
             </button>

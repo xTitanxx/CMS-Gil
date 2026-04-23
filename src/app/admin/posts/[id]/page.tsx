@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Heart, MessageCircle, Share2 } from "lucide-react";
+import { ExternalLink, Heart, MessageCircle, Share2, Eye, ThumbsUp, Bookmark, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -242,82 +241,124 @@ export default async function PostDetailPage({
         {/* Publish history with analytics */}
         {post.publishes.length > 0 && (
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <div className="flex items-center justify-between px-4 py-3">
-              <h3 className="text-sm font-semibold text-gray-900">Publish History</h3>
+            <div className="flex items-center justify-between px-5 py-3.5">
+              <h3 className="text-[13px] font-semibold text-gray-900">Publish History</h3>
               {post.publishes.some((pr) => pr.status === "PUBLISHED") && (
                 <AnalyticsRefreshButton postId={id} />
               )}
             </div>
-            <div className="space-y-2 px-4 pb-4">
+            <div className="divide-y divide-gray-100">
               {post.publishes.map((pr) => {
                 const a = pr.analytics;
-                const metrics = a
-                  ? [
-                      a.videoViews != null && `${formatNum(a.videoViews)} views`,
-                      a.impressions != null && `${formatNum(a.impressions)} impressions`,
-                      a.reach != null && `${formatNum(a.reach)} reach`,
-                      a.likes != null && `${formatNum(a.likes)} likes`,
-                      a.comments != null && `${formatNum(a.comments)} comments`,
-                      a.shares != null && `${formatNum(a.shares)} shares`,
-                      a.saves != null && `${formatNum(a.saves)} saves`,
-                    ].filter(Boolean)
-                  : [];
+                const statusConfig = pr.status === "PUBLISHED"
+                  ? { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50", label: "Published" }
+                  : pr.status === "FAILED"
+                  ? { icon: XCircle, color: "text-red-500", bg: "bg-red-50", label: "Failed" }
+                  : pr.status === "PENDING"
+                  ? { icon: Clock, color: "text-amber-500", bg: "bg-amber-50", label: "Pending" }
+                  : { icon: Clock, color: "text-gray-400", bg: "bg-gray-50", label: pr.status };
+                const StatusIcon = statusConfig.icon;
+
+                const platformLabel = pr.platform === "FACEBOOK_PAGE" ? "Facebook"
+                  : pr.platform === "INSTAGRAM" ? "Instagram"
+                  : pr.platform === "LINKEDIN" ? "LinkedIn"
+                  : pr.platform === "YOUTUBE" ? "YouTube"
+                  : pr.platform === "TIKTOK" ? "TikTok"
+                  : pr.platform;
 
                 return (
-                  <div
-                    key={pr.id}
-                    className="rounded-lg bg-gray-50 px-4 py-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-sm font-medium">{pr.platform}</span>
-                        {pr.scheduledAt && pr.status === "PENDING" && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            Scheduled: {format(new Date(pr.scheduledAt), "MMM d, h:mm a")}
-                          </span>
-                        )}
-                        {pr.publishedAt && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            {format(new Date(pr.publishedAt), "MMM d, h:mm a")}
-                          </span>
-                        )}
+                  <div key={pr.id} className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      {/* Status icon */}
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${statusConfig.bg}`}>
+                        <StatusIcon className={`h-4 w-4 ${statusConfig.color}`} />
+                      </div>
+
+                      {/* Platform + time */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-medium text-gray-900">{platformLabel}</span>
+                          {pr.platformUrl && (
+                            <a
+                              href={pr.platformUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-gray-400 hover:text-blue-600 transition-colors"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-400">
+                          {pr.publishedAt
+                            ? format(new Date(pr.publishedAt), "MMM d, yyyy · h:mm a")
+                            : pr.scheduledAt && pr.status === "PENDING"
+                            ? `Scheduled for ${format(new Date(pr.scheduledAt), "MMM d · h:mm a")}`
+                            : statusConfig.label}
+                        </p>
                         {pr.errorMessage && (
-                          <p className="mt-1 text-xs text-red-600">{pr.errorMessage}</p>
+                          <p className="mt-1 flex items-center gap-1 text-[11px] text-red-500">
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            {pr.errorMessage}
+                          </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            pr.status === "PUBLISHED"
-                              ? "success"
-                              : pr.status === "FAILED"
-                              ? "destructive"
-                              : pr.status === "PENDING"
-                              ? "warning"
-                              : "secondary"
-                          }
-                        >
-                          {pr.status}
-                        </Badge>
-                        {pr.platformUrl && (
-                          <a
-                            href={pr.platformUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
+
+                      {/* Status label */}
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${statusConfig.bg} ${statusConfig.color}`}>
+                        {statusConfig.label}
+                      </span>
                     </div>
-                    {metrics.length > 0 && (
-                      <p className="mt-1.5 text-xs text-gray-500">
-                        {metrics.join(" · ")}
-                      </p>
+
+                    {/* Analytics metrics */}
+                    {a && (
+                      <div className="ml-11 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                        {a.videoViews != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <Eye className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.videoViews)} views
+                          </span>
+                        )}
+                        {a.impressions != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <Eye className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.impressions)} impressions
+                          </span>
+                        )}
+                        {a.reach != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <Eye className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.reach)} reach
+                          </span>
+                        )}
+                        {a.likes != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <ThumbsUp className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.likes)}
+                          </span>
+                        )}
+                        {a.comments != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <MessageCircle className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.comments)}
+                          </span>
+                        )}
+                        {a.shares != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <Share2 className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.shares)}
+                          </span>
+                        )}
+                        {a.saves != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                            <Bookmark className="h-3 w-3 text-gray-400" />
+                            {formatNum(a.saves)}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {pr.status === "PUBLISHED" && !a && pr.publishedAt && (
-                      <p className="mt-1.5 text-xs text-gray-400 italic">
+                      <p className="ml-11 mt-1.5 text-[11px] text-gray-300 italic">
                         {Date.now() - new Date(pr.publishedAt).getTime() < 86400000
                           ? "Analytics available ~24h after posting"
                           : "No analytics yet"}

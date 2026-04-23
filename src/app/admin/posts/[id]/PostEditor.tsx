@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Plus,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
@@ -866,13 +867,7 @@ function MediaHero({
           <AudioPicker media={media} onSetAudio={onSetAudio} />
         </div>
       )}
-      <button
-        onClick={onDelete}
-        className="absolute right-3 top-3 rounded-full bg-gray-900/70 p-1.5 text-white backdrop-blur-sm hover:bg-black/80"
-        aria-label="Delete media"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      <MediaDeleteButton onDelete={onDelete} size="lg" />
     </div>
   );
 }
@@ -1039,14 +1034,62 @@ function MediaTile({
           <AudioPicker media={media} onSetAudio={onSetAudio} />
         </div>
       )}
-      <button
-        onClick={onDelete}
-        className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
-        aria-label="Delete media"
-      >
-        <X className="h-3 w-3" />
-      </button>
+      <MediaDeleteButton onDelete={onDelete} size="sm" />
     </div>
+  );
+}
+
+function MediaDeleteButton({ onDelete, size }: { onDelete: () => void; size: "sm" | "lg" }) {
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => setConfirming(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  if (size === "sm") {
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (confirming) {
+            onDelete();
+          } else {
+            setConfirming(true);
+          }
+        }}
+        className={`absolute right-1 top-1 rounded-full p-0.5 backdrop-blur-sm transition-colors ${
+          confirming
+            ? "bg-red-600 text-white"
+            : "bg-black/60 text-white hover:bg-black/80"
+        }`}
+        aria-label={confirming ? "Confirm delete" : "Delete media"}
+      >
+        {confirming ? <Trash2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        if (confirming) {
+          onDelete();
+        } else {
+          setConfirming(true);
+        }
+      }}
+      className={`absolute right-3 top-3 rounded-full p-1.5 backdrop-blur-sm transition-all ${
+        confirming
+          ? "bg-red-600 text-white shadow-lg ring-2 ring-red-400/50"
+          : "bg-gray-900/70 text-white hover:bg-black/80"
+      }`}
+      aria-label={confirming ? "Confirm delete" : "Delete media"}
+    >
+      {confirming ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+    </button>
   );
 }
 

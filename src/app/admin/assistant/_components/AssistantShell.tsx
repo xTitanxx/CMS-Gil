@@ -11,34 +11,12 @@ export function AssistantShell() {
   const [tab, setTab] = useState<Tab>("chat");
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col md:flex-row">
-      {/* Mobile tab bar */}
-      <div className="flex shrink-0 border-b border-gray-200 bg-white md:hidden">
-        {(["chat", "plan"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              tab === t
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t === "chat" ? (
-              <MessageSquare className="h-4 w-4" />
-            ) : (
-              <CalendarDays className="h-4 w-4" />
-            )}
-            {t === "chat" ? "Chat" : "Week Plan"}
-          </button>
-        ))}
-      </div>
-
+    <div className="-m-4 flex h-[calc(100dvh-3rem)] flex-col md:-m-8 md:h-[calc(100vh-3.5rem)] md:flex-row">
       {/* Planner panel — left on desktop, swappable on mobile */}
       <aside
         className={`${
           tab === "plan" ? "flex" : "hidden"
-        } md:flex w-full flex-col overflow-hidden border-r border-gray-200 bg-white md:w-[440px] md:shrink-0`}
+        } md:flex w-full min-h-0 flex-1 flex-col overflow-hidden border-r border-gray-200 bg-white md:w-[440px] md:flex-none md:shrink-0`}
       >
         <div className="flex-1 overflow-hidden p-3">
           <PlannerPanel />
@@ -49,10 +27,32 @@ export function AssistantShell() {
       <main
         className={`${
           tab === "chat" ? "flex" : "hidden"
-        } md:flex min-w-0 flex-1 flex-col overflow-hidden`}
+        } md:flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden`}
       >
         <ThreadView />
       </main>
+
+      {/* Mobile bottom tab bar */}
+      <div className="flex shrink-0 border-t border-gray-200 bg-white md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        {(["chat", "plan"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              tab === t
+                ? "text-blue-600"
+                : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {t === "chat" ? (
+              <MessageSquare className="h-5 w-5" />
+            ) : (
+              <CalendarDays className="h-5 w-5" />
+            )}
+            {t === "chat" ? "Chat" : "Planner"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

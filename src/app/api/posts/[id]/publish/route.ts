@@ -107,10 +107,6 @@ export async function publishNow(
     }
 
     const mediaKeys = post.media.map((m) => m.storageKey);
-    const audioOverlayMap = new Map<string, string>();
-    for (const m of post.media) {
-      if (m.audioTrack?.storageKey) audioOverlayMap.set(m.storageKey, m.audioTrack.storageKey);
-    }
 
     let result: { platformPostId: string; platformUrl?: string };
 
@@ -120,16 +116,14 @@ export async function publishNow(
           { accessToken, platformUserId: platformUserId! },
           post.body,
           mediaKeys,
-          post.postType,
-          audioOverlayMap
+          post.postType
         );
         break;
       case "LINKEDIN":
         result = await postToLinkedIn(
           { accessToken, platformUserId: platformUserId! },
           post.body,
-          mediaKeys,
-          audioOverlayMap
+          mediaKeys
         );
         break;
       case "YOUTUBE":
@@ -137,20 +131,18 @@ export async function publishNow(
           { accessToken, refreshToken },
           post.body.slice(0, 100),
           post.body,
-          mediaKeys,
-          audioOverlayMap
+          mediaKeys
         );
         break;
       case "TIKTOK":
-        result = await postToTikTok({ accessToken }, post.body, mediaKeys, audioOverlayMap);
+        result = await postToTikTok({ accessToken }, post.body, mediaKeys);
         break;
       case "FACEBOOK_PAGE":
         result = await postToFacebook(
           { accessToken, platformUserId: platformUserId! },
           post.body,
           mediaKeys,
-          post.postType,
-          audioOverlayMap
+          post.postType
         );
         break;
       default:

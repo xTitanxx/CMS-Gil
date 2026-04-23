@@ -23,7 +23,7 @@ export default async function AudioLibraryPage() {
       sizeBytes: t.sizeBytes,
       durationSec: t.durationSec,
       createdAt: t.createdAt.toISOString(),
-      url: await getSignedDownloadUrl(t.storageKey, 3600, t.mimeType).catch(() => null),
+      url: await getSignedDownloadUrl(t.storageKey).catch(() => null),
     })),
   );
 

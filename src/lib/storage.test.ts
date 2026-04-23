@@ -1,50 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { hasAudioFromResource, mediaKey, getThumbnailUrl, getSignedDownloadUrl } from "./storage";
-
-describe("hasAudioFromResource", () => {
-  it("returns null for null/undefined input", () => {
-    expect(hasAudioFromResource(null)).toBe(null);
-    expect(hasAudioFromResource(undefined)).toBe(null);
-  });
-
-  it("returns null for non-video resources (field doesn't apply)", () => {
-    expect(hasAudioFromResource({ resource_type: "image" })).toBe(null);
-    expect(hasAudioFromResource({ resource_type: "raw" })).toBe(null);
-    expect(hasAudioFromResource({ resource_type: "image", has_audio: true })).toBe(null);
-  });
-
-  it("returns true when video has has_audio=true", () => {
-    expect(
-      hasAudioFromResource({
-        resource_type: "video",
-        has_audio: true,
-        audio_codec: "aac",
-      })
-    ).toBe(true);
-  });
-
-  it("returns false when video has explicit has_audio=false", () => {
-    expect(
-      hasAudioFromResource({ resource_type: "video", has_audio: false })
-    ).toBe(false);
-  });
-
-  it("treats absent has_audio on a video as silent (real Cloudinary shape)", () => {
-    expect(hasAudioFromResource({ resource_type: "video" })).toBe(false);
-  });
-
-  it("falls back to audio_codec presence when has_audio is absent", () => {
-    expect(
-      hasAudioFromResource({ resource_type: "video", audio_codec: "aac" })
-    ).toBe(true);
-  });
-
-  it("returns false when audio_codec is an empty string", () => {
-    expect(
-      hasAudioFromResource({ resource_type: "video", audio_codec: "" })
-    ).toBe(false);
-  });
-});
+import { describe, it, expect } from "vitest";
+import { mediaKey, audioKey, getThumbnailUrl, getSignedDownloadUrl } from "./storage";
 
 describe("mediaKey", () => {
   it("generates a path with the user id and filename", () => {
@@ -62,47 +17,38 @@ describe("mediaKey", () => {
   });
 });
 
+describe("audioKey", () => {
+  it("generates a path with the audio/ prefix", () => {
+    const key = audioKey("user123", "track.mp3");
+    expect(key).toMatch(/^audio\/user123\/\d+-track\.mp3$/);
+  });
+});
+
 describe("getThumbnailUrl", () => {
   it("returns a .poster.jpg URL for videos", async () => {
-    const url = "https://abc.public.blob.vercel-storage.com/media/user1/photo.mp4";
+    const url = "https://pub-abc.r2.dev/media/user1/photo.mp4";
     const result = await getThumbnailUrl(url, "video/mp4");
-    expect(result).toBe(
-      "https://abc.public.blob.vercel-storage.com/media/user1/photo.poster.jpg"
-    );
+    expect(result).toBe("https://pub-abc.r2.dev/media/user1/photo.poster.jpg");
   });
 
   it("returns the URL unchanged for images", async () => {
-    const url = "https://abc.public.blob.vercel-storage.com/media/user1/photo.jpg";
+    const url = "https://pub-abc.r2.dev/media/user1/photo.jpg";
     const result = await getThumbnailUrl(url, "image/jpeg");
     expect(result).toBe(url);
   });
 
   it("returns the URL unchanged when no mimeType given", async () => {
-    const url = "https://abc.public.blob.vercel-storage.com/media/user1/photo.jpg";
+    const url = "https://pub-abc.r2.dev/media/user1/photo.jpg";
     const result = await getThumbnailUrl(url);
     expect(result).toBe(url);
-  });
-
-  it("resolves legacy Cloudinary path to a Cloudinary URL", async () => {
-    process.env.CLOUDINARY_CLOUD_NAME = "testcloud";
-    const result = await getThumbnailUrl("media/user1/photo.mp4", "video/mp4");
-    expect(result).toContain("res.cloudinary.com/testcloud/video/upload/media/user1/photo");
-    delete process.env.CLOUDINARY_CLOUD_NAME;
   });
 });
 
 describe("getSignedDownloadUrl", () => {
-  it("returns full URLs as-is", async () => {
-    const url = "https://abc.public.blob.vercel-storage.com/media/user1/photo.jpg";
+  it("returns the URL as-is", async () => {
+    const url = "https://pub-abc.r2.dev/media/user1/photo.jpg";
     const result = await getSignedDownloadUrl(url);
     expect(result).toBe(url);
-  });
-
-  it("resolves legacy Cloudinary path to a Cloudinary URL", async () => {
-    process.env.CLOUDINARY_CLOUD_NAME = "testcloud";
-    const result = await getSignedDownloadUrl("media/user1/photo.jpg", 3600, "image/jpeg");
-    expect(result).toContain("res.cloudinary.com/testcloud/image/upload/media/user1/photo");
-    delete process.env.CLOUDINARY_CLOUD_NAME;
   });
 });
 

@@ -22,35 +22,6 @@ function r2Url(key: string): string {
   return `${R2_PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
 }
 
-function legacyCloudinaryUrl(storageKey: string, mimeType?: string): string {
-  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
-  if (!cloud) return storageKey;
-  const publicId = storageKey.replace(/\.[^/.]+$/, "");
-  const isVideoLike = mimeType?.startsWith("video/") || mimeType?.startsWith("audio/");
-  const resourceType = isVideoLike ? "video" : "image";
-  return `https://res.cloudinary.com/${cloud}/${resourceType}/upload/${publicId}`;
-}
-
-function isLegacyPath(key: string): boolean {
-  return !key.startsWith("http");
-}
-
-export function hasAudioFromResource(
-  resource:
-    | { resource_type?: string; has_audio?: boolean; audio_codec?: string }
-    | null
-    | undefined
-): boolean | null {
-  if (!resource) return null;
-  if (resource.resource_type !== "video") return null;
-  if (resource.has_audio === true) return true;
-  if (resource.has_audio === false) return false;
-  if (typeof resource.audio_codec === "string" && resource.audio_codec.length > 0) {
-    return true;
-  }
-  return false;
-}
-
 export interface UploadResult {
   url: string;
   hasAudio: boolean | null;
@@ -104,24 +75,12 @@ export async function fetchVideoAudioStatus(url: string): Promise<boolean | null
   }
 }
 
-export async function getSignedDownloadUrl(
-  urlOrPath: string,
-  _expiresIn = 3600,
-  mimeType?: string,
-  _audioOverlayKey?: string | null
-): Promise<string> {
-  if (urlOrPath.startsWith("http")) {
-    return urlOrPath;
-  }
-  return legacyCloudinaryUrl(urlOrPath, mimeType);
+export async function getSignedDownloadUrl(url: string): Promise<string> {
+  return url;
 }
 
-export function getMediaUrl(media: {
-  storageKey: string;
-  mimeType: string;
-  audioTrack?: { storageKey: string } | null;
-}): Promise<string> {
-  return getSignedDownloadUrl(media.storageKey, 3600, media.mimeType);
+export function getMediaUrl(media: { storageKey: string }): Promise<string> {
+  return getSignedDownloadUrl(media.storageKey);
 }
 
 export function audioKey(userId: string, filename: string): string {
@@ -132,31 +91,24 @@ export async function getThumbnailUrl(
   url: string,
   mimeType?: string
 ): Promise<string> {
-  if (isLegacyPath(url)) {
-    return legacyCloudinaryUrl(url, mimeType);
-  }
   if (mimeType?.startsWith("video")) {
     return url.replace(/\.[^/.]+$/, ".poster.jpg");
   }
   return url;
 }
 
-export async function getObject(url: string, mimeType?: string): Promise<Buffer> {
-  const resolved = isLegacyPath(url) ? legacyCloudinaryUrl(url, mimeType) : url;
-  const response = await fetch(resolved);
+export async function getObject(url: string): Promise<Buffer> {
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${resolved}: ${response.statusText}`);
+    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
   }
   return Buffer.from(await response.arrayBuffer());
 }
 
-export async function deleteObject(url: string, _mimeType?: string): Promise<void> {
-  if (isLegacyPath(url)) return;
+export async function deleteObject(url: string): Promise<void> {
   try {
     const key = new URL(url).pathname.replace(/^\/+/, "");
-    await s3.send(
-      new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })
-    );
+    await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
   } catch (err) {
     console.warn("deleteObject failed (swallowed):", err);
   }

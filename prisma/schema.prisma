@@ -192,14 +192,15 @@ model Media {
 
   // Whether the video media has an audio track. NULL = unknown / not checked yet
   // (also the resting state for image media, since the field is only meaningful
-  // for videos). Populated by the Cloudinary upload response on new uploads and
-  // by scripts/backfill-audio.ts for historical rows.
+  // for videos). Populated by ffmpeg probe on new R2 uploads and by
+  // scripts/backfill-audio.ts for historical rows.
   hasAudio    Boolean?
 
-  // When set, indicates that the delivered video URL should be generated with a
-  // Cloudinary audio overlay using the referenced AudioTrack's storageKey. Used
-  // to add licensed/custom music (e.g. generated in Suno) to silent videos whose
-  // original audio was stripped by Facebook's licensed-music policy during export.
+  // Reference to an AudioTrack that should be muxed onto this (silent) video at
+  // publish time — intended for adding licensed/custom music (e.g. generated in
+  // Suno) to videos whose original audio was stripped by Facebook's licensed-
+  // music policy during export. The publish-time mux is not yet implemented;
+  // the relationship is preserved so the feature can be added later.
   audioTrackId String?
   audioTrack   AudioTrack? @relation(fields: [audioTrackId], references: [id], onDelete: SetNull)
 

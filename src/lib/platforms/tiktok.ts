@@ -1,7 +1,7 @@
 // TikTok Content Posting API v2
 // Scopes: video.publish, video.upload
 
-import { getObject, getSignedDownloadUrl } from "@/lib/storage";
+import { getObject } from "@/lib/storage";
 
 interface PublishResult {
   platformPostId: string;
@@ -17,8 +17,7 @@ const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks
 export async function postToTikTok(
   creds: TikTokCredentials,
   body: string,
-  mediaKeys: string[],
-  audioOverlayMap?: Map<string, string>
+  mediaKeys: string[]
 ): Promise<PublishResult> {
   const videoKey = mediaKeys.find((k) =>
     k.match(/\.(mp4|mov|avi|webm)$/i)
@@ -28,16 +27,7 @@ export async function postToTikTok(
   }
 
   const { accessToken } = creds;
-  const overlayKey = audioOverlayMap?.get(videoKey);
-  let videoBuffer: Buffer;
-  if (overlayKey) {
-    const url = await getSignedDownloadUrl(videoKey, 3600, "video/mp4", overlayKey);
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`Failed to fetch composed video: ${r.status}`);
-    videoBuffer = Buffer.from(await r.arrayBuffer());
-  } else {
-    videoBuffer = await getObject(videoKey);
-  }
+  const videoBuffer = await getObject(videoKey);
   const totalBytes = videoBuffer.length;
   const chunkCount = Math.ceil(totalBytes / CHUNK_SIZE);
 

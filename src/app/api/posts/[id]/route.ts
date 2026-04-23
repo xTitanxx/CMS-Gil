@@ -105,7 +105,7 @@ export async function DELETE(
 
   // Delete media from storage
   for (const m of post.media) {
-    await deleteObject(m.storageKey, m.mimeType).catch(() => {});
+    await deleteObject(m.storageKey).catch(() => {});
   }
 
   await prisma.post.delete({ where: { id } });

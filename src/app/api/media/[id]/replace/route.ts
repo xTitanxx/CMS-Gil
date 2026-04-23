@@ -73,8 +73,8 @@ export async function POST(
     buffer = Buffer.from(await file.arrayBuffer());
   }
 
-  const storageKey = mediaKey(session.user.id, filename);
-  const { hasAudio } = await uploadBuffer(storageKey, buffer);
+  const key = mediaKey(session.user.id, filename);
+  const { url: storageKey, hasAudio } = await uploadBuffer(key, buffer, { contentType: mimeType });
 
   const updated = await prisma.media.update({
     where: { id: mediaId },

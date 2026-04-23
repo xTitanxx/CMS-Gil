@@ -21,7 +21,7 @@ export async function DELETE(
   }
 
   await prisma.audioTrack.delete({ where: { id } });
-  await deleteObject(track.storageKey, track.mimeType).catch(() => {});
+  await deleteObject(track.storageKey).catch(() => {});
 
   return NextResponse.json({ ok: true });
 }

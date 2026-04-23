@@ -1,50 +1,177 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
-import { parsePostTypeFilter, postTypeWhere } from "@/lib/post-type-filter";
+import { getThumbnailUrl, getSignedDownloadUrl, getMediaUrl } from "@/lib/storage";
+import {
+  buildCursorClause,
+  buildPostsQuery,
+  cursorFromRow,
+  decodeCursor,
+  encodeCursor,
+  parsePostsFilters,
+} from "@/lib/posts-query";
+import type { Prisma } from "@prisma/client";
 
-export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "unauth" }, { status: 401 });
-  const url = new URL(req.url);
-  const bucket = url.searchParams.get("bucket");
-  const cursor = url.searchParams.get("cursor");
-  const type = parsePostTypeFilter(url.searchParams.get("type"));
+const POST_INCLUDE = {
+  media: {
+    include: { audioTrack: true },
+  },
+  publishes: {
+    select: {
+      platform: true,
+      status: true,
+      platformUrl: true,
+      scheduledAt: true,
+    },
+  },
+  rating: true,
+  analytics: {
+    select: { platform: true, reactions: true, comments: true, shares: true },
+  },
+} as const;
 
-  const where = {
-    userId: session.user.id,
-    readiness: "NOT_READY" as const,
-    ...(bucket ? { notReadyReasons: { has: bucket } } : {}),
-    ...postTypeWhere(type),
-  };
+type PostWithIncludes = Awaited<
+  ReturnType<typeof prisma.post.findMany<{ include: typeof POST_INCLUDE }>>
+>[number];
 
-  const posts = await prisma.post.findMany({
-    where,
-    include: { media: { include: { audioTrack: true } }, rating: true },
-    orderBy: { originalDate: "desc" },
-    take: 21,
-    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-  });
-
-  const hasMore = posts.length > 20;
-  const page = posts.slice(0, 20);
-
-  const items = await Promise.all(
-    page.map(async (p) => ({
-      ...p,
-      media: await Promise.all(
-        p.media.map(async (m) => ({
+async function decoratePosts(posts: PostWithIncludes[]) {
+  return Promise.all(
+    posts.map(async (post) => {
+      const firstMedia = post.media[0];
+      const thumbUrl = firstMedia
+        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
+        : null;
+      const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
+      const videoMedia = post.media.filter((m) => m.mimeType.startsWith("video/"));
+      const isSilent =
+        videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
+      const videoUrl = isVideo && firstMedia
+        ? await getSignedDownloadUrl(
+            firstMedia.storageKey,
+            undefined,
+            firstMedia.mimeType,
+          ).catch(() => null)
+        : null;
+      const mediaWithUrls = await Promise.all(
+        post.media.map(async (m) => ({
           ...m,
           url: await getMediaUrl(m).catch(() => null),
           thumbnailUrl: await getThumbnailUrl(m.storageKey, m.mimeType).catch(() => null),
-        }))
-      ),
-    }))
+        })),
+      );
+      return { ...post, media: mediaWithUrls, thumbUrl, videoUrl, isVideo, isSilent };
+    }),
   );
+}
 
-  return NextResponse.json({
-    items,
-    nextCursor: hasMore ? page[19].id : null,
-  });
+export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = session.user.id;
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const limit = Number(searchParams.get("limit") ?? "20");
+    const cursorParam = searchParams.get("cursor");
+    const cursor = decodeCursor(cursorParam);
+    const bucket = searchParams.get("bucket");
+
+    const filters = parsePostsFilters(searchParams);
+
+    const readinessExtras: Prisma.PostWhereInput[] = [
+      { readiness: "NOT_READY" },
+    ];
+    if (bucket) {
+      readinessExtras.push({ notReadyReasons: { has: bucket } });
+    }
+
+    const { where: baseWhere, orderBy } = buildPostsQuery(
+      filters,
+      userId,
+      { extraWhere: readinessExtras },
+    );
+
+    if (cursor) {
+      const cursorClause = buildCursorClause(filters.sort, cursor);
+      const where = { AND: [baseWhere, cursorClause] };
+      const rows = await prisma.post.findMany({
+        where,
+        orderBy,
+        take: limit,
+        include: POST_INCLUDE,
+      });
+      const decorated = await decoratePosts(rows);
+      const nextCursor =
+        rows.length === limit
+          ? encodeCursor(cursorFromRow(filters.sort, rows[rows.length - 1]))
+          : null;
+      return NextResponse.json({ posts: decorated, nextCursor });
+    }
+
+    const subKindSpecs: Array<{ key: string; kind: "posts" | "stories"; sub: string }> = [
+      { key: "postsAll", kind: "posts", sub: "all" },
+      { key: "postsVideoAudio", kind: "posts", sub: "video-audio" },
+      { key: "postsVideoSilent", kind: "posts", sub: "video-silent" },
+      { key: "postsPhoto", kind: "posts", sub: "photo" },
+      { key: "postsText", kind: "posts", sub: "text" },
+      { key: "postsQuoted", kind: "posts", sub: "quoted" },
+      { key: "storiesAll", kind: "stories", sub: "all" },
+      { key: "storiesVideoAudio", kind: "stories", sub: "video-audio" },
+      { key: "storiesVideoSilent", kind: "stories", sub: "video-silent" },
+    ];
+
+    const { where: kindOnlyWhere } = buildPostsQuery(
+      { ...filters, subKind: undefined },
+      userId,
+      { extraWhere: readinessExtras },
+    );
+
+    const [total, filteredTotal, rows, ...subCounts] = await Promise.all([
+      prisma.post.count({ where: kindOnlyWhere }),
+      prisma.post.count({ where: baseWhere }),
+      prisma.post.findMany({
+        where: baseWhere,
+        orderBy,
+        take: limit,
+        include: POST_INCLUDE,
+      }),
+      ...subKindSpecs.map((spec) => {
+        const { where } = buildPostsQuery(
+          { ...filters, kind: spec.kind, subKind: spec.sub },
+          userId,
+          { extraWhere: readinessExtras },
+        );
+        return prisma.post.count({ where });
+      }),
+    ]);
+
+    const subKindCounts = Object.fromEntries(
+      subKindSpecs.map((spec, i) => [spec.key, subCounts[i] ?? 0]),
+    ) as Record<string, number>;
+    const postsCount = subKindCounts.postsAll ?? 0;
+    const storiesCount = subKindCounts.storiesAll ?? 0;
+
+    const decorated = await decoratePosts(rows);
+    const nextCursor =
+      rows.length === limit
+        ? encodeCursor(cursorFromRow(filters.sort, rows[rows.length - 1]))
+        : null;
+
+    return NextResponse.json({
+      posts: decorated,
+      total,
+      filteredTotal,
+      nextCursor,
+      kindCounts: { posts: postsCount, stories: storiesCount },
+      subKindCounts,
+    });
+  } catch (err) {
+    console.error("[GET /api/triage] DB error:", err);
+    return NextResponse.json(
+      { error: "Database temporarily unavailable", posts: [], total: 0 },
+      { status: 503 },
+    );
+  }
 }

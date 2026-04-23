@@ -216,7 +216,11 @@ function buildAudioClause(
 export function buildPostsQuery(
   filters: PostsFilters,
   userId: string,
-  opts?: { postIdAllowlist?: string[] | null },
+  opts?: {
+    postIdAllowlist?: string[] | null;
+    /** Extra Prisma PostWhereInput clauses to AND into the final where. */
+    extraWhere?: Prisma.PostWhereInput[];
+  },
 ): {
   where: Prisma.PostWhereInput;
   orderBy: Prisma.PostOrderByWithRelationInput[];
@@ -388,6 +392,10 @@ export function buildPostsQuery(
       // Quoted/shared FB post — has share metadata (shared to group, shared someone's post, etc.)
       extraAnds.push({ share: { not: Prisma.DbNull } });
     }
+  }
+
+  if (opts?.extraWhere && opts.extraWhere.length > 0) {
+    extraAnds.push(...opts.extraWhere);
   }
 
   const where: Prisma.PostWhereInput = {

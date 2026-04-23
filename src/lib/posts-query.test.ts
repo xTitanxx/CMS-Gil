@@ -71,6 +71,33 @@ describe("buildPostsQuery", () => {
   });
 });
 
+describe("buildPostsQuery extraWhere option", () => {
+  it("AND-merges extraWhere clauses into the resulting where", () => {
+    const { where } = buildPostsQuery(
+      { kind: "posts" },
+      "user-1",
+      {
+        extraWhere: [
+          { readiness: "NOT_READY" },
+          { notReadyReasons: { has: "silent-video" } },
+        ],
+      },
+    );
+    const ands = (where.AND ?? []) as Array<Record<string, unknown>>;
+    expect(ands).toEqual(
+      expect.arrayContaining([
+        { readiness: "NOT_READY" },
+        { notReadyReasons: { has: "silent-video" } },
+      ]),
+    );
+  });
+
+  it("ignores missing/empty extraWhere", () => {
+    const { where } = buildPostsQuery({ kind: "posts" }, "user-1");
+    expect(where.userId).toBe("user-1");
+  });
+});
+
 describe("cursor encoding", () => {
   it("round-trips", () => {
     const c = { value: "2024-01-01T00:00:00.000Z", id: "abc123" };

@@ -1,4 +1,4 @@
-import { PostsList } from "./PostsList";
+import { AllPostsView } from "./AllPostsView";
 import { PostsFeed } from "./PostsFeed";
 import { StoriesReel } from "./StoriesReel";
 import { ReelsFeed } from "./ReelsFeed";
@@ -35,7 +35,7 @@ export default async function PostsPage({
   const tagsParam = pick(sp, "tags");
 
   return (
-    <PostsList
+    <AllPostsView
       initialSearch={pick(sp, "search") ?? ""}
       initialSort={pick(sp, "sort") ?? "originalDate_desc"}
       initialContent={pick(sp, "content")}

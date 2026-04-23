@@ -45,6 +45,8 @@ export interface ListApiResponse<TPost> {
 export interface PostListShellProps<TPost> {
   apiEndpoint: string;
   extraParams?: Record<string, string | undefined>;
+  /** Bump to force the shell to drop its cache and refetch. */
+  refreshKey?: string | number;
   title: string;
   itemNoun?: { singular: string; plural: string };
   headerActions?: ReactNode;
@@ -57,5 +59,6 @@ export interface PostListShellProps<TPost> {
   onSelectAllToggle?: (selectAll: boolean, visiblePosts: TPost[]) => void;
   allSelected?: boolean;
   onPostsChanged?: (posts: TPost[]) => void;
+  onMetricsChanged?: (metrics: { total: number; filteredTotal: number }) => void;
   getPostId: (post: TPost) => string;
 }

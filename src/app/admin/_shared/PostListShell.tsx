@@ -82,6 +82,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
   const {
     apiEndpoint,
     extraParams,
+    refreshKey,
     title,
     itemNoun,
     headerActions,
@@ -94,6 +95,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     onSelectAllToggle,
     allSelected,
     onPostsChanged,
+    onMetricsChanged,
     getPostId,
   } = props;
 
@@ -295,6 +297,10 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         setPosts(data.posts ?? []);
         setTotal(data.total ?? 0);
         setFilteredTotal(data.filteredTotal ?? data.total ?? 0);
+        onMetricsChanged?.({
+          total: data.total ?? 0,
+          filteredTotal: data.filteredTotal ?? data.total ?? 0,
+        });
         if (data.kindCounts) setKindCounts(data.kindCounts);
         if (data.subKindCounts) setSubKindCounts(data.subKindCounts as SubKindCounts);
         setSubKindTotals((data.subKindTotals as SubKindCounts | undefined) ?? null);
@@ -314,7 +320,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         if (jumpCursor) setJumpCursor(null);
       }
     },
-    [apiEndpoint, buildQuery, jumpCursor, onPostsChanged],
+    [apiEndpoint, buildQuery, jumpCursor, onPostsChanged, onMetricsChanged],
   );
 
   const fetchMore = useCallback(async () => {
@@ -355,9 +361,12 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         enriched,
         kind,
         subKind,
-      }).toString()}${extraParams ? `::${JSON.stringify(extraParams)}` : ""}`,
+      }).toString()}${extraParams ? `::${JSON.stringify(extraParams)}` : ""}${
+        refreshKey != null ? `::r${refreshKey}` : ""
+      }`,
     [
       apiEndpoint,
+      refreshKey,
       search,
       sort,
       aiTags,
@@ -389,6 +398,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
       setFilteredTotal(cached.filteredTotal);
       setLoading(false);
       onPostsChanged?.(cached.posts);
+      onMetricsChanged?.({ total: cached.total, filteredTotal: cached.filteredTotal });
       pendingScrollTargetRef.current = cached.scrollTop > 0 ? cached.scrollTop : null;
       if (pendingScrollTargetRef.current != null) {
         isRestoringRef.current = true;

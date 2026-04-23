@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle, RefreshCw, X, Film } from "lucide-react";
+import { CheckCircle, RefreshCw, X, Film, ExternalLink } from "lucide-react";
 import { SlotMetaBar, STATUS_BORDER, STATUS_BG } from "./SlotMetaBar";
 import { AiReasoningTip } from "./AiReasoningTip";
 import { InlineCaptionEditor } from "./InlineCaptionEditor";
@@ -78,8 +78,23 @@ export function PlanSlotCard({ slot, onApprove, onRemove, onSwap }: PlanSlotCard
         />
       </div>
 
-      {/* Row 3: AI Reasoning */}
-      <AiReasoningTip reasoning={slot.reasoning} />
+      {/* Row 3: AI Reasoning + Original link */}
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <AiReasoningTip reasoning={slot.reasoning} />
+        </div>
+        {post.platformUrl && (
+          <a
+            href={post.platformUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 flex shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-600 shadow-sm hover:bg-blue-50 transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Original
+          </a>
+        )}
+      </div>
 
       {/* Row 4: Actions (PROPOSED only) */}
       {slot.status === "PROPOSED" && (

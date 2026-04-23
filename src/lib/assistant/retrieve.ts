@@ -16,6 +16,7 @@ interface PostSlim {
   lifecycle: Lifecycle;
   thumbUrl: string | null;
   contentKind: ContentKind;
+  platformUrl: string | null;
 }
 
 interface MappedQuery {
@@ -31,7 +32,7 @@ export async function mapQuery(userId: string, query: string): Promise<MappedQue
   const prompt = `You map a natural-language search into tags and keywords for a personal post archive.
 Available tags: ${available.join(", ") || "(none)"}
 Query: "${query}"
-Return only JSON: {"tags": string[], "keywords": string[]}. Tags must come from the available list.`;
+Return only JSON: {"tags": string[], "keywords": string[]}. Tags must come from the available list. Keywords are free-text terms to search in post bodies — always include the core words from the query plus synonyms/related terms.`;
 
   const resp = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
@@ -83,6 +84,7 @@ export function rankHits(posts: PostSlim[], q: MappedQuery): RetrieveHit[] {
         lifecycle: p.lifecycle,
         thumbUrl: p.thumbUrl,
         contentKind: p.contentKind,
+        platformUrl: p.platformUrl,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -107,11 +109,18 @@ export function extractSnippet(body: string, keywords: string[]): string {
 export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
   const limit = opts.limit ?? 20;
   const mapped = await mapQuery(opts.userId, opts.query);
+  // Always include the raw query words as keyword fallbacks so we never miss a body match
+  const rawWords = opts.query.split(/\s+/).filter((w) => w.length >= 3);
+  for (const w of rawWords) {
+    if (!mapped.keywords.some((k) => k.toLowerCase() === w.toLowerCase())) {
+      mapped.keywords.push(w);
+    }
+  }
   if (!mapped.tags.length && !mapped.keywords.length) return [];
 
   const where: Prisma.PostWhereInput = {
     userId: opts.userId,
-    readiness: "READY",
+    readiness: { not: "ARCHIVED" },
     share: { equals: Prisma.DbNull },
     ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
     ...(opts.season ? { season: opts.season } : {}),
@@ -137,6 +146,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       tags: true,
       lifecycle: true,
       postType: true,
+      platformUrl: true,
       rating: { select: { stars: true } },
       media: {
         orderBy: { id: "asc" },
@@ -146,7 +156,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
     take: 200,
   });
 
-  const slim: PostSlim[] = posts.map((p: { id: string; body: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
+  const slim: PostSlim[] = posts.map((p: { id: string; body: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; platformUrl: string | null; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
     const mimes = p.media.map((m) => m.mimeType);
     const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
     return {
@@ -157,6 +167,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       lifecycle: p.lifecycle,
       thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
       contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
+      platformUrl: p.platformUrl,
     };
   });
 

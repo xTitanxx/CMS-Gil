@@ -40,8 +40,8 @@ export function scorePost(
   when: Date,
   ctx: ScoringContext,
 ): Recommendation {
-  // Rating
-  const ratingRaw = post.stars == null ? 0.15 : STAR_SCORE[post.stars] ?? 0;
+  // Rating — unrated posts get a slight negative to prefer rated content
+  const ratingRaw = post.stars == null ? -0.15 : STAR_SCORE[post.stars] ?? 0;
   const ratingScore = ratingRaw * WEIGHTS.rating;
 
   // Lifecycle fit
@@ -54,10 +54,10 @@ export function scorePost(
   }
   const lifecycleFit = fitRaw * WEIGHTS.fitness;
 
-  // Freshness
+  // Freshness — never-published posts get a moderate score, not the maximum
   let freshnessRaw: number;
   if (!post.lastPublishedAt) {
-    freshnessRaw = 1.0;
+    freshnessRaw = 0.6;
   } else {
     // 30-day months: ~1.4% error at 24mo — negligible on the smooth exp curve.
     const months =
@@ -102,7 +102,8 @@ export function scorePost(
         : `seasonal (${post.season.toLowerCase()})`,
     );
   }
-  if (freshnessRaw > 0.8) reasons.push("rarely reposted");
+  if (!post.lastPublishedAt) reasons.push("never posted");
+  else if (freshnessRaw > 0.8) reasons.push("rarely reposted");
   if (last3SameKind) reasons.push("same kind × 3 recent");
 
   return {
@@ -124,6 +125,7 @@ export function scorePost(
     lifecycle: post.lifecycle,
     thumbUrl: post.thumbUrl,
     contentKind: post.contentKind,
+    platformUrl: post.platformUrl,
   };
 }
 
@@ -144,6 +146,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
       where: {
         userId: opts.userId,
         readiness: "READY",
+        tags: { isEmpty: false }, // Exclude untagged posts — likely unprocessed or broken media
         share: { equals: Prisma.DbNull },
         ...(opts.kind ? { postType: opts.kind } : {}),
         ...(opts.excludePostIds?.length ? { NOT: { id: { in: opts.excludePostIds } } } : {}),
@@ -165,6 +168,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
         season: true,
         postType: true,
         publishCount: true,
+        platformUrl: true,
         rating: { select: { stars: true, reasons: true } },
         publishes: {
           where: { status: "PUBLISHED" },
@@ -177,8 +181,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
           select: { storageKey: true, mimeType: true },
         },
       },
-      orderBy: [{ publishCount: "asc" }, { originalDate: "asc" }],
-      take: 200,
+      orderBy: { publishCount: "asc" },
     }),
     prisma.publishRecord.findMany({
       where: { status: "PUBLISHED", post: { userId: opts.userId } },
@@ -212,6 +215,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
       lastPublishedAt: p.publishes[0]?.publishedAt ?? null,
       thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
       contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
+      platformUrl: p.platformUrl,
     };
   });
 

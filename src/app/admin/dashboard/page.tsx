@@ -36,6 +36,7 @@ export default async function DashboardPage() {
                 lifecycle: true,
                 season: true,
                 postType: true,
+                platformUrl: true,
                 rating: { select: { stars: true } },
                 media: { select: { storageKey: true, mimeType: true, hasAudio: true } },
                 publishes: {
@@ -87,6 +88,7 @@ export default async function DashboardPage() {
           postType: (s.post.postType ?? "POST") as PlanSlotData["post"]["postType"],
           mediaCount: s.post.media.length,
           hasAudio: s.post.media.some((m) => m.hasAudio === true),
+          platformUrl: s.post.platformUrl ?? null,
         },
       };
     });

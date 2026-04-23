@@ -27,6 +27,7 @@ export interface Recommendation {
   lifecycle: Lifecycle;
   thumbUrl: string | null;
   contentKind: ContentKind;
+  platformUrl: string | null;
 }
 
 export interface RecommendOptions {
@@ -60,6 +61,7 @@ export interface RetrieveHit {
   lifecycle: Lifecycle;
   thumbUrl: string | null;
   contentKind: ContentKind;
+  platformUrl: string | null;
 }
 
 export interface CandidateRow {
@@ -76,4 +78,5 @@ export interface CandidateRow {
   lastPublishedAt: Date | null;
   thumbUrl: string | null;
   contentKind: ContentKind;
+  platformUrl: string | null;
 }

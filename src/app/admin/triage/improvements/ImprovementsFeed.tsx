@@ -87,31 +87,47 @@ export function ImprovementsFeed() {
     }
   }
 
+  const Header = (
+    <div className="mb-4">
+      <h1 className="text-xl font-bold text-gray-900 md:text-2xl">AI suggestions</h1>
+      <p className="text-sm text-gray-500">
+        AI-suggested caption rewrites for low-quality or non-evergreen posts.
+      </p>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="h-48 animate-pulse rounded-2xl bg-gray-100" />
-        ))}
+      <div>
+        {Header}
+        <div className="space-y-4">
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="h-48 animate-pulse rounded-2xl bg-gray-100" />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Sparkles className="mb-3 h-10 w-10 text-gray-300" />
-        <p className="text-lg font-semibold text-gray-800">No improvements pending.</p>
-        <p className="mt-1 max-w-sm text-sm text-gray-500">
-          Ask the assistant to run caption analysis, or run it against selected posts. Only
-          low-quality or non-evergreen captions get suggestions.
-        </p>
+      <div>
+        {Header}
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Sparkles className="mb-3 h-10 w-10 text-gray-300" />
+          <p className="text-lg font-semibold text-gray-800">No improvements pending.</p>
+          <p className="mt-1 max-w-sm text-sm text-gray-500">
+            Ask the assistant to run caption analysis, or run it against selected posts. Only
+            low-quality or non-evergreen captions get suggestions.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
+      {Header}
       <p className="mb-3 text-xs text-gray-500">{total} post{total === 1 ? "" : "s"} with pending suggestions</p>
       <div className="space-y-4">
         {items.map((it) => (

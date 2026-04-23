@@ -12,7 +12,6 @@ import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
 import { PostNavKeys } from "./PostNavKeys";
-import { CaptionSuggestionPanel } from "./CaptionSuggestionPanel";
 import {
   buildNeighborQueries,
   buildPostsQuery,
@@ -135,7 +134,9 @@ export default async function PostDetailPage({
   const listHref =
     fromParam === "dashboard"
       ? "/admin/dashboard"
-      : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
+      : fromParam === "assistant"
+        ? "/admin/assistant"
+        : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
 
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
@@ -161,6 +162,13 @@ export default async function PostDetailPage({
         prevHref={prevHref}
         nextHref={nextHref}
         listHref={listHref}
+        backLabel={
+          fromParam === "dashboard"
+            ? "Back to dashboard"
+            : fromParam === "assistant"
+              ? "Back to assistant"
+              : "Back to list"
+        }
         actions={
           <div className="flex items-center gap-2">
             <CopyIdChip id={id} />
@@ -211,17 +219,18 @@ export default async function PostDetailPage({
           platformUrl={post.platformUrl}
           share={post.share as { url?: string; source?: string; name?: string } | null}
           rating={post.rating ? { stars: post.rating.stars, reasons: post.rating.reasons, note: post.rating.note } : null}
+          captionSuggestion={
+            (post.captionQuality != null || post.captionSuggestion)
+              ? {
+                  postId: id,
+                  currentBody: post.body,
+                  suggestion: post.captionSuggestion,
+                  quality: post.captionQuality,
+                  evergreen: post.captionEvergreen,
+                }
+              : null
+          }
         />
-
-        {(post.captionQuality != null || post.captionSuggestion) && (
-          <CaptionSuggestionPanel
-            postId={id}
-            currentBody={post.body}
-            suggestion={post.captionSuggestion}
-            quality={post.captionQuality}
-            evergreen={post.captionEvergreen}
-          />
-        )}
 
         <PublishPanelWithRefresh
           postId={id}
@@ -357,7 +366,7 @@ export default async function PostDetailPage({
               {post.fbComments.length > 0 && (
                 <div className="border-t border-gray-100 px-4 py-3">
                   <p className="mb-2 text-xs font-medium text-gray-500">
-                    Top comments ({post.fbComments.length})
+                    Comments ({post.fbComments.length})
                   </p>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {post.fbComments.slice(0, 10).map((c) => (

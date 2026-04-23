@@ -1,10 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Send, Clock, Video, Copy, Check, HelpCircle, Download } from "lucide-react";
+import { Send, Clock, Video, Copy, Check, HelpCircle, Download, CalendarClock } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
@@ -29,17 +27,15 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   LINKEDIN: "LinkedIn",
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
-  FACEBOOK_PAGE: "Facebook Page",
+  FACEBOOK_PAGE: "Facebook",
 };
 
-// LinkedIn uses text-blue-800 so it doesn't look identical to the
-// Facebook Page row (text-blue-700) when both are selected.
-const PLATFORM_COLORS: Record<Platform, string> = {
-  INSTAGRAM: "bg-pink-50 border-pink-200 text-pink-700",
-  LINKEDIN: "bg-blue-50 border-blue-200 text-blue-800",
-  YOUTUBE: "bg-red-50 border-red-200 text-red-700",
+const PLATFORM_COLORS_SELECTED: Record<Platform, string> = {
+  INSTAGRAM: "bg-pink-100 border-pink-300 text-pink-700",
+  LINKEDIN: "bg-blue-100 border-blue-300 text-blue-800",
+  YOUTUBE: "bg-red-100 border-red-300 text-red-700",
   TIKTOK: "bg-gray-900 border-gray-700 text-white",
-  FACEBOOK_PAGE: "bg-blue-50 border-blue-200 text-blue-700",
+  FACEBOOK_PAGE: "bg-blue-100 border-blue-300 text-blue-700",
 };
 
 function extFromMime(mimeType: string): string {
@@ -73,6 +69,7 @@ interface PublishPanelProps {
 export function PublishPanel({ postId, body, hasVideo, media, onPublished }: PublishPanelProps) {
   const [selected, setSelected] = useState<Set<Platform>>(new Set());
   const [scheduledAt, setScheduledAt] = useState("");
+  const [showSchedule, setShowSchedule] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -83,6 +80,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isDisabled = (p: Platform) => VIDEO_ONLY_PLATFORMS.has(p) && !hasVideo;
+  const enabledPlatforms = PLATFORMS.filter((p) => !isDisabled(p));
 
   const toggle = (p: Platform) => {
     if (isDisabled(p)) return;
@@ -92,6 +90,10 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
       else next.add(p);
       return next;
     });
+  };
+
+  const selectAll = () => {
+    setSelected(new Set(enabledPlatforms));
   };
 
   const publish = async () => {
@@ -128,7 +130,41 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
     );
     setSelected(new Set());
     setScheduledAt("");
+    setShowSchedule(false);
     onPublished?.();
+  };
+
+  const publishAll = async () => {
+    selectAll();
+    // Small delay so state updates before publish
+    setTimeout(async () => {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      const res = await fetch(`/api/posts/${postId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platforms: enabledPlatforms,
+          scheduledAt: scheduledAt || undefined,
+        }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        setError(data.error ?? "Failed to publish");
+        return;
+      }
+      setSuccess(
+        scheduledAt
+          ? `Scheduled to ${enabledPlatforms.length} platform(s)`
+          : `Publishing to ${enabledPlatforms.length} platform(s)...`
+      );
+      setSelected(new Set());
+      setScheduledAt("");
+      setShowSchedule(false);
+      onPublished?.();
+    }, 0);
   };
 
   const copyCaption = async () => {
@@ -178,186 +214,143 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
   const downloadableCount = media.filter((m) => m.url).length;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Publish</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Platform selector */}
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Select Platforms
-          </p>
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="px-4 py-3">
+        <h3 className="text-sm font-semibold text-gray-900">Publish</h3>
+      </div>
+      <div className="space-y-3.5 px-4 pb-4">
+        {/* Platform chips */}
+        <div className="flex flex-wrap items-center gap-2">
           {PLATFORMS.map((p) => {
             const disabled = isDisabled(p);
             const Icon = PLATFORM_ICONS[p];
+            const active = selected.has(p);
             return (
               <button
                 key={p}
                 onClick={() => toggle(p)}
                 disabled={disabled}
-                title={disabled ? `${PLATFORM_LABELS[p]} requires a video — this post has no video` : undefined}
-                aria-disabled={disabled}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-all ${
+                title={disabled ? `${PLATFORM_LABELS[p]} requires video` : PLATFORM_LABELS[p]}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
                   disabled
-                    ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
-                    : selected.has(p)
-                    ? PLATFORM_COLORS[p] + " ring-2 ring-offset-1 ring-current"
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed"
+                    : active
+                    ? PLATFORM_COLORS_SELECTED[p] + " shadow-sm"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Icon size={16} aria-hidden="true" />
-                    {PLATFORM_LABELS[p]}
-                  </span>
-                  {disabled ? (
-                    <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-gray-400">
-                      <Video className="h-3 w-3" />
-                      Video only
-                    </span>
-                  ) : (
-                    selected.has(p) && (
-                      <Badge variant="success" className="text-xs">
-                        Selected
-                      </Badge>
-                    )
-                  )}
-                </div>
+                <Icon size={14} aria-hidden="true" />
+                {PLATFORM_LABELS[p]}
+                {disabled && <Video className="h-3 w-3 ml-0.5" />}
               </button>
             );
           })}
-
-          {/* Manual Facebook (Personal) action row — not a toggle */}
-          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-              <div className="flex min-w-0 items-center gap-2 text-blue-700">
-                <SiFacebook size={16} aria-hidden="true" className="shrink-0" />
-                <span className="font-medium">Facebook (Personal)</span>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                  Manual
-                </span>
-                <span className="group relative inline-flex focus-within:outline-none">
-                  <button
-                    type="button"
-                    aria-label="Why is Facebook manual?"
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:text-gray-600 focus:text-gray-600 focus:outline-none"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </button>
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-64 -translate-x-1/2 rounded-md bg-gray-900 px-3 py-2 text-[11px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                  >
-                    Meta&apos;s Graph API doesn&apos;t allow publishing to personal
-                    Facebook profiles, even in Professional Mode. Copy the caption and
-                    paste it into the Facebook app to post.
-                  </span>
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 ml-auto">
-                <button
-                  type="button"
-                  onClick={copyCaption}
-                  disabled={!body}
-                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-3 w-3" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3 w-3" />
-                      Copy caption
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={downloadMedia}
-                  disabled={downloading || downloadableCount === 0}
-                  title={
-                    downloadableCount === 0
-                      ? "No media on this post"
-                      : `Download ${downloadableCount} file${downloadableCount === 1 ? "" : "s"} to your Downloads folder`
-                  }
-                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Download className="h-3 w-3" />
-                  {downloading
-                    ? "Downloading…"
-                    : downloadableCount > 1
-                    ? `Download media (${downloadableCount})`
-                    : "Download media"}
-                </button>
-              </div>
-            </div>
-            {!body && downloadableCount === 0 && (
-              <p className="mt-1 text-[11px] text-gray-400">
-                No caption and no media — nothing to copy or download.
-              </p>
-            )}
-            {!body && downloadableCount > 0 && (
-              <p className="mt-1 text-[11px] text-gray-400">
-                No caption — only media can be downloaded.
-              </p>
-            )}
-            {body && downloadableCount === 0 && (
-              <p className="mt-1 text-[11px] text-gray-400">
-                No media on this post.
-              </p>
-            )}
-            {copyError && (
-              <p className="mt-1 text-[11px] text-red-600">{copyError}</p>
-            )}
-            {downloadError && (
-              <p className="mt-1 text-[11px] text-red-600">
-                Download failed: {downloadError}
-              </p>
-            )}
-          </div>
         </div>
 
-        {/* Schedule */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Schedule (optional)
-          </label>
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-          {scheduledAt && (
+        {/* Schedule toggle */}
+        {showSchedule && (
+          <div className="flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
             <button
-              onClick={() => setScheduledAt("")}
+              onClick={() => { setScheduledAt(""); setShowSchedule(false); }}
               className="text-xs text-gray-400 hover:text-gray-600"
             >
-              Clear — post immediately
+              Cancel
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {error && <p className="text-xs text-red-600">{error}</p>}
         {success && <p className="text-xs text-green-600">{success}</p>}
 
-        <Button
-          onClick={publish}
-          disabled={loading || selected.size === 0}
-          className="w-full"
-        >
-          <Send className="h-4 w-4" />
-          {loading
-            ? "Publishing..."
-            : scheduledAt
-            ? "Schedule"
-            : "Post Now"}
-        </Button>
-      </CardContent>
-    </Card>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={publish}
+            disabled={loading || selected.size === 0}
+            className="flex-1 gap-1.5"
+            size="sm"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {loading ? "Publishing..." : scheduledAt ? "Schedule" : "Post Now"}
+            {selected.size > 0 && ` (${selected.size})`}
+          </Button>
+          <Button
+            onClick={publishAll}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {scheduledAt ? "Schedule All" : "Post All"}
+          </Button>
+          {!showSchedule && (
+            <Button
+              onClick={() => setShowSchedule(true)}
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-gray-500"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Schedule</span>
+            </Button>
+          )}
+        </div>
+
+        {/* Facebook Personal (manual) — compact row */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs text-blue-700">
+            <SiFacebook size={14} aria-hidden="true" className="shrink-0" />
+            <span className="font-medium">FB Personal</span>
+            <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-gray-500">
+              Manual
+            </span>
+            <span className="group relative">
+              <button
+                type="button"
+                aria-label="Why manual?"
+                className="inline-flex h-4 w-4 items-center justify-center text-gray-400 hover:text-gray-600"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 w-56 -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-[10px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+              >
+                Meta&apos;s API doesn&apos;t support personal profile posting. Copy caption + download media to post manually.
+              </span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button
+              type="button"
+              onClick={copyCaption}
+              disabled={!body}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+            </button>
+            <button
+              type="button"
+              onClick={downloadMedia}
+              disabled={downloading || downloadableCount === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-3 w-3" />
+              {downloading ? "..." : "Media"}
+            </button>
+          </div>
+        </div>
+        {copyError && <p className="text-[11px] text-red-600">{copyError}</p>}
+        {downloadError && <p className="text-[11px] text-red-600">Download: {downloadError}</p>}
+      </div>
+    </div>
   );
 }

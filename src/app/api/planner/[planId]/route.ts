@@ -94,21 +94,18 @@ export async function PATCH(
         return NextResponse.json({ error: "postId and day required" }, { status: 400 });
       }
       const dayDate = new Date(day + "T00:00:00.000Z");
-      await prisma.weeklyPlanSlot.upsert({
-        where: { planId_day: { planId, day: dayDate } },
-        create: {
+      // Remove any existing slot for this day, then create the new one
+      await prisma.weeklyPlanSlot.deleteMany({
+        where: { planId, day: dayDate },
+      });
+      await prisma.weeklyPlanSlot.create({
+        data: {
           planId,
           postId,
           day: dayDate,
           status: "PROPOSED",
           reasoning: reasoning ?? null,
           platforms: platforms ?? [],
-        },
-        update: {
-          postId,
-          reasoning: reasoning ?? null,
-          platforms: platforms ?? [],
-          status: "PROPOSED",
         },
       });
       break;

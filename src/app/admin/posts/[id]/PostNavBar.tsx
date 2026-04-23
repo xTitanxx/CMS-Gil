@@ -6,6 +6,7 @@ interface PostNavBarProps {
   prevHref: string | null;
   nextHref: string | null;
   listHref: string;
+  backLabel?: string;
   actions?: ReactNode;
 }
 
@@ -20,6 +21,7 @@ export function PostNavBar({
   prevHref,
   nextHref,
   listHref,
+  backLabel = "Back to list",
   actions,
 }: PostNavBarProps) {
   return (
@@ -30,7 +32,7 @@ export function PostNavBar({
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to list
+        {backLabel}
       </Link>
       <div className="flex items-center gap-2">
         {actions}

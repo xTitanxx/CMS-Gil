@@ -64,6 +64,21 @@ export function PlannerPanel() {
     [refreshPlan]
   );
 
+  const handleClearAll = useCallback(async () => {
+    if (!plan) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/planner/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear" }),
+      });
+      await refreshPlan();
+    } finally {
+      setLoading(false);
+    }
+  }, [plan, refreshPlan]);
+
   const handleScheduleAll = useCallback(async () => {
     if (!plan) return;
     setLoading(true);
@@ -83,6 +98,7 @@ export function PlannerPanel() {
       onApproveSlot={handleApproveSlot}
       onRemoveSlot={handleRemoveSlot}
       onSwapSlot={handleSwapSlot}
+      onClearAll={handleClearAll}
       onScheduleAll={handleScheduleAll}
     />
   );

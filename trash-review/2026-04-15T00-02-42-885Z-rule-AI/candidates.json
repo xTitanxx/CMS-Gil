@@ -1,0 +1,192 @@
+{
+  "rule": "AI",
+  "createdAt": "2026-04-15T00:02:42.885Z",
+  "source": "ai-dedupe-apply.log",
+  "confidenceThreshold": 0.85,
+  "groupCount": 6,
+  "pendingDropCount": 11,
+  "groups": [
+    {
+      "id": "g0009",
+      "keep": {
+        "id": "cmnp8afs60075gvsbhymqej4q",
+        "body": "Sevilla - where hesitation ended, and the journey began.",
+        "originalDate": "2025-03-10T18:33:40.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775603182264-1015244527320450.mp4",
+        "mimeType": "video/mp4"
+      },
+      "drops": [
+        {
+          "id": "cmnp8aphl007bgvsbg29irxc2",
+          "body": "",
+          "originalDate": "2025-03-10T18:37:00.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603194839-2140394296417770.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Identical video content showing same person with turquoise bike and location. Same timestamp, likely duplicate upload.",
+          "decision": "pending"
+        },
+        {
+          "id": "cmnp8arx3007dgvsb1g3wctxc",
+          "body": "",
+          "originalDate": "2025-03-10T18:37:00.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603197989-1585926575432360.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Both posts feature identical/near-identical turquoise bike imagery in Sevilla. Post A has caption about journey; Post B has no caption but same core content.",
+          "decision": "pending"
+        }
+      ]
+    },
+    {
+      "id": "g0010",
+      "keep": {
+        "id": "cmnp8axn0007hgvsbkaq3k7n4",
+        "body": "Look around. Everyone’s caught up in their own story. Nobody’s judging you. Nobody’s watching. And if they are, who cares?\n\nEven if you’re stuck - mobility issues, chronic illness, or just your personality - you’ve still got options. I pick up my camera. I talk. I share. I put myself out there.\n\nFilming isn’t just about content—it’s about beating isolation. Turning loneliness into conversation. Creating connections, right from this pizza place.\n\nTalking to a camera feels weird at first, but behind that lens is someone listening. No one’s watching - until they are. And when they finally tune in, they’re usually glad I showed up.",
+        "originalDate": "2025-03-12T21:06:22.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775603205384-943971214570126.mp4",
+        "mimeType": "video/mp4"
+      },
+      "drops": [
+        {
+          "id": "cmnpc45q7031vgvsb7jmox1yi",
+          "body": "No One Cares - So Hit Record",
+          "originalDate": "2025-03-12T21:10:09.000Z",
+          "storageKey": null,
+          "mimeType": null,
+          "confidence": 0.92,
+          "reason": "Same video/scene (wheelchair user in café), same author, same message about overcoming isolation through content creation. Post B is shortened version of Post A.",
+          "decision": "pending"
+        }
+      ]
+    },
+    {
+      "id": "g0012",
+      "keep": {
+        "id": "cmnp8cuoe0085gvsbdy01abm4",
+        "body": "Talking to the camera helps me climb out when depression pulls me under. It gives me structure, reflection, and a sense of connection, like I’m reminding myself I’m still here, still trying. It’s one of the ways I lift myself up.",
+        "originalDate": "2025-03-24T22:22:55.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775603294893-1048638363758578.mp4",
+        "mimeType": "video/mp4"
+      },
+      "drops": [
+        {
+          "id": "cmnp8cw5w0087gvsbkvobcwsx",
+          "body": "As spiritual entrepreneurs, we often hold space for others - but who holds space for us when the weight hits?\nTalking to the camera has become one of my ways to reconnect, process, and rise.\nIt’s not just content. It’s practice. Presence. A form of self-witnessing.\nThis is how I move energy. This is one way I come back to myself.",
+          "originalDate": "2025-03-24T22:26:52.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603296787-2126634854442444.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Identical video frames and media with thematically related captions about using video creation as a coping mechanism for depression/personal processing.",
+          "decision": "pending"
+        }
+      ]
+    },
+    {
+      "id": "g0014",
+      "keep": {
+        "id": "cmnp8e2x9009kgvsbmzci1bjs",
+        "body": "",
+        "originalDate": "2025-04-15T16:37:37.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775603352196-1206540660431255.mp4",
+        "mimeType": "video/mp4"
+      },
+      "drops": [
+        {
+          "id": "cmnp8e3t0009mgvsb60j63env",
+          "body": "",
+          "originalDate": "2025-04-15T17:59:33.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603353339-527170713553977.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Same person, wheelchair, location, and colorful door backdrop. Different camera angles and moments from same session.",
+          "decision": "pending"
+        },
+        {
+          "id": "cmnp8e4zd009ogvsbk7rymugw",
+          "body": "",
+          "originalDate": "2025-04-15T21:34:32.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603354861-1902457707229061.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Same person in wheelchair with sticker-decorated jacket, taken at different times/locations but same content series",
+          "decision": "pending"
+        }
+      ]
+    },
+    {
+      "id": "g0016",
+      "keep": {
+        "id": "cmnpbxgla02k1gvsb8hzjzxfd",
+        "body": "Today.\nNot tomorrow.\nNot when you’re “ready.”\nNot after one more conversation, one more excuse, one more perfect condition.\n\nYou’ve dreamed it. You’ve talked it to death.\nYou’ve imagined a thousand versions of it.\nBut you haven’t done it.\n\nAnd you know that.\n\nSo don’t think. Don’t plan. Don’t overexplain.\nDon’t check with friends. Don’t wait for a sign.\n\nThis is the sign.",
+        "originalDate": "2025-04-20T20:33:45.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775609295223-3880370462108502.jpg",
+        "mimeType": "image/jpeg"
+      },
+      "drops": [
+        {
+          "id": "cmnpbxkgd02k9gvsbm61vtx15",
+          "body": "In the Medina, space doesn’t exist the way we think it should. no wide sidewalks no straight paths, no personal bubble. but somehow people flow around you. They make room without asking.  spaciousness isn’t always physical - it’s social, energetic, human. For me, once again like in NYC last year, I feel freer in chaos than in comfort",
+          "originalDate": "2025-04-20T21:19:45.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775609300232-3880402088772006.jpg",
+          "mimeType": "image/jpeg",
+          "confidence": 0.92,
+          "reason": "Same person in wheelchair at same location (Medina), same day, similar angles. Different moments/text focus but identical subject matter.",
+          "decision": "pending"
+        },
+        {
+          "id": "cmnpbxl8w02kbgvsb4itcdvii",
+          "body": "They said the Medina is impossible to navigate.\nI took that personally:)",
+          "originalDate": "2025-04-20T21:22:06.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775609301255-3880404795438402.jpg",
+          "mimeType": "image/jpeg",
+          "confidence": 0.95,
+          "reason": "Same person in wheelchair at Medina location, same day/time, different photo angles of same moment",
+          "decision": "pending"
+        },
+        {
+          "id": "cmnpbxmp002kfgvsb030y26nn",
+          "body": "Everything here is old, uneven, worn. I felt right at home 😏 and although built long before accessibility was a word, still easier than some days at home 🛋️",
+          "originalDate": "2025-04-20T21:35:30.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775609303130-3880411652104383.jpg",
+          "mimeType": "image/jpeg",
+          "confidence": 0.92,
+          "reason": "Same person in wheelchair at same location (Morocco), same trip/moment, different photo angles. Consistent narrative and timeline.",
+          "decision": "pending"
+        }
+      ]
+    },
+    {
+      "id": "g0017",
+      "keep": {
+        "id": "cmnp8ehwc00a6gvsbib7diiv7",
+        "body": "Fez isn’t easy—but it’s not impossible either. If you can take small steps here and there, with some space between, and have someone by your side—it’s doable. The alleys are tight, the crowds intense, and yeah—every couple of hours you’ll hit a step or two. But people are kind, always jumping in to help (sometimes a little too eager). It’s chaotic, ancient, alive. And somehow, the adrenaline takes the edge off the pain. If you move slowly, with patience and grit, Fez will meet you halfway.",
+        "originalDate": "2025-04-21T23:34:44.000Z",
+        "storageKey": "media/cmnala41x000004lgj4riwp83/1775603371602-1326720351954452.mp4",
+        "mimeType": "video/mp4"
+      },
+      "drops": [
+        {
+          "id": "cmnp8ejvv00aagvsbrybv076v",
+          "body": "Fez isn’t easy, but it’s not impossible either. If you can take small steps here and there, with some space between, and have someone by your side - it’s doable. The alleys are tight, the crowds intense, and yeah, every couple of hours you’ll hit a step or two. But people are kind, always jumping in to help (sometimes a little too eager). It’s chaotic, ancient, alive. And somehow, the adrenaline takes the edge off the pain. If you move slowly, with patience and with breathing, Fez will meet you halfway.",
+          "originalDate": "2025-04-21T23:45:16.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603374183-9849711655123575.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Identical video frames from same moment in Fez. Post A has caption, Post B is text-empty repost of same content.",
+          "decision": "pending"
+        },
+        {
+          "id": "cmnp8epqh00amgvsbrwesqnpb",
+          "body": "",
+          "originalDate": "2025-04-21T23:47:10.000Z",
+          "storageKey": "media/cmnala41x000004lgj4riwp83/1775603381828-1975490069646378.mp4",
+          "mimeType": "video/mp4",
+          "confidence": 0.95,
+          "reason": "Identical video frames from same moment in Fez. Post A has caption, Post B is text-empty repost of same content.",
+          "decision": "pending"
+        }
+      ]
+    }
+  ]
+}

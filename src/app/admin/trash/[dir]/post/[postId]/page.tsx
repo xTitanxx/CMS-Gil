@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CopyIdChip } from "../../../CopyIdChip";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
@@ -158,11 +159,13 @@ export default async function TrashedPostPage({
           </Card>
         )}
 
-        <div className="pb-8 text-xs text-gray-400">
-          Post ID: <code>{post.id}</code>
+        <div className="flex flex-wrap items-center gap-2 pb-8 text-xs text-gray-400">
+          <span>Post ID:</span>
+          <CopyIdChip id={post.id} />
           {post.sourceId && (
             <>
-              {" · "}Source ID: <code>{post.sourceId}</code>
+              <span>· Source ID:</span>
+              <CopyIdChip id={post.sourceId} />
             </>
           )}
         </div>

@@ -5,7 +5,12 @@ import { useCallback } from "react";
 
 export type PostKind = "posts" | "stories";
 
-export function KindTabs({ current }: { current: PostKind }) {
+interface KindCounts {
+  posts: number;
+  stories: number;
+}
+
+export function KindTabs({ current, counts }: { current: PostKind; counts?: KindCounts | null }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,6 +44,11 @@ export function KindTabs({ current }: { current: PostKind }) {
           }`}
         >
           {k === "posts" ? "Posts" : "Stories"}
+          {counts && (
+            <span className="ml-1.5 text-xs text-gray-400">
+              {counts[k].toLocaleString()}
+            </span>
+          )}
         </button>
       ))}
     </div>

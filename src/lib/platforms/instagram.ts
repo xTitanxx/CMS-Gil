@@ -17,7 +17,9 @@ interface InstagramCredentials {
 export async function postToInstagram(
   creds: InstagramCredentials,
   body: string,
-  mediaKeys: string[]
+  mediaKeys: string[],
+  postType: string = "POST",
+  audioOverlayMap?: Map<string, string>
 ): Promise<PublishResult> {
   const { accessToken, platformUserId } = creds;
   const baseUrl = "https://graph.instagram.com/v21.0";
@@ -28,9 +30,20 @@ export async function postToInstagram(
   }
 
   if (mediaKeys.length === 1) {
-    // Single image/video post
-    const mediaUrl = await getSignedDownloadUrl(mediaKeys[0], 3600);
+    const mediaUrl = await getSignedDownloadUrl(mediaKeys[0], 3600, undefined, audioOverlayMap?.get(mediaKeys[0]));
     const isVideo = mediaKeys[0].match(/\.(mp4|mov|avi|webm)$/i);
+
+    // Determine media_type based on postType
+    let mediaType: string | undefined;
+    if (postType === "STORY") {
+      mediaType = "STORIES";
+    } else if (postType === "REEL") {
+      mediaType = "REELS";
+    } else if (isVideo) {
+      // POST + video: still goes as REELS on Instagram (default IG behavior)
+      mediaType = "REELS";
+    }
+    // POST + image: no media_type needed (default IMAGE behavior)
 
     const containerRes = await fetch(
       `${baseUrl}/${platformUserId}/media`,
@@ -41,7 +54,7 @@ export async function postToInstagram(
           [isVideo ? "video_url" : "image_url"]: mediaUrl,
           caption: body,
           access_token: accessToken,
-          ...(isVideo ? { media_type: "REELS" } : {}),
+          ...(mediaType ? { media_type: mediaType } : {}),
         }),
       }
     );
@@ -51,8 +64,8 @@ export async function postToInstagram(
       throw new Error(`Instagram container error: ${JSON.stringify(container)}`);
     }
 
-    // Poll until container is ready (for videos)
-    if (isVideo) {
+    // Poll until container is ready (for videos and stories)
+    if (isVideo || postType === "STORY") {
       await waitForContainer(baseUrl, container.id, accessToken);
     }
 
@@ -62,7 +75,7 @@ export async function postToInstagram(
   // Carousel post (multiple media)
   const itemIds: string[] = [];
   for (const key of mediaKeys.slice(0, 10)) {
-    const mediaUrl = await getSignedDownloadUrl(key, 3600);
+    const mediaUrl = await getSignedDownloadUrl(key, 3600, undefined, audioOverlayMap?.get(key));
     const isVideo = key.match(/\.(mp4|mov|avi|webm)$/i);
     const itemRes = await fetch(
       `${baseUrl}/${platformUserId}/media`,

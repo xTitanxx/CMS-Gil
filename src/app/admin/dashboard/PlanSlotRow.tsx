@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp, Film, CheckCircle, RefreshCw, X, Sparkles } fro
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { format } from "date-fns";
+import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData } from "@/lib/planner/types";
 
 const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -38,7 +39,7 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
   const dayName = format(day, "EEE");
   const dayNum = format(day, "d");
   const dayMonth = format(day, "MMM");
-  const dayKey = format(day, "yyyy-MM-dd");
+  const dayKey = utcDateString(day);
 
   // Day column (always visible on left) — consistent styling across states
   const dayColumn = (
@@ -51,9 +52,9 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
 
   if (!slot) {
     return (
-      <div className="flex items-center gap-4 rounded-lg border border-dashed border-gray-300 bg-white px-4 py-3">
+      <div className="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 md:gap-4 md:px-4 md:py-3">
         {dayColumn}
-        <span className="flex-1 text-sm italic text-gray-400">No post planned for this day</span>
+        <span className="flex-1 text-sm italic text-gray-400">No post planned</span>
         <Button
           size="sm"
           variant="outline"
@@ -71,11 +72,12 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
 
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-stretch gap-4 p-4">
+      {/* Mobile: day bar + thumbnail side by side, then content below */}
+      <div className="flex items-stretch gap-3 p-3 md:gap-4 md:p-4">
         {/* Day column */}
         {dayColumn}
 
-        {/* Thumbnail (clickable, larger) */}
+        {/* Thumbnail (clickable) */}
         <Link
           href={`/admin/posts/${post.id}?from=dashboard`}
           className="shrink-0 self-stretch transition-opacity hover:opacity-80"
@@ -85,19 +87,19 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
             <img
               src={post.thumbUrl}
               alt="Post thumbnail"
-              className="h-24 w-24 rounded-md object-cover"
+              className="h-16 w-16 rounded-md object-cover md:h-24 md:w-24"
             />
           ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-md bg-gray-100 text-gray-400">
-              <Film className="h-8 w-8" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-md bg-gray-100 text-gray-400 md:h-24 md:w-24">
+              <Film className="h-6 w-6 md:h-8 md:w-8" />
             </div>
           )}
         </Link>
 
-        {/* Main content (clickable body) */}
+        {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Status / meta row */}
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5 md:mb-2 md:gap-2">
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${STATUS_STYLES[slot.status] ?? STATUS_STYLES.PROPOSED}`}
             >
@@ -105,79 +107,79 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
             </span>
             {post.hasVideo && (
               <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-purple-700">
-                <Film className="h-3 w-3" />
+                <Film className="h-3 w-3 shrink-0" />
                 Video
               </span>
             )}
-            <span className="text-xs text-gray-400">
+            <span className="hidden text-xs text-gray-400 sm:inline">
               Last posted: {format(lastPostedDate, "MMM d, yyyy")}
             </span>
             {post.publishCount > 0 && (
-              <span className="text-xs text-gray-400">· Recycled {post.publishCount}×</span>
+              <span className="hidden text-xs text-gray-400 sm:inline">· Recycled {post.publishCount}×</span>
             )}
           </div>
 
-          {/* Body — larger, more visible */}
-          <Link href={`/admin/posts/${post.id}?from=dashboard`} className="group mb-2 block">
-            <p className="line-clamp-3 text-sm leading-relaxed text-gray-700 group-hover:text-blue-700">
+          {/* Body */}
+          <Link href={`/admin/posts/${post.id}?from=dashboard`} className="group mb-1.5 block md:mb-2">
+            <p className="line-clamp-2 text-sm leading-relaxed text-gray-700 group-hover:text-blue-700 md:line-clamp-3">
               {post.body}
             </p>
           </Link>
 
-          {/* Tags + platforms row */}
-          <div className="mt-auto flex flex-wrap items-center gap-2">
+          {/* Tags + platforms row — hide tags on very small screens */}
+          <div className="mt-auto flex flex-wrap items-center gap-1.5 md:gap-2">
             {slot.platforms.length > 0 && (
               <div className="flex items-center gap-1.5 border-r border-gray-200 pr-2">
                 {slot.platforms.map((p) => {
                   const Icon = PLATFORM_ICONS[p];
                   return Icon ? (
-                    <Icon key={p} className="h-4 w-4 text-gray-500" />
+                    <Icon key={p} className="h-4 w-4 shrink-0 text-gray-500" />
                   ) : (
                     <span key={p} className="text-xs text-gray-400">{p}</span>
                   );
                 })}
               </div>
             )}
-            {post.tags.slice(0, 4).map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs">
+            {post.tags.slice(0, 3).map((tag) => (
+              <Badge key={tag} variant="secondary" className="hidden text-xs sm:inline-flex">
                 {tag}
               </Badge>
             ))}
-            {post.tags.length > 4 && (
-              <span className="text-xs text-gray-400">+{post.tags.length - 4}</span>
+            {post.tags.length > 3 && (
+              <span className="hidden text-xs text-gray-400 sm:inline">+{post.tags.length - 3}</span>
             )}
           </div>
         </div>
 
-        {/* Action column */}
-        <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+        {/* Action column — icon-only on mobile, with labels on sm+ */}
+        <div className="flex shrink-0 flex-col items-end justify-between gap-1.5 md:gap-2">
           {slot.status === "PROPOSED" && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <Button
                 size="sm"
                 onClick={() => onApprove(slot.id)}
-                className="h-8 gap-1.5 bg-blue-600 text-xs text-white hover:bg-blue-700"
+                className="h-8 gap-1 bg-blue-600 px-2 text-xs text-white hover:bg-blue-700 md:gap-1.5 md:px-3"
               >
-                <CheckCircle className="h-3.5 w-3.5" />
-                Approve
+                <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Approve</span>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onSwap(dayKey)}
-                className="h-8 gap-1.5 text-xs"
+                className="h-8 gap-1 px-2 text-xs md:gap-1.5 md:px-3"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Swap
+                <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Swap</span>
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onRemove(slot.id)}
-                className="h-8 gap-1.5 border-red-200 text-xs text-red-600 hover:bg-red-50"
+                className="h-8 gap-1 border-red-200 px-2 text-xs text-red-600 hover:bg-red-50 md:gap-1.5 md:px-3"
               >
-                <X className="h-3.5 w-3.5" />
-                Remove
+                <X className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Remove</span>
               </Button>
             </div>
           )}
@@ -187,12 +189,12 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
               onClick={() => setReasoningOpen((o) => !o)}
               className="mt-auto flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-600"
             >
-              <Sparkles className="h-3 w-3" />
-              Why?
+              <Sparkles className="h-3 w-3 shrink-0" />
+              <span className="hidden sm:inline">Why?</span>
               {reasoningOpen ? (
-                <ChevronUp className="h-3 w-3" />
+                <ChevronUp className="h-3 w-3 shrink-0" />
               ) : (
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-3 w-3 shrink-0" />
               )}
             </button>
           )}

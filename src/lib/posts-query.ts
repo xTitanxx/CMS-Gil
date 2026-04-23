@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { normalizeForSearch } from "@/lib/search-normalize";
 
 export interface PostsFilters {
@@ -21,12 +21,37 @@ export interface PostsFilters {
   to?: string;
   /** "with" = has platformUrl, "without" = no platformUrl, else = no filter */
   link?: string;
-  /** "2" = posts with 2 or more media attached */
+  /** "2" = posts with 2 or more media attached; "none" = posts with no media */
   multiMedia?: string;
   /** "yes" = has at least one AI tag, "no" = has zero tags, else = no filter */
   tagged?: string;
   /** "stories" = FB story posts only, "posts" = non-story posts, else = all */
   kind?: string;
+  /**
+   * Secondary tab within the current kind:
+   *   kind=posts   → "repostable" (default), "silent", "shared"
+   *   kind=stories → "withsound"  (default), "silent"
+   * Empty / unknown values = default for that kind.
+   */
+  subKind?: string;
+  /**
+   * Share-status filter:
+   *   "original" — share IS NULL (no share card)
+   *   "external" — share has a URL (recoverable link share)
+   *   "stripped" — share flagged but no URL (internal FB-post share; card
+   *                content stripped by FB on export)
+   *   "any"      — share IS NOT NULL (either flavor above)
+   */
+  share?: string;
+  /**
+   * Quality filter:
+   *   "clean"  — has FB link AND no silent videos (non-video or all videos have audio)
+   *   "issues" — missing FB link OR has at least one silent video
+   */
+  quality?: string;
+  captionQuality?: string;
+  /** "yes" = has PostAnalytics with platform FACEBOOK, "no" = does not, else = no filter */
+  enriched?: string;
 }
 
 const STORY_SOURCE_ID_PREFIX = "fb_story_";
@@ -71,6 +96,11 @@ export function parsePostsFilters(sp: SearchParamsLike): PostsFilters {
     multiMedia: getParam(sp, "multiMedia") || undefined,
     tagged: getParam(sp, "tagged") || undefined,
     kind: getParam(sp, "kind") || undefined,
+    subKind: getParam(sp, "subKind") || undefined,
+    share: getParam(sp, "share") || undefined,
+    quality: getParam(sp, "quality") || undefined,
+    captionQuality: getParam(sp, "captionQuality") || undefined,
+    enriched: getParam(sp, "enriched") || undefined,
   };
 }
 
@@ -186,7 +216,11 @@ function buildAudioClause(
 export function buildPostsQuery(
   filters: PostsFilters,
   userId: string,
-  opts?: { postIdAllowlist?: string[] | null },
+  opts?: {
+    postIdAllowlist?: string[] | null;
+    /** Extra Prisma PostWhereInput clauses to AND into the final where. */
+    extraWhere?: Prisma.PostWhereInput[];
+  },
 ): {
   where: Prisma.PostWhereInput;
   orderBy: Prisma.PostOrderByWithRelationInput[];
@@ -209,12 +243,159 @@ export function buildPostsQuery(
   );
   if (audioClause) extraAnds.push(audioClause);
 
+  // link filter — CSV of {with, without}. Both or neither = no filter.
+  const linkSet = parseCsvSet(filters.link, ["with", "without"] as const);
+  if (linkSet && linkSet.size === 1) {
+    if (linkSet.has("with")) extraAnds.push({ platformUrl: { not: null } });
+    else extraAnds.push({ platformUrl: null });
+  }
+
+  // multiMedia filter — CSV of {1, 2, none}. Only "none" has a backend clause
+  // today (the 1 vs 2+ distinction isn't implemented); keep that behavior.
+  const mmSet = parseCsvSet(filters.multiMedia, ["1", "2", "none"] as const);
+  if (mmSet && mmSet.size > 0 && mmSet.size < 3) {
+    const or: Prisma.PostWhereInput[] = [];
+    if (mmSet.has("none")) or.push({ media: { none: {} } });
+    if (mmSet.has("1") || mmSet.has("2")) or.push({ media: { some: {} } });
+    if (or.length > 0) extraAnds.push({ OR: or });
+  }
+
+  // tagged filter — CSV of {yes, no}. Both or neither = no filter.
+  const tagSet = parseCsvSet(filters.tagged, ["yes", "no"] as const);
+  if (tagSet && tagSet.size === 1) {
+    if (tagSet.has("yes")) extraAnds.push({ tags: { isEmpty: false } });
+    else extraAnds.push({ tags: { isEmpty: true } });
+  }
+
+  // share filter — CSV of {original, external, stripped}. Legacy "any" expands
+  // to {external, stripped}. Empty or all three = no filter.
+  const shareSet = new Set<string>();
+  if (filters.share) {
+    for (const s of filters.share.split(",")) {
+      const v = s.trim();
+      if (["original", "external", "stripped", "any"].includes(v)) {
+        shareSet.add(v);
+      }
+    }
+    if (shareSet.has("any")) {
+      shareSet.delete("any");
+      shareSet.add("external");
+      shareSet.add("stripped");
+    }
+  }
+  if (shareSet.size > 0 && shareSet.size < 3) {
+    const or: Prisma.PostWhereInput[] = [];
+    if (shareSet.has("original")) or.push({ share: { equals: Prisma.DbNull } });
+    if (shareSet.has("external")) {
+      or.push({ share: { path: ["url"], not: Prisma.DbNull } });
+    }
+    if (shareSet.has("stripped")) {
+      or.push({
+        AND: [
+          { share: { not: Prisma.DbNull } },
+          { share: { path: ["url"], equals: Prisma.DbNull } },
+        ],
+      });
+    }
+    extraAnds.push({ OR: or });
+  }
+
+  // quality filter — CSV of {clean, issues}. Both or neither = no filter.
+  const qualitySet = parseCsvSet(filters.quality, ["clean", "issues"] as const);
+  if (qualitySet && qualitySet.size === 1) {
+    if (qualitySet.has("clean")) {
+      // Has FB link AND no silent videos
+      extraAnds.push({
+        AND: [
+          { platformUrl: { not: null } },
+          {
+            media: {
+              none: { mimeType: { startsWith: "video/" }, hasAudio: false },
+            },
+          },
+        ],
+      });
+    } else {
+      // Missing FB link OR has at least one silent video
+      extraAnds.push({
+        OR: [
+          { platformUrl: null },
+          {
+            media: {
+              some: { mimeType: { startsWith: "video/" }, hasAudio: false },
+            },
+          },
+        ],
+      });
+    }
+  }
+
+  // caption quality filter — CSV of {good, ok, weak, not-analyzed, has-rewrite}
+  const captionSet = parseCsvSet(filters.captionQuality, ["good", "ok", "weak", "not-analyzed", "has-rewrite"] as const);
+  if (captionSet && captionSet.size < 5) {
+    const orClauses: Prisma.PostWhereInput[] = [];
+    if (captionSet.has("good")) orClauses.push({ captionQuality: { gte: 4 } });
+    if (captionSet.has("ok")) orClauses.push({ captionQuality: 3 });
+    if (captionSet.has("weak")) orClauses.push({ captionQuality: { lte: 2, not: null } });
+    if (captionSet.has("not-analyzed")) orClauses.push({ captionAnalyzedAt: null });
+    if (captionSet.has("has-rewrite")) orClauses.push({ captionSuggestion: { not: null } });
+    if (orClauses.length > 0) extraAnds.push({ OR: orClauses });
+  }
+
+  // enriched filter — CSV of {yes, no}. Both or neither = no filter.
+  const enrichedSet = parseCsvSet(filters.enriched, ["yes", "no"] as const);
+  if (enrichedSet && enrichedSet.size === 1) {
+    if (enrichedSet.has("yes")) {
+      extraAnds.push({ analytics: { some: { platform: "FACEBOOK" } } });
+    } else {
+      extraAnds.push({ analytics: { none: { platform: "FACEBOOK" } } });
+    }
+  }
+
   if (filters.kind === "stories") {
-    extraAnds.push({ sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } });
-  } else if (filters.kind === "posts") {
-    extraAnds.push({
-      NOT: { sourceId: { startsWith: STORY_SOURCE_ID_PREFIX } },
-    });
+    extraAnds.push({ postType: "STORY" });
+  } else {
+    // Default to excluding stories when kind is "posts" or unset
+    extraAnds.push({ postType: { not: "STORY" } });
+  }
+
+  // Media-type sub-tabs: all (default), video-audio, video-silent, photo, text, quoted.
+  // Only apply when subKind is present — undefined means "show all" (used for
+  // the kind-level total count).
+  if (filters.subKind != null && filters.subKind !== "all") {
+    if (filters.subKind === "video-audio") {
+      // Has at least one video with audio
+      extraAnds.push({
+        media: { some: { mimeType: { startsWith: "video/" }, hasAudio: true } },
+      });
+    } else if (filters.subKind === "video-silent") {
+      // Has at least one video AND none of its videos have audio
+      extraAnds.push({
+        AND: [
+          { media: { some: { mimeType: { startsWith: "video/" } } } },
+          { media: { none: { mimeType: { startsWith: "video/" }, hasAudio: true } } },
+        ],
+      });
+    } else if (filters.subKind === "photo") {
+      // Has image(s) but no video
+      extraAnds.push({
+        AND: [
+          { media: { some: { mimeType: { startsWith: "image/" } } } },
+          { media: { none: { mimeType: { startsWith: "video/" } } } },
+        ],
+      });
+    } else if (filters.subKind === "text") {
+      // Genuinely text-only: no media AND not a share/quote
+      extraAnds.push({ media: { none: {} } });
+      extraAnds.push({ share: { equals: Prisma.DbNull } });
+    } else if (filters.subKind === "quoted") {
+      // Quoted/shared FB post — has share metadata (shared to group, shared someone's post, etc.)
+      extraAnds.push({ share: { not: Prisma.DbNull } });
+    }
+  }
+
+  if (opts?.extraWhere && opts.extraWhere.length > 0) {
+    extraAnds.push(...opts.extraWhere);
   }
 
   const where: Prisma.PostWhereInput = {
@@ -226,6 +407,12 @@ export function buildPostsQuery(
             // so that typed keyboard text matches FB's smart-punctuation variants.
             { bodyNormalized: { contains: normalizeForSearch(filters.search) } },
             { tags: { has: filters.search.toLowerCase() } },
+            // Exact cuid lookup so pasting a Post.id into the search bar finds
+            // the row directly. cuids are 25 chars, lowercase alnum, starting
+            // with "c" — cheap to sniff without a false-positive risk.
+            ...(/^c[a-z0-9]{24}$/.test(filters.search.trim())
+              ? [{ id: filters.search.trim() }]
+              : []),
           ],
         }
       : {}),
@@ -238,10 +425,6 @@ export function buildPostsQuery(
           },
         }
       : {}),
-    ...(filters.link === "with" ? { platformUrl: { not: null } } : {}),
-    ...(filters.link === "without" ? { platformUrl: null } : {}),
-    ...(filters.tagged === "yes" ? { tags: { isEmpty: false } } : {}),
-    ...(filters.tagged === "no" ? { tags: { isEmpty: true } } : {}),
     ...(opts?.postIdAllowlist != null ? { id: { in: opts.postIdAllowlist } } : {}),
     ...(extraAnds.length > 0 ? { AND: extraAnds } : {}),
   };
@@ -364,6 +547,11 @@ export const POST_FILTER_KEYS = [
   "tagged",
   "kind",
   "view",
+  "share",
+  "subKind",
+  "quality",
+  "captionQuality",
+  "enriched",
 ] as const;
 
 export function serializeFilters(

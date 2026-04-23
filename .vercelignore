@@ -2,7 +2,7 @@
 sample-exports/
 .playwright-mcp/
 .claude/
-trash/
+/trash/
 docs/superpowers/
 CLAUDE*.md
 "CLAUDE 2.md"

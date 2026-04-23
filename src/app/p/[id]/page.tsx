@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getPublicPost, getRelatedPosts } from "@/lib/public-posts";
-import { getSignedDownloadUrl } from "@/lib/storage";
+import { getMediaUrl } from "@/lib/storage";
 import { BackButton } from "./BackButton";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ async function mediaWithUrls<T extends { storageKey: string; mimeType: string; i
       id: m.id,
       altText: m.altText,
       mimeType: m.mimeType,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
+      url: await getMediaUrl(m).catch(
         () => null
       ),
     }))

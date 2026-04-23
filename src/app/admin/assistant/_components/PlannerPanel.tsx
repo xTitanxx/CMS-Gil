@@ -1,0 +1,89 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { WeeklyPlanView } from "../../dashboard/WeeklyPlanView";
+import type { WeeklyPlanData } from "@/lib/planner/types";
+
+export function PlannerPanel() {
+  const [plan, setPlan] = useState<WeeklyPlanData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refreshPlan = useCallback(async () => {
+    const res = await fetch("/api/planner/current");
+    if (res.ok) setPlan((await res.json()) as WeeklyPlanData);
+  }, []);
+
+  useEffect(() => {
+    void refreshPlan().finally(() => setLoading(false));
+  }, [refreshPlan]);
+
+  const handleGenerate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/planner/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) await refreshPlan();
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshPlan]);
+
+  const handleApproveSlot = useCallback(
+    async (slotId: string) => {
+      if (!plan) return;
+      await fetch(`/api/planner/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve", slotId }),
+      });
+      await refreshPlan();
+    },
+    [plan, refreshPlan]
+  );
+
+  const handleRemoveSlot = useCallback(
+    async (slotId: string) => {
+      if (!plan) return;
+      await fetch(`/api/planner/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", slotId }),
+      });
+      await refreshPlan();
+    },
+    [plan, refreshPlan]
+  );
+
+  const handleSwapSlot = useCallback(
+    (_day: string) => {
+      void refreshPlan();
+    },
+    [refreshPlan]
+  );
+
+  const handleScheduleAll = useCallback(async () => {
+    if (!plan) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/planner/${plan.id}/schedule`, { method: "POST" });
+      await refreshPlan();
+    } finally {
+      setLoading(false);
+    }
+  }, [plan, refreshPlan]);
+
+  return (
+    <WeeklyPlanView
+      plan={plan}
+      loading={loading}
+      onGenerate={handleGenerate}
+      onApproveSlot={handleApproveSlot}
+      onRemoveSlot={handleRemoveSlot}
+      onSwapSlot={handleSwapSlot}
+      onScheduleAll={handleScheduleAll}
+    />
+  );
+}

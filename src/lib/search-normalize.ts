@@ -9,8 +9,11 @@
  *   ellipsis char → "..."
  *   nbsp          → space
  *   zero-width    → removed (ZWSP, ZWNJ, ZWJ, BOM, soft hyphen)
+ *   whitespace    → collapsed to single space (newlines, tabs, runs of spaces)
  *
- * Finally NFC-normalized and lowercased.
+ * Finally NFC-normalized, whitespace-collapsed, trimmed, and lowercased. The
+ * whitespace collapse means a pasted phrase matches the stored body even when
+ * the original spans a line break or has quirky spacing.
  */
 export function normalizeForSearch(s: string): string {
   return s
@@ -21,5 +24,7 @@ export function normalizeForSearch(s: string): string {
     .replace(/[\u2013\u2014\u2015]/g, "-")
     .replace(/\u00A0/g, " ")
     .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
     .toLowerCase();
 }

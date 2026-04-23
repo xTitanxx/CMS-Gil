@@ -1,12 +1,13 @@
 import { notFound, redirect } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Heart, MessageCircle, Share2, Eye, ThumbsUp, Bookmark, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl } from "@/lib/storage";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
+// Card components removed — publish history uses inline styles now
 import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
+import { AnalyticsRefreshButton } from "./AnalyticsRefreshButton";
+import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
 import { PostNavKeys } from "./PostNavKeys";
@@ -18,6 +19,12 @@ import {
 import { displayBody } from "@/lib/post-body";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
+
+function formatNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
 
 function serializeListQuery(sp: SearchParams): string {
   const qs = new URLSearchParams();
@@ -54,8 +61,13 @@ export default async function PostDetailPage({
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
     include: {
-      media: true,
-      publishes: { orderBy: { createdAt: "desc" } },
+      media: { include: { audioTrack: { select: { id: true, title: true, storageKey: true } } } },
+      publishes: { orderBy: { createdAt: "desc" }, include: { analytics: true } },
+      analytics: { where: { platform: "FACEBOOK" }, take: 1 },
+      fbComments: { orderBy: { scrapedAt: "desc" } },
+      parentPost: { select: { id: true, body: true, _count: { select: { media: true } } } },
+      _count: { select: { childPosts: true } },
+      rating: true,
     },
   });
 
@@ -74,7 +86,18 @@ export default async function PostDetailPage({
             HAVING COUNT(*) >= 2
           `
         ).map((r) => r.postId)
-      : null;
+      : filters.multiMedia === "1"
+        ? (
+            await prisma.$queryRaw<Array<{ postId: string }>>`
+              SELECT m."postId"
+              FROM "Media" m
+              JOIN "Post" p ON p.id = m."postId"
+              WHERE p."userId" = ${session.user.id}
+              GROUP BY m."postId"
+              HAVING COUNT(*) = 1
+            `
+          ).map((r) => r.postId)
+        : null;
   const { where: baseWhere } = buildPostsQuery(filters, session.user.id, {
     postIdAllowlist,
   });
@@ -110,16 +133,23 @@ export default async function PostDetailPage({
   const listHref =
     fromParam === "dashboard"
       ? "/admin/dashboard"
-      : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
+      : fromParam === "assistant"
+        ? "/admin/assistant"
+        : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
 
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       id: m.id,
       mimeType: m.mimeType,
       hasAudio: m.hasAudio,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
-        () => null,
-      ),
+      audioTrack: m.audioTrack
+        ? {
+            id: m.audioTrack.id,
+            title: m.audioTrack.title,
+            url: await getSignedDownloadUrl(m.audioTrack.storageKey, 3600, "audio/mpeg").catch(() => null),
+          }
+        : null,
+      url: await getMediaUrl(m).catch(() => null),
     })),
   );
 
@@ -131,7 +161,19 @@ export default async function PostDetailPage({
         prevHref={prevHref}
         nextHref={nextHref}
         listHref={listHref}
-        actions={<DeleteButton postId={id} />}
+        backLabel={
+          fromParam === "dashboard"
+            ? "Back to dashboard"
+            : fromParam === "assistant"
+              ? "Back to assistant"
+              : "Back to list"
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <CopyIdChip id={id} />
+            <DeleteButton postId={id} />
+          </div>
+        }
       />
       <PostNavKeys
         prevHref={prevHref}
@@ -139,91 +181,260 @@ export default async function PostDetailPage({
         listHref={listHref}
       />
 
-      <div className="mx-auto mt-3 w-full max-w-6xl space-y-3">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0">
-            <PostEditor
-              postId={id}
-              initialBody={displayBody(post.body)}
-              initialOriginalDate={post.originalDate}
-              initialTags={post.tags}
-              initialMedia={mediaWithUrls}
-              source={post.source}
-              platformUrl={post.platformUrl}
-            />
+      <div className="mx-auto mt-3 w-full max-w-2xl space-y-3">
+        {post.parentPost && (
+          <a
+            href={`/admin/posts/${post.parentPost.id}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 hover:bg-amber-100"
+          >
+            <span className="font-medium">Part of album</span>
+            <span className="text-amber-700">
+              {post.parentPost._count.media} photos
+              {post.parentPost.body
+                ? ` — ${post.parentPost.body.slice(0, 60).replace(/\s+/g, " ")}${post.parentPost.body.length > 60 ? "…" : ""}`
+                : ""}
+            </span>
+          </a>
+        )}
+        {post._count.childPosts > 0 && (
+          <div className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            <span className="font-medium">Album</span>
+            <span className="text-blue-700">
+              {post._count.childPosts} linked {post._count.childPosts === 1 ? "post" : "posts"}
+            </span>
           </div>
+        )}
 
-          <div className="min-w-0 space-y-3">
-            <PublishPanelWithRefresh
-              postId={id}
-              body={post.body}
-              hasVideo={hasVideo}
-              media={mediaWithUrls.map((m) => ({ url: m.url, mimeType: m.mimeType }))}
-            />
+        <PostEditor
+          postId={id}
+          initialBody={displayBody(post.body)}
+          initialOriginalDate={post.originalDate}
+          initialTags={post.tags}
+          initialMedia={mediaWithUrls}
+          initialPostType={post.postType}
+          initialLifecycle={post.lifecycle}
+          initialSeason={post.season ?? null}
+          source={post.source}
+          platformUrl={post.platformUrl}
+          share={post.share as { url?: string; source?: string; name?: string } | null}
+          rating={post.rating ? { stars: post.rating.stars, reasons: post.rating.reasons, note: post.rating.note } : null}
+          captionSuggestion={
+            (post.captionQuality != null || post.captionSuggestion)
+              ? {
+                  postId: id,
+                  currentBody: post.body,
+                  suggestion: post.captionSuggestion,
+                  quality: post.captionQuality,
+                  evergreen: post.captionEvergreen,
+                }
+              : null
+          }
+        />
 
-          {/* Publish history */}
-          {post.publishes.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Publish History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {post.publishes.map((pr) => (
-                    <div
-                      key={pr.id}
-                      className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3"
-                    >
-                      <div>
-                        <span className="text-sm font-medium">{pr.platform}</span>
-                        {pr.scheduledAt && pr.status === "PENDING" && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            Scheduled: {format(new Date(pr.scheduledAt), "MMM d, h:mm a")}
-                          </span>
-                        )}
-                        {pr.publishedAt && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            {format(new Date(pr.publishedAt), "MMM d, h:mm a")}
-                          </span>
-                        )}
-                        {pr.errorMessage && (
-                          <p className="mt-1 text-xs text-red-600">{pr.errorMessage}</p>
-                        )}
+        <PublishPanelWithRefresh
+          postId={id}
+          body={post.body}
+          hasVideo={hasVideo}
+          media={mediaWithUrls.map((m) => ({ url: m.url, mimeType: m.mimeType }))}
+        />
+
+        {/* Activity — publishes + scraped analytics combined */}
+        {(post.publishes.length > 0 || post.analytics.length > 0) && (
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <div className="flex items-center justify-between px-5 py-3.5">
+              <h3 className="text-[13px] font-semibold text-gray-900">Activity</h3>
+              {post.publishes.some((pr) => pr.status === "PUBLISHED") && (
+                <AnalyticsRefreshButton postId={id} />
+              )}
+            </div>
+
+            {/* Facebook origin analytics (scraped) */}
+            {post.analytics.length > 0 && (() => {
+              const fb = post.analytics[0];
+              return (
+                <div className="border-t border-gray-100">
+                  <div className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50">
+                        <Heart className="h-4 w-4 text-blue-500" />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            pr.status === "PUBLISHED"
-                              ? "success"
-                              : pr.status === "FAILED"
-                              ? "destructive"
-                              : pr.status === "PENDING"
-                              ? "warning"
-                              : "secondary"
-                          }
-                        >
-                          {pr.status}
-                        </Badge>
-                        {pr.platformUrl && (
-                          <a
-                            href={pr.platformUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-medium text-gray-900">Facebook (Personal)</span>
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-gray-400">Origin</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400">
+                          Scraped {format(new Date(fb.fetchedAt), "MMM d, yyyy")}
+                        </p>
                       </div>
                     </div>
-                  ))}
+                    <div className="ml-11 mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                      {fb.reactions != null && (
+                        <span className="flex items-center gap-1.5 text-[12px] text-gray-600">
+                          <Heart className="h-3.5 w-3.5 text-rose-400" />
+                          <span className="font-semibold">{formatNum(fb.reactions)}</span>
+                          <span className="text-gray-400">reactions</span>
+                        </span>
+                      )}
+                      {fb.comments != null && (
+                        <span className="flex items-center gap-1.5 text-[12px] text-gray-600">
+                          <MessageCircle className="h-3.5 w-3.5 text-blue-400" />
+                          <span className="font-semibold">{formatNum(fb.comments)}</span>
+                          <span className="text-gray-400">comments</span>
+                        </span>
+                      )}
+                      {fb.shares != null && (
+                        <span className="flex items-center gap-1.5 text-[12px] text-gray-600">
+                          <Share2 className="h-3.5 w-3.5 text-green-400" />
+                          <span className="font-semibold">{formatNum(fb.shares)}</span>
+                          <span className="text-gray-400">shares</span>
+                        </span>
+                      )}
+                    </div>
+                    {post.fbComments.length > 0 && (
+                      <div className="ml-11 mt-3">
+                        <p className="mb-1.5 text-[11px] font-medium text-gray-400">
+                          Comments ({post.fbComments.length})
+                        </p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {post.fbComments.slice(0, 10).map((c) => (
+                            <div key={c.id} className="text-xs">
+                              <span className="font-medium text-gray-700">{c.authorName}</span>
+                              <span className="ml-1.5 text-gray-500">{c.body}</span>
+                            </div>
+                          ))}
+                          {post.fbComments.length > 10 && (
+                            <p className="text-[10px] text-gray-400">
+                              +{post.fbComments.length - 10} more
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              );
+            })()}
 
+            {/* Published from CMS */}
+            {post.publishes.length > 0 && (
+              <div className="divide-y divide-gray-100 border-t border-gray-100">
+                {post.publishes.map((pr) => {
+                  const a = pr.analytics;
+                  const statusConfig = pr.status === "PUBLISHED"
+                    ? { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50", label: "Published" }
+                    : pr.status === "FAILED"
+                    ? { icon: XCircle, color: "text-red-500", bg: "bg-red-50", label: "Failed" }
+                    : pr.status === "PENDING"
+                    ? { icon: Clock, color: "text-amber-500", bg: "bg-amber-50", label: "Pending" }
+                    : { icon: Clock, color: "text-gray-400", bg: "bg-gray-50", label: pr.status };
+                  const StatusIcon = statusConfig.icon;
+
+                  const platformLabel = pr.platform === "FACEBOOK_PAGE" ? "Facebook Page"
+                    : pr.platform === "INSTAGRAM" ? "Instagram"
+                    : pr.platform === "LINKEDIN" ? "LinkedIn"
+                    : pr.platform === "YOUTUBE" ? "YouTube"
+                    : pr.platform === "TIKTOK" ? "TikTok"
+                    : pr.platform;
+
+                  return (
+                    <div key={pr.id} className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${statusConfig.bg}`}>
+                          <StatusIcon className={`h-4 w-4 ${statusConfig.color}`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-gray-900">{platformLabel}</span>
+                            {pr.platformUrl && (
+                              <a
+                                href={pr.platformUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-gray-400 hover:text-blue-600 transition-colors"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-400">
+                            {pr.publishedAt
+                              ? format(new Date(pr.publishedAt), "MMM d, yyyy · h:mm a")
+                              : pr.scheduledAt && pr.status === "PENDING"
+                              ? `Scheduled for ${format(new Date(pr.scheduledAt), "MMM d · h:mm a")}`
+                              : statusConfig.label}
+                          </p>
+                          {pr.errorMessage && (
+                            <p className="mt-1 flex items-center gap-1 text-[11px] text-red-500">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              {pr.errorMessage}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${statusConfig.bg} ${statusConfig.color}`}>
+                          {statusConfig.label}
+                        </span>
+                      </div>
+                      {a && (
+                        <div className="ml-11 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                          {a.videoViews != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <Eye className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.videoViews)} views
+                            </span>
+                          )}
+                          {a.impressions != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <Eye className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.impressions)} impressions
+                            </span>
+                          )}
+                          {a.reach != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <Eye className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.reach)} reach
+                            </span>
+                          )}
+                          {a.likes != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <ThumbsUp className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.likes)}
+                            </span>
+                          )}
+                          {a.comments != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <MessageCircle className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.comments)}
+                            </span>
+                          )}
+                          {a.shares != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <Share2 className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.shares)}
+                            </span>
+                          )}
+                          {a.saves != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                              <Bookmark className="h-3 w-3 text-gray-400" />
+                              {formatNum(a.saves)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {pr.status === "PUBLISHED" && !a && pr.publishedAt && (
+                        <p className="ml-11 mt-1.5 text-[11px] text-gray-300 italic">
+                          {Date.now() - new Date(pr.publishedAt).getTime() < 86400000
+                            ? "Analytics available ~24h after posting"
+                            : "No analytics yet"}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

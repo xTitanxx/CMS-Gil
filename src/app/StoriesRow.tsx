@@ -7,12 +7,14 @@ import { StoryViewer } from "./StoryViewer";
 interface StoryMedia {
   id: string;
   mimeType: string;
+  hasAudio: boolean | null;
   url: string | null;
 }
 
 export interface Story {
   id: string;
   originalDate: string;
+  thumbUrl?: string | null;
   media: StoryMedia[];
 }
 
@@ -98,29 +100,21 @@ function StoryThumbnail({ story, onClick }: { story: Story; onClick: () => void 
   const firstMedia = story.media[0];
   if (!firstMedia?.url) return null;
 
-  const isVideo = firstMedia.mimeType.startsWith("video/");
+  // Use thumbUrl for the circular thumbnail — works on mobile where <video> doesn't preload
+  const thumbSrc = story.thumbUrl ?? firstMedia.url;
 
   return (
     <button
       onClick={onClick}
-      className="flex-shrink-0 rounded-full p-[2px] bg-gradient-to-tr from-blue-500 to-purple-500"
+      className="relative flex-shrink-0 rounded-full p-[2px] bg-gradient-to-tr from-blue-500 to-purple-500"
     >
       <div className="h-16 w-16 rounded-full overflow-hidden bg-gray-200 border-2 border-white">
-        {isVideo ? (
-          <video
-            src={firstMedia.url}
-            className="h-full w-full object-cover"
-            muted
-            preload="metadata"
-          />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={firstMedia.url}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumbSrc}
+          alt=""
+          className="h-full w-full object-cover"
+        />
       </div>
     </button>
   );

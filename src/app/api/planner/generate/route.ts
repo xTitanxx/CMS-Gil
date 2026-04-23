@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { startOfWeek, addDays, format } from "date-fns";
+import { addDays, format } from "date-fns";
+import { getMondayUTC, utcDateString } from "@/lib/planner/week";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   getCandidatePosts,
@@ -25,9 +26,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const preferences: string | undefined = body.preferences;
 
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekStart = getMondayUTC();
   const days = Array.from({ length: 7 }, (_, i) =>
-    format(addDays(weekStart, i), "yyyy-MM-dd")
+    utcDateString(new Date(weekStart.getTime() + i * 86400000))
   );
 
   // Parallel fetch all data needed

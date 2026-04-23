@@ -43,6 +43,7 @@ model User {
   email          String?         @unique
   emailVerified  DateTime?
   image          String?
+  passwordHash   String?
   accounts       Account[]
   sessions       Session[]
   posts          Post[]
@@ -50,6 +51,11 @@ model User {
   platformTokens PlatformToken[]
   driveSync      DriveSync?
   weeklyPlans    WeeklyPlan[]
+  audioTracks    AudioTrack[]
+  dailyBriefs    DailyBrief[]
+  conversations  Conversation[]
+  todos          Todo[]
+  memories       UserMemory[]
 }
 
 model VerificationToken {
@@ -61,6 +67,27 @@ model VerificationToken {
 }
 
 // ─── Core Content ────────────────────────────────────────────────────────────
+
+enum Lifecycle {
+  UNKNOWN
+  EVERGREEN
+  EPHEMERAL
+  SEASONAL
+}
+
+enum Season {
+  SPRING
+  SUMMER
+  FALL
+  WINTER
+}
+
+enum Readiness {
+  UNCHECKED
+  READY
+  NOT_READY
+  ARCHIVED
+}
 
 model Post {
   id           String        @id @default(cuid())
@@ -87,21 +114,67 @@ model Post {
   updatedAt    DateTime      @updatedAt
 
   tags         String[]      @default([])
+  postType     PostType      @default(POST)
   publishCount Int           @default(0)
+
+  lifecycle           Lifecycle  @default(UNKNOWN)
+  season              Season?
+  lifecycleOverridden Boolean    @default(false)
+  readiness           Readiness  @default(UNCHECKED)
+  notReadyReasons     String[]   @default([])
+  readinessCheckedAt  DateTime?
+  archivedAt          DateTime?
+
+  // Caption-only analysis (independent of media): does the caption itself
+  // stand on its own as evergreen, and how much craft went into it?
+  captionQuality      Int?       // 1..5 (1 = low-effort, 5 = poetic/high-craft)
+  captionEvergreen    Boolean?   // true if the caption text is timeless on its own
+  captionAnalyzedAt   DateTime?
+  // AI-generated rewrite for low-quality captions, using a few-shot corpus
+  // of this user's own high-quality evergreen captions as style reference.
+  // Only populated for posts flagged as low-quality or non-evergreen.
+  captionSuggestion   String?
+
+  rating              PostRating?
+
+  // Populated when the imported post is a share/crosspost of another post or
+  // external link. Shape: { url?: string; source?: string; name?: string }.
+  // Null for original content. Lets the UI render a "shared from …" chip and
+  // keeps the context that was otherwise dropped from the FB export.
+  share        Json?
+
+  // Optional pointer to a "parent" multi-media post. Used when an FB album was
+  // imported as a single 50-image post AND each individual photo also has its
+  // own caption/location post in the export. The per-photo posts get linked
+  // back to the album post so the UI can show a "Part of album" badge.
+  // Backfilled by scripts/backfill-album-children.ts.
+  parentPostId String?
+  parentPost   Post?    @relation("PostAlbumChildren", fields: [parentPostId], references: [id], onDelete: SetNull)
+  childPosts   Post[]   @relation("PostAlbumChildren")
 
   media        Media[]
   publishes    PublishRecord[]
   analytics    PostAnalytics[]
   planSlots    WeeklyPlanSlot[]
+  fbComments   FacebookComment[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
+  @@index([parentPostId])
   @@index([tags], type: Gin)
+  @@index([readiness])
+  @@index([lifecycle])
 }
 
 enum PostSource {
   FACEBOOK
   MANUAL
+}
+
+enum PostType {
+  POST
+  REEL
+  STORY
 }
 
 model Media {
@@ -123,7 +196,32 @@ model Media {
   // by scripts/backfill-audio.ts for historical rows.
   hasAudio    Boolean?
 
+  // When set, indicates that the delivered video URL should be generated with a
+  // Cloudinary audio overlay using the referenced AudioTrack's storageKey. Used
+  // to add licensed/custom music (e.g. generated in Suno) to silent videos whose
+  // original audio was stripped by Facebook's licensed-music policy during export.
+  audioTrackId String?
+  audioTrack   AudioTrack? @relation(fields: [audioTrackId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
+}
+
+model AudioTrack {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  storageKey  String
+  mimeType    String   @default("audio/mpeg")
+  sizeBytes   Int?
+  durationSec Float?
+
+  media       Media[]
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // ─── Social Platform Tokens ──────────────────────────────────────────────────
@@ -175,11 +273,35 @@ model PublishRecord {
   errorMessage   String?
   retryCount     Int           @default(0)
 
+  analytics      PublishAnalytics?
+
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([status, scheduledAt])
   @@index([postId, platform])
+}
+
+// ─── Publish Analytics ──────────────────────────────────────────────────────
+
+model PublishAnalytics {
+  id              String        @id @default(cuid())
+  publishRecord   PublishRecord @relation(fields: [publishRecordId], references: [id], onDelete: Cascade)
+  publishRecordId String        @unique
+
+  impressions     Int?
+  reach           Int?
+  likes           Int?
+  comments        Int?
+  shares          Int?
+  saves           Int?          // Instagram only
+  videoViews      Int?          // video platforms
+
+  fetchedAt       DateTime      @default(now())
+  rawJson         Json?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 enum PublishStatus {
@@ -209,6 +331,36 @@ model ImportJob {
   startedAt     DateTime?
   completedAt   DateTime?
   createdAt     DateTime     @default(now())
+}
+
+model BulkAnalyzeJob {
+  id          String             @id @default(cuid())
+  userId      String
+  status      BulkAnalyzeStatus  @default(RUNNING)
+  total       Int                @default(0)
+  completed   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, status])
+}
+
+model BulkCaptionAnalyzeJob {
+  id          String             @id @default(cuid())
+  userId      String
+  status      BulkAnalyzeStatus  @default(RUNNING)
+  total       Int                @default(0)
+  completed   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, status])
+}
+
+enum BulkAnalyzeStatus {
+  RUNNING
+  CANCELLED
+  DONE
 }
 
 enum ImportSource {
@@ -261,6 +413,20 @@ model PostAnalytics {
   @@index([postId])
 }
 
+// ─── Facebook Comments (scraped) ────────────────────────────────────────────
+
+model FacebookComment {
+  id         String   @id @default(cuid())
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorName String
+  body       String
+  scrapedAt  DateTime @default(now())
+
+  @@index([postId])
+}
+
 // ─── Weekly Planner ─────────────────────────────────────────────────────────
 
 enum PlanStatus {
@@ -294,12 +460,86 @@ model WeeklyPlanSlot {
   planId    String
   plan      WeeklyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   postId    String
-  post      Post       @relation(fields: [postId], references: [id])
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   day       DateTime
   status    SlotStatus @default(PROPOSED)
   reasoning String?
   platforms String[]
 
-  @@unique([planId, day])
+  @@unique([planId, day, postId])
+  @@index([planId, day])
   @@index([postId])
+}
+
+model PostRating {
+  id        String   @id @default(cuid())
+  postId    String   @unique
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  stars     Int
+  reasons   String[] @default([])
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stars])
+}
+
+model DailyBrief {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        Json
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Todo {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model UserMemory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }

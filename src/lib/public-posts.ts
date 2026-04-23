@@ -8,6 +8,8 @@ export interface PublicPostMedia {
   width: number | null;
   height: number | null;
   altText: string | null;
+  hasAudio: boolean | null;
+  audioTrack: { storageKey: string } | null;
 }
 
 export interface PublicPost {
@@ -91,6 +93,8 @@ export async function getPublicFeedPage(cursor?: {
           width: true,
           height: true,
           altText: true,
+          hasAudio: true,
+          audioTrack: { select: { storageKey: true } },
         },
       },
     },
@@ -130,6 +134,8 @@ export async function getPublicPost(id: string): Promise<PublicPost | null> {
           width: true,
           height: true,
           altText: true,
+          hasAudio: true,
+          audioTrack: { select: { storageKey: true } },
         },
       },
     },
@@ -164,6 +170,8 @@ export async function getRelatedPosts(
             width: true,
             height: true,
             altText: true,
+            hasAudio: true,
+            audioTrack: { select: { storageKey: true } },
           },
         },
       },
@@ -195,6 +203,8 @@ export async function getRelatedPosts(
           width: true,
           height: true,
           altText: true,
+          hasAudio: true,
+          audioTrack: { select: { storageKey: true } },
         },
       },
     },
@@ -248,6 +258,8 @@ export async function getPublicStoriesPage(cursor?: {
           width: true,
           height: true,
           altText: true,
+          hasAudio: true,
+          audioTrack: { select: { storageKey: true } },
         },
       },
     },
@@ -293,6 +305,8 @@ export async function getPublicStory(id: string): Promise<PublicPost | null> {
           width: true,
           height: true,
           altText: true,
+          hasAudio: true,
+          audioTrack: { select: { storageKey: true } },
         },
       },
     },

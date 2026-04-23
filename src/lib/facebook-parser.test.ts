@@ -178,3 +178,74 @@ describe("dedupeParsedPosts", () => {
     expect(merged).toHaveLength(2);
   });
 });
+
+describe("parseFacebookExport share detection", () => {
+  it("captures external_context as share and preserves original commentary", () => {
+    const posts = parseFacebookExport([
+      {
+        timestamp: 1700000000,
+        title: "Gil shared a link.",
+        data: [{ post: "Worth reading." }],
+        attachments: [
+          {
+            data: [
+              {
+                external_context: {
+                  url: "https://example.com/article",
+                  source: "Example",
+                  name: "Some article",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toBe("Worth reading.");
+    expect(posts[0].share).toEqual({
+      url: "https://example.com/article",
+      source: "Example",
+      name: "Some article",
+    });
+  });
+
+  it("drops pure shares with no original commentary", () => {
+    const posts = parseFacebookExport([
+      {
+        timestamp: 1700000000,
+        title: "Gil shared a link.",
+        attachments: [
+          {
+            data: [{ external_context: { url: "https://example.com" } }],
+          },
+        ],
+      },
+    ]);
+    expect(posts).toHaveLength(0);
+  });
+
+  it("flags shares from title when no external_context is present", () => {
+    const posts = parseFacebookExport([
+      {
+        timestamp: 1700000000,
+        title: "Gil shared Bob's post.",
+        data: [{ post: "Exactly this." }],
+      },
+    ]);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].share).toEqual({ name: "Gil shared Bob's post." });
+  });
+
+  it("does not flag non-share titles as shares", () => {
+    const posts = parseFacebookExport([
+      {
+        timestamp: 1700000000,
+        title: "Gil is with Alice.",
+        data: [{ post: "Great day" }],
+      },
+    ]);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].share ?? null).toBeNull();
+  });
+});

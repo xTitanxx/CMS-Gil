@@ -35,11 +35,7 @@ interface ImportOptions {
 }
 
 function isStorageConfigured(): boolean {
-  return !!(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
-  );
+  return !!process.env.R2_ENDPOINT;
 }
 
 export async function runImportJob(opts: ImportOptions): Promise<void> {
@@ -105,6 +101,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
             source: "FACEBOOK",
             sourceId: parsed.sourceId,
             originalDate: parsed.originalDate,
+            share: parsed.share ? (parsed.share as object) : undefined,
           },
         });
 
@@ -122,18 +119,34 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                 fileBuffer = mediaFiles.get(normalizedUri) ?? mediaFiles.get(uri) ?? null;
               }
 
-              if (!fileBuffer) continue;
+              if (!fileBuffer) {
+                errors.push(`Media missing for post ${parsed.sourceId}: ${uri}`);
+                continue;
+              }
 
               const filename = uri.split("/").pop() ?? "media";
               const mimeType = guessMimeType(filename);
               const key = mediaKey(userId, filename);
 
-              const { hasAudio } = await uploadBuffer(key, fileBuffer);
+              const { url: storageKey, hasAudio } = await uploadBuffer(key, fileBuffer, {
+                contentType: mimeType,
+              });
+
+              if (mimeType.startsWith("video/")) {
+                try {
+                  const { extractPoster } = await import("@/lib/video-processing");
+                  const posterBuffer = await extractPoster(fileBuffer);
+                  const posterPath = key.replace(/\.[^/.]+$/, "") + ".poster.jpg";
+                  await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
+                } catch (err) {
+                  errors.push(`Poster extraction failed for ${parsed.sourceId}: ${String(err)}`);
+                }
+              }
 
               await prisma.media.create({
                 data: {
                   postId: post.id,
-                  storageKey: key,
+                  storageKey,
                   originalUri: uri,
                   mimeType,
                   sizeBytes: fileBuffer.length,

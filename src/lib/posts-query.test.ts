@@ -65,7 +65,36 @@ describe("buildPostsQuery", () => {
   it("applies audio=silent clause", () => {
     const { where } = buildPostsQuery({ audio: "silent" }, "user_1");
     const w = where as Record<string, unknown>;
-    expect(w.media).toBeDefined();
+    const andClauses = w.AND as Array<Record<string, unknown>> | undefined;
+    const audioClause = andClauses?.find((c) => Array.isArray(c.OR));
+    expect(audioClause).toBeDefined();
+  });
+});
+
+describe("buildPostsQuery extraWhere option", () => {
+  it("AND-merges extraWhere clauses into the resulting where", () => {
+    const { where } = buildPostsQuery(
+      { kind: "posts" },
+      "user-1",
+      {
+        extraWhere: [
+          { readiness: "NOT_READY" },
+          { notReadyReasons: { has: "silent-video" } },
+        ],
+      },
+    );
+    const ands = (where.AND ?? []) as Array<Record<string, unknown>>;
+    expect(ands).toEqual(
+      expect.arrayContaining([
+        { readiness: "NOT_READY" },
+        { notReadyReasons: { has: "silent-video" } },
+      ]),
+    );
+  });
+
+  it("ignores missing/empty extraWhere", () => {
+    const { where } = buildPostsQuery({ kind: "posts" }, "user-1");
+    expect(where.userId).toBe("user-1");
   });
 });
 

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getSignedDownloadUrl, deleteObject } from "@/lib/storage";
+import { getMediaUrl, deleteObject } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
+import { refreshReadiness } from "@/lib/readiness-service";
 
 export async function GET(
   _req: NextRequest,
@@ -17,7 +19,7 @@ export async function GET(
   const post = await prisma.post.findFirst({
     where: { id, userId: session.user.id },
     include: {
-      media: true,
+      media: { include: { audioTrack: { select: { id: true, title: true, storageKey: true } } } },
       publishes: { orderBy: { createdAt: "desc" } },
     },
   });
@@ -27,7 +29,7 @@ export async function GET(
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       ...m,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(() => null),
+      url: await getMediaUrl(m).catch(() => null),
     }))
   );
 
@@ -58,11 +60,28 @@ export async function PATCH(
       ...(body.tags !== undefined && Array.isArray(body.tags)
         ? { tags: (body.tags as unknown[]).filter((t): t is string => typeof t === "string").slice(0, 50) }
         : {}),
+      ...(body.postType !== undefined &&
+        ["POST", "REEL", "STORY"].includes(body.postType)
+        ? { postType: body.postType }
+        : {}),
+      ...(body.share !== undefined
+        ? { share: body.share === null ? Prisma.DbNull : body.share }
+        : {}),
+      ...(body.platformUrl !== undefined
+        ? {
+            platformUrl:
+              typeof body.platformUrl === "string" && body.platformUrl.trim()
+                ? body.platformUrl.trim()
+                : null,
+          }
+        : {}),
     },
   });
 
   if (post.count === 0)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  await refreshReadiness(id).catch((e) => console.error("readiness refresh failed", e));
 
   return NextResponse.json({ ok: true });
 }

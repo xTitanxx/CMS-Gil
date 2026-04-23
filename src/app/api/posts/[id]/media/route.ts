@@ -72,8 +72,25 @@ export async function POST(
     buffer = Buffer.from(await file.arrayBuffer());
   }
 
-  const storageKey = mediaKey(session.user.id, filename);
-  const { hasAudio } = await uploadBuffer(storageKey, buffer);
+  const pathname = mediaKey(session.user.id, filename);
+  const { url: storageKey, hasAudio } = await uploadBuffer(pathname, buffer, {
+    contentType: mimeType,
+  });
+
+  let posterKey: string | null = null;
+  if (mimeType.startsWith("video/")) {
+    try {
+      const { extractPoster } = await import("@/lib/video-processing");
+      const posterBuffer = await extractPoster(buffer);
+      const posterPath = pathname.replace(/\.[^/.]+$/, "") + ".poster.jpg";
+      const posterResult = await uploadBuffer(posterPath, posterBuffer, {
+        contentType: "image/jpeg",
+      });
+      posterKey = posterResult.url;
+    } catch (err) {
+      console.error("Poster extraction failed:", err);
+    }
+  }
 
   const media = await prisma.media.create({
     data: {

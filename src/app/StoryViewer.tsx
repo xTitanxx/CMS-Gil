@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { X, Volume2, VolumeX } from "lucide-react";
 import type { Story } from "./StoriesRow";
 
 const IMAGE_DURATION_MS = 5000;
@@ -30,12 +30,14 @@ export function StoryViewer({
 }) {
   const [index, setIndex] = useState(startIndex);
   const [progress, setProgress] = useState(0);
+  const [muted, setMuted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const rafRef = useRef<number | null>(null);
 
   const story = stories[index];
   const firstMedia = story?.media[0];
   const isVideo = firstMedia?.mimeType.startsWith("video/") ?? false;
+  const isSilent = isVideo && firstMedia?.hasAudio === false;
 
   const next = useCallback(() => {
     if (index < stories.length - 1) {
@@ -137,6 +139,28 @@ export function StoryViewer({
         <X className="h-5 w-5" />
       </button>
 
+      {/* Mute toggle (only for videos with audio) */}
+      {isVideo && !isSilent && (
+        <button
+          onClick={() => setMuted((m) => !m)}
+          className="absolute top-4 right-16 z-20 text-white p-2 hover:bg-white/10 rounded-full"
+          aria-label={muted ? "Unmute" : "Mute"}
+        >
+          {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+        </button>
+      )}
+
+      {/* Silent-video indicator (non-interactive) */}
+      {isSilent && (
+        <div
+          className="absolute top-4 right-16 z-20 flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-4 w-4" />
+          <span>Silent</span>
+        </div>
+      )}
+
       {/* Date */}
       <div className="absolute top-4 left-4 z-10 text-white text-sm drop-shadow-lg">
         {formatDate(story.originalDate)}
@@ -152,6 +176,7 @@ export function StoryViewer({
             className="max-w-full max-h-full object-contain"
             autoPlay
             playsInline
+            muted={muted}
             onEnded={next}
             onTimeUpdate={onVideoTimeUpdate}
           />

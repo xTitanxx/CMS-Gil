@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTagsFromResponse } from "./analyze-post";
+import { parseTagsFromResponse, parseAnalyzeResponse } from "./analyze-post";
 
 describe("parseTagsFromResponse", () => {
   it("parses a clean JSON array", () => {
@@ -32,5 +32,48 @@ describe("parseTagsFromResponse", () => {
   it("filters out non-string elements", () => {
     const result = parseTagsFromResponse('["beach", 42, null, "sunset"]');
     expect(result).toEqual(["beach", "sunset"]);
+  });
+});
+
+describe("parseAnalyzeResponse", () => {
+  it("parses full object response", () => {
+    const r = parseAnalyzeResponse(
+      '{"tags":["beach","sunset"],"lifecycle":"EVERGREEN","season":null}'
+    );
+    expect(r).toEqual({ tags: ["beach", "sunset"], lifecycle: "EVERGREEN", season: null });
+  });
+
+  it("parses seasonal with season set", () => {
+    const r = parseAnalyzeResponse(
+      '{"tags":["pesach"],"lifecycle":"SEASONAL","season":"SPRING"}'
+    );
+    expect(r.lifecycle).toBe("SEASONAL");
+    expect(r.season).toBe("SPRING");
+  });
+
+  it("lowercases tags", () => {
+    const r = parseAnalyzeResponse(
+      '{"tags":["Beach","SUNSET"],"lifecycle":"EVERGREEN","season":null}'
+    );
+    expect(r.tags).toEqual(["beach", "sunset"]);
+  });
+
+  it("falls back to UNKNOWN for invalid lifecycle", () => {
+    const r = parseAnalyzeResponse(
+      '{"tags":["x"],"lifecycle":"WEIRD","season":null}'
+    );
+    expect(r.lifecycle).toBe("UNKNOWN");
+  });
+
+  it("returns empty fallback on malformed JSON", () => {
+    expect(parseAnalyzeResponse("nope")).toEqual({
+      tags: [], lifecycle: "UNKNOWN", season: null,
+    });
+  });
+
+  it("falls back from legacy bare-array response", () => {
+    const r = parseAnalyzeResponse('["beach","sunset"]');
+    expect(r.tags).toEqual(["beach", "sunset"]);
+    expect(r.lifecycle).toBe("UNKNOWN");
   });
 });

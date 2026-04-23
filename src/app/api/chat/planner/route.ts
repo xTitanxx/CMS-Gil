@@ -92,10 +92,9 @@ export async function POST(req: NextRequest) {
           ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
           : [];
 
-        await prisma.weeklyPlanSlot.upsert({
-          where: { planId_day: { planId, day: new Date(pick.day) } },
-          update: { postId: pick.postId, reasoning: pick.reasoning, platforms, status: "PROPOSED" },
-          create: { planId, postId: pick.postId, day: new Date(pick.day), reasoning: pick.reasoning, platforms },
+        await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(pick.day) } });
+        await prisma.weeklyPlanSlot.create({
+          data: { planId, postId: pick.postId, day: new Date(pick.day), reasoning: pick.reasoning, platforms },
         });
       }
     } else if (block.name === "swap_day") {
@@ -105,10 +104,9 @@ export async function POST(req: NextRequest) {
         ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
         : [];
 
-      await prisma.weeklyPlanSlot.upsert({
-        where: { planId_day: { planId, day: new Date(day) } },
-        update: { postId, reasoning, platforms, status: "PROPOSED" },
-        create: { planId, postId, day: new Date(day), reasoning, platforms },
+      await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(day) } });
+      await prisma.weeklyPlanSlot.create({
+        data: { planId, postId, day: new Date(day), reasoning, platforms },
       });
     } else if (block.name === "remove_day") {
       const { day } = input as { day: string };
@@ -122,10 +120,9 @@ export async function POST(req: NextRequest) {
         ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
         : [];
 
-      await prisma.weeklyPlanSlot.upsert({
-        where: { planId_day: { planId, day: new Date(day) } },
-        update: { postId, reasoning, platforms, status: "PROPOSED" },
-        create: { planId, postId, day: new Date(day), reasoning, platforms },
+      await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(day) } });
+      await prisma.weeklyPlanSlot.create({
+        data: { planId, postId, day: new Date(day), reasoning, platforms },
       });
     }
   }

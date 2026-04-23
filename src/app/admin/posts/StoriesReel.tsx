@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Volume2, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
+import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
 
 interface ReelStory {
   id: string;
@@ -18,37 +20,61 @@ interface ReelStory {
 }
 
 export function StoriesReel() {
+  const searchParams = useSearchParams();
+  const subKind = searchParams.get("subKind") ?? "all";
   const [stories, setStories] = useState<ReelStory[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(true);
+  const [subKindCounts, setSubKindCounts] = useState<SubKindCounts | null>(null);
   const isLoadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchPage = useCallback(async (cursor: string | null) => {
-    if (isLoadingRef.current) return;
-    isLoadingRef.current = true;
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ kind: "stories", limit: "15" });
-      if (cursor) qs.set("cursor", cursor);
-      const res = await fetch(`/api/posts?${qs.toString()}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        posts: ReelStory[];
-        nextCursor: string | null;
-      };
-      setStories((prev) => (cursor ? [...prev, ...data.posts] : data.posts));
-      setNextCursor(data.nextCursor);
-    } finally {
-      setLoading(false);
-      isLoadingRef.current = false;
-    }
-  }, []);
+  const fetchPage = useCallback(
+    async (cursor: string | null, sub: string) => {
+      if (isLoadingRef.current) return;
+      isLoadingRef.current = true;
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({ kind: "stories", limit: "15" });
+        if (sub !== "all") qs.set("subKind", sub);
+        if (cursor) qs.set("cursor", cursor);
+        const res = await fetch(`/api/posts?${qs.toString()}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          posts: ReelStory[];
+          nextCursor: string | null;
+        };
+        setStories((prev) => (cursor ? [...prev, ...data.posts] : data.posts));
+        setNextCursor(data.nextCursor);
+      } finally {
+        setLoading(false);
+        isLoadingRef.current = false;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    fetchPage(null);
-  }, [fetchPage]);
+    setStories([]);
+    setNextCursor(null);
+    fetchPage(null, subKind);
+  }, [fetchPage, subKind]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const qs = new URLSearchParams({ kind: "stories", limit: "1", page: "1" });
+      const res = await fetch(`/api/posts?${qs.toString()}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { subKindCounts?: SubKindCounts };
+      if (cancelled) return;
+      if (data.subKindCounts) setSubKindCounts(data.subKindCounts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -57,7 +83,7 @@ export function StoriesReel() {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && !isLoadingRef.current) {
-            fetchPage(nextCursor);
+            fetchPage(nextCursor, subKind);
           }
         }
       },
@@ -65,7 +91,7 @@ export function StoriesReel() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [nextCursor, fetchPage]);
+  }, [nextCursor, fetchPage, subKind]);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-4">
@@ -88,6 +114,7 @@ export function StoriesReel() {
       </div>
 
       <KindTabs current="stories" />
+      <SubKindTabs kind="stories" current={subKind} counts={subKindCounts} />
 
       {loading && stories.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-xl bg-black/5">
@@ -160,6 +187,9 @@ function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
   }, [visible, muted]);
 
   const isVideo = story.isVideo && story.videoUrl;
+  const videoMedia = story.media.filter((m) => m.mimeType.startsWith("video/"));
+  const isSilent =
+    videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
   const dateLabel = useMemo(
     () => format(new Date(story.originalDate), "MMM d, yyyy"),
     [story.originalDate],
@@ -194,6 +224,16 @@ function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent p-4 text-white">
         <span className="text-sm drop-shadow">{dateLabel}</span>
       </div>
+
+      {isSilent && (
+        <div
+          className="absolute left-4 top-14 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-3.5 w-3.5" />
+          <span>Silent</span>
+        </div>
+      )}
 
       <Link
         href={`/admin/posts/${story.id}`}

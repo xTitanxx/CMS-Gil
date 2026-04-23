@@ -27,6 +27,13 @@ export interface PlanSlotData {
     lastPublishedAt: string;
     thumbUrl: string | null;
     hasVideo: boolean;
+    lifecycle: "EVERGREEN" | "EPHEMERAL" | "SEASONAL" | "UNKNOWN";
+    season: "SPRING" | "SUMMER" | "FALL" | "WINTER" | null;
+    rating: number | null;
+    postType: "POST" | "REEL" | "STORY";
+    mediaCount: number;
+    hasAudio: boolean;
+    platformUrl: string | null;
   };
 }
 

@@ -17,7 +17,7 @@ export default async function ImprovementsPage() {
           AI-suggested caption rewrites for low-quality or non-evergreen posts.
         </p>
       </div>
-      <TriageTabs active="improvements" />
+      <TriageTabs active="ai-suggestions" />
       <ImprovementsFeed />
     </div>
   );

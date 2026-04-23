@@ -24,7 +24,7 @@ export default async function TriagePage({
           Fix or dismiss posts that aren&apos;t ready to publish.
         </p>
       </div>
-      <TriageTabs active="readiness" />
+      <TriageTabs active="needs-fixes" />
       <TriageFeed initialBucket={bucket} />
     </div>
   );

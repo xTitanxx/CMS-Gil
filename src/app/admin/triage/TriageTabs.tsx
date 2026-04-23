@@ -3,11 +3,11 @@ import Link from "next/link";
 import { AlertCircle, Sparkles } from "lucide-react";
 
 const TABS = [
-  { slug: "readiness", label: "Readiness", href: "/admin/triage", icon: AlertCircle },
-  { slug: "improvements", label: "Post improvements", href: "/admin/triage/improvements", icon: Sparkles },
+  { slug: "needs-fixes", label: "Needs fixes", href: "/admin/triage", icon: AlertCircle },
+  { slug: "ai-suggestions", label: "AI suggestions", href: "/admin/triage/improvements", icon: Sparkles },
 ] as const;
 
-export function TriageTabs({ active }: { active: "readiness" | "improvements" }) {
+export function TriageTabs({ active }: { active: "needs-fixes" | "ai-suggestions" }) {
   return (
     <div className="mb-4 flex gap-2 border-b border-gray-200">
       {TABS.map((t) => {

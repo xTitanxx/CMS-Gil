@@ -222,50 +222,52 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
           </div>
         </div>
 
-        {/* Bottom section */}
+        {/* Bottom section — status + actions on one line, why this? below */}
         <div className={`border-t border-black/5 px-3.5 py-2.5 md:px-4 ${STATUS_FOOTER_BG[slot.status] ?? STATUS_FOOTER_BG.PROPOSED}`}>
-          {/* Mobile: status + date (desktop shows in spine) */}
-          <div className="flex items-center gap-1.5 text-[13px] md:hidden">
-            <span className={`h-2 w-2 rounded-full ${STATUS_DOT[slot.status] ?? STATUS_DOT.PROPOSED}`} />
-            <span className="font-semibold text-[#3a3832]">{isScheduled ? "Scheduled" : "Proposed"}</span>
+          {/* Single row: status + date + spacer + original link + actions */}
+          <div className="flex items-center gap-2 text-[13px]">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[slot.status] ?? STATUS_DOT.PROPOSED}`} />
+            <span className="font-semibold text-[#3a3832]">
+              {isScheduled ? "Scheduled" : "Proposed"}
+            </span>
             {slot.day && (
+              <span className="text-[#7a7870]">
+                · <span className="font-semibold text-[#161513]">{formatScheduleDate(slot.day)}</span>
+              </span>
+            )}
+
+            <span className="flex-1" />
+
+            {post.platformUrl && (
+              <a
+                href={post.platformUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-[7px] border border-[#eae7df] bg-white px-2 py-1 text-[11px] text-[#7a7870] hover:text-[#3a3832] hover:bg-gray-50 transition-colors"
+                title="View original post"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span className="hidden sm:inline">Original</span>
+              </a>
+            )}
+
+            {isProposed && (
               <>
-                <span className="text-[#7a7870]">for</span>
-                <span className="font-semibold text-[#161513]">{formatScheduleDate(slot.day)}</span>
+                <button onClick={() => onRemove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Skip"><X className="h-4 w-4" /></button>
+                <button onClick={() => onApprove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80" title="Schedule"><Check className="h-4 w-4" strokeWidth={2.5} /></button>
               </>
             )}
-          </div>
-          {/* Desktop: just status label */}
-          <div className="hidden items-center gap-1.5 text-[13px] md:flex">
-            {isScheduled ? (
-              <><Check className="h-3.5 w-3.5 text-green-500" /><span className="font-semibold text-green-600">Scheduled</span></>
-            ) : (
-              <><span className={`h-2 w-2 rounded-full ${STATUS_DOT[slot.status] ?? STATUS_DOT.PROPOSED}`} /><span className="font-semibold text-[#3a3832]">Proposed</span></>
+            {isScheduled && (
+              <button onClick={() => onRemove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Unschedule"><X className="h-4 w-4" /></button>
             )}
           </div>
 
-          {/* Why this? + actions */}
-          <div className="mt-1.5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          {/* Why this? — collapsed, below the status row */}
+          {slot.reasoning && (
+            <div className="mt-1.5">
               <AiReasoningTip reasoning={slot.reasoning} />
-              {post.platformUrl && (
-                <a href={post.platformUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-[#7a7870] hover:text-[#3a3832]" title="View original">
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
             </div>
-            <div className="flex items-center gap-1.5">
-              {isProposed && (
-                <>
-                  <button onClick={() => onRemove(slot.id)} className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Skip"><X className="h-4 w-4" /></button>
-                  <button onClick={() => onApprove(slot.id)} className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80" title="Schedule"><Check className="h-4 w-4" strokeWidth={2.5} /></button>
-                </>
-              )}
-              {isScheduled && (
-                <button onClick={() => onRemove(slot.id)} className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Unschedule"><X className="h-4 w-4" /></button>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -63,12 +63,46 @@ export async function POST(
     },
   });
 
+  // Group slots by day so we can space them equally
+  const slotsByDay = new Map<string, typeof slots>();
+  for (const slot of slots) {
+    const dayKey = slot.day.toISOString().slice(0, 10);
+    const arr = slotsByDay.get(dayKey) ?? [];
+    arr.push(slot);
+    slotsByDay.set(dayKey, arr);
+  }
+
+  // Posting window: 9:00 AM – 9:00 PM (12 hours)
+  const WINDOW_START_HOUR = 9;
+  const WINDOW_END_HOUR = 21;
+
   let scheduled = 0;
 
   for (const slot of slots) {
-    // Set scheduledAt to 9:00 AM on the slot's day
+    // Find this slot's position among same-day slots
+    const dayKey = slot.day.toISOString().slice(0, 10);
+    const daySlots = slotsByDay.get(dayKey) ?? [slot];
+    const idx = daySlots.indexOf(slot);
+    const count = daySlots.length;
+
+    // Space equally across the posting window
+    let hour: number;
+    let minute: number;
+    if (count === 1) {
+      hour = WINDOW_START_HOUR;
+      minute = 0;
+    } else {
+      const totalMinutes = (WINDOW_END_HOUR - WINDOW_START_HOUR) * 60;
+      const offsetMinutes = Math.round((idx * totalMinutes) / (count - 1));
+      hour = WINDOW_START_HOUR + Math.floor(offsetMinutes / 60);
+      minute = offsetMinutes % 60;
+      // Round to nearest 30 min
+      minute = Math.round(minute / 30) * 30;
+      if (minute === 60) { hour++; minute = 0; }
+    }
+
     const scheduledAt = setMilliseconds(
-      setSeconds(setMinutes(setHours(slot.day, 9), 0), 0),
+      setSeconds(setMinutes(setHours(slot.day, hour), minute), 0),
       0
     );
 

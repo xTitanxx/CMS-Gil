@@ -109,22 +109,9 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
   return (
     <div className="flex gap-0 md:gap-0">
-      {/* ── Desktop timeline spine (hidden on mobile) ── */}
-      <div className="hidden w-[80px] shrink-0 flex-col items-end md:flex">
-        {/* Time label — placeholder; real times would come from scheduledAt */}
-        <div className="pr-3 pt-4 text-right">
-          <div className="text-[13px] font-semibold text-[#161513]">
-            {formatScheduleDate(slot.day).split(",")[0]}
-          </div>
-          <div className="text-[11px] text-[#7a7870]">
-            {formatScheduleDate(slot.day).split(", ").slice(1).join(", ")}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Spine dot + line (hidden on mobile) ── */}
-      <div className="hidden w-[20px] flex-col items-center md:flex">
-        <div className="h-4" />
+      {/* ── Desktop spine: dot + line (hidden on mobile) ── */}
+      <div className="hidden w-5 shrink-0 flex-col items-center md:flex">
+        <div className="h-5" />
         <div className={`h-[11px] w-[11px] shrink-0 rounded-full border-[2.5px] bg-white ${SPINE_RING[slot.status] ?? SPINE_RING.PROPOSED}`} />
         {!isLast && <div className="w-[1.5px] flex-1 bg-[#eae7df]" />}
       </div>

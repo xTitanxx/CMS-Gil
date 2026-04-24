@@ -7,24 +7,22 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  // Parse the connection string manually so the ssl config is never overridden
-  // by sslmode query params (pg library can conflict when both are present).
-  // Production: DATABASE_URL (set manually in Vercel).
-  // Local dev: Supabase Vercel integration injects POSTGRES_* vars but the
-  // pooler hostname (aws-1-us-east-1.pooler.supabase.com) uses IPv6 and is
-  // unreachable from most local networks. Fall back to the direct host
-  // (db.<ref>.supabase.co) assembled from the individual POSTGRES_* vars.
+  // Prefer DATABASE_URL (manually set on Vercel), then POSTGRES_URL (Supabase
+  // pooler on port 6543, works everywhere), then a direct URL assembled from
+  // individual POSTGRES_* vars as last resort.
   const directUrl =
     process.env.POSTGRES_HOST && process.env.POSTGRES_USER && process.env.POSTGRES_PASSWORD && process.env.POSTGRES_DATABASE
       ? `postgres://${process.env.POSTGRES_USER}:${encodeURIComponent(process.env.POSTGRES_PASSWORD)}@${process.env.POSTGRES_HOST}:5432/${process.env.POSTGRES_DATABASE}`
       : undefined;
-  const connectionString = process.env.DATABASE_URL || directUrl;
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || directUrl;
   if (!connectionString) throw new Error("No database connection string found (DATABASE_URL or POSTGRES_HOST/USER/PASSWORD/DATABASE)");
   // Strip sslmode from the URL — newer pg versions map sslmode=require to
   // verify-full which rejects Supabase's self-signed cert chain, overriding
   // the explicit ssl config below.
   const cleanUrl = new URL(connectionString);
   cleanUrl.searchParams.delete("sslmode");
+  cleanUrl.searchParams.delete("supa");
+  cleanUrl.searchParams.delete("pgbouncer");
   const isLocalhost = cleanUrl.hostname === "localhost" || cleanUrl.hostname === "127.0.0.1";
   const pool = new pg.Pool({
     connectionString: cleanUrl.toString(),

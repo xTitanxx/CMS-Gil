@@ -374,9 +374,14 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
       body: JSON.stringify({ conversationId, message: text }),
     });
     if (!res.ok || !res.body) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (body?.error) detail = body.error;
+      } catch { /* no JSON body */ }
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", kind: "text", text: "Something went wrong. Please try again." },
+        { role: "assistant", kind: "text", text: `Something went wrong (${detail}). Please try again.` },
       ]);
       setStreaming(false);
       return;
@@ -580,7 +585,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between px-2 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
         <button
           onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#0d0d0d] active:bg-gray-200 md:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#0d0d0d] active:bg-gray-200 md:hidden touch-manipulation"
           aria-label="Menu"
         >
           <Menu className="h-6 w-6" strokeWidth={1.5} />
@@ -664,7 +669,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
 
 
       {/* Composer — ChatGPT style: + Message [send] inside one pill */}
-      <div className="bg-white px-5 pb-4 pt-1" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)" }}>
+      <div className="bg-gradient-to-t from-white via-white to-white/0 px-5 pb-4 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)" }}>
         <div className="mx-auto w-full max-w-3xl">
           <div className="flex items-end rounded-3xl border border-[#e5e5e5] bg-[#f4f4f4] py-1 pl-1.5 pr-1.5">
             {/* Plus / attach button inside pill */}

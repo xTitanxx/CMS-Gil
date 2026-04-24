@@ -27,7 +27,7 @@ export function DayGroup({ day, isToday, slots, onApprove, onRemove, onSwap }: D
   const approvable = slots.filter((s) => s.status === "PROPOSED" || s.status === "APPROVED");
 
   return (
-    <div>
+    <div className={isToday ? "rounded-xl border-l-[3px] border-amber-400 bg-amber-50/50 px-3 py-3" : ""}>
       <DayHeader
         day={day}
         isToday={isToday}

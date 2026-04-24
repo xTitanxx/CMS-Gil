@@ -28,7 +28,7 @@ export function DayHeader({ day, isToday, slots, onApproveAll }: DayHeaderProps)
   return (
     <div className="flex items-center justify-between border-b border-[#eae7df] pb-2">
       <div className="min-w-0">
-        <h3 className="text-[17px] font-semibold leading-tight text-[#161513]">{label}</h3>
+        <h3 className={`text-[17px] font-semibold leading-tight ${isToday ? "text-amber-700" : "text-[#161513]"}`}>{label}</h3>
         {parts.length > 0 && (
           <p className="mt-0.5 text-[12px] text-[#7a7870]">{parts.join(" \u00b7 ")}</p>
         )}

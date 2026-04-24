@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import { WeeklyPlanView } from "../../dashboard/WeeklyPlanView";
 import type { WeeklyPlanData } from "@/lib/planner/types";
 
-export function PlannerPanel() {
+export interface PlannerPanelHandle {
+  refresh: () => Promise<void>;
+}
+
+export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel(_props, ref) {
   const [plan, setPlan] = useState<WeeklyPlanData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -12,6 +16,8 @@ export function PlannerPanel() {
     const res = await fetch("/api/planner/current");
     if (res.ok) setPlan((await res.json()) as WeeklyPlanData);
   }, []);
+
+  useImperativeHandle(ref, () => ({ refresh: refreshPlan }), [refreshPlan]);
 
   useEffect(() => {
     void refreshPlan().finally(() => setLoading(false));
@@ -102,4 +108,4 @@ export function PlannerPanel() {
       onScheduleAll={handleScheduleAll}
     />
   );
-}
+});

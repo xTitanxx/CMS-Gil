@@ -197,6 +197,34 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       "Returns the latest caption-analysis job (status, total, completed) so the user can check progress.",
     input_schema: { type: "object", properties: {} },
   },
+  {
+    name: "propose_to_planner",
+    description:
+      "Propose scheduling a specific post on a specific day. Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?').",
+    input_schema: {
+      type: "object",
+      properties: {
+        postId: { type: "string" },
+        day: {
+          type: "string",
+          description: "ISO date (YYYY-MM-DD) within the current or upcoming week.",
+        },
+        platforms: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["INSTAGRAM", "FACEBOOK_PAGE", "LINKEDIN", "TIKTOK", "YOUTUBE"],
+          },
+          minItems: 1,
+        },
+        reasoning: {
+          type: "string",
+          description: "One short sentence on why this post fits this day/platforms.",
+        },
+      },
+      required: ["postId", "day", "platforms"],
+    },
+  },
 ];
 
 export async function handleTool(
@@ -521,6 +549,77 @@ export async function handleTool(
         orderBy: { createdAt: "desc" },
       });
       return { ok: true, data: job };
+    }
+    case "propose_to_planner": {
+      const postId = String(input.postId ?? "");
+      const day = String(input.day ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        return { ok: false, error: "day must be YYYY-MM-DD" };
+      }
+      const rawPlatforms = Array.isArray(input.platforms)
+        ? (input.platforms as unknown[]).filter((p): p is string => typeof p === "string")
+        : [];
+      if (rawPlatforms.length === 0) {
+        return { ok: false, error: "at least one platform required" };
+      }
+      const allowedPlatforms = new Set([
+        "INSTAGRAM",
+        "FACEBOOK_PAGE",
+        "LINKEDIN",
+        "TIKTOK",
+        "YOUTUBE",
+      ]);
+      const platforms = rawPlatforms.filter((p) => allowedPlatforms.has(p));
+      if (platforms.length === 0) {
+        return { ok: false, error: "no valid platforms" };
+      }
+
+      const post = await prisma.post.findFirst({
+        where: { id: postId, userId: ctx.userId },
+        select: {
+          id: true,
+          body: true,
+          tags: true,
+          originalDate: true,
+          publishCount: true,
+          lifecycle: true,
+          postType: true,
+          platformUrl: true,
+          media: { select: { storageKey: true, mimeType: true } },
+          rating: { select: { stars: true } },
+        },
+      });
+      if (!post) return { ok: false, error: "post not found" };
+
+      const { buildThumbUrl } = await import("@/lib/planner/thumbnail");
+      const firstMedia = post.media[0];
+      const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
+      const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+
+      return {
+        ok: true,
+        data: {
+          kind: "proposal",
+          postId: post.id,
+          day,
+          platforms,
+          reasoning: typeof input.reasoning === "string" ? input.reasoning : null,
+          post: {
+            id: post.id,
+            body: post.body,
+            tags: post.tags,
+            thumbUrl,
+            hasVideo,
+            mediaCount: post.media.length,
+            lifecycle: post.lifecycle ?? "UNKNOWN",
+            rating: post.rating?.stars ?? null,
+            originalDate: post.originalDate.toISOString(),
+            platformUrl: post.platformUrl ?? null,
+            publishCount: post.publishCount,
+            postType: post.postType ?? "POST",
+          },
+        },
+      };
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

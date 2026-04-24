@@ -53,7 +53,7 @@ export const SPINE_RING: Record<string, string> = {
 
 /* ── Platform config ── */
 
-const PLATFORM_META: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
+export const PLATFORM_META: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
   INSTAGRAM: { Icon: SiInstagram, color: "text-[#E1306C]", bg: "bg-[#FCE7F0]" },
   instagram: { Icon: SiInstagram, color: "text-[#E1306C]", bg: "bg-[#FCE7F0]" },
   FACEBOOK_PAGE: { Icon: SiFacebook, color: "text-[#1877F2]", bg: "bg-[#E5EFFE]" },

@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MessageSquare, CalendarDays } from "lucide-react";
 import { ThreadView } from "./ThreadView";
-import { PlannerPanel } from "./PlannerPanel";
+import { PlannerPanel, type PlannerPanelHandle } from "./PlannerPanel";
 
 type Tab = "chat" | "plan";
 
 export function AssistantShell() {
   const [tab, setTab] = useState<Tab>("chat");
+  const plannerRef = useRef<PlannerPanelHandle>(null);
+
+  const handlePlanProposed = useCallback(() => {
+    void plannerRef.current?.refresh();
+    // Surface the result on mobile by switching to the planner tab.
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setTab("plan");
+    }
+  }, []);
+
+  const handleOpenPlanner = useCallback(() => {
+    setTab("plan");
+    void plannerRef.current?.refresh();
+  }, []);
 
   return (
     <div className="flex h-full flex-col md:flex-row">
@@ -19,7 +33,7 @@ export function AssistantShell() {
         } md:flex w-full min-h-0 flex-1 flex-col overflow-hidden border-r border-gray-200 bg-white md:w-[440px] md:flex-none md:shrink-0`}
       >
         <div className="flex-1 overflow-hidden p-3">
-          <PlannerPanel />
+          <PlannerPanel ref={plannerRef} />
         </div>
       </aside>
 
@@ -29,7 +43,7 @@ export function AssistantShell() {
           tab === "chat" ? "flex" : "hidden"
         } md:flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden`}
       >
-        <ThreadView />
+        <ThreadView onPlanProposed={handlePlanProposed} onOpenPlanner={handleOpenPlanner} />
       </main>
 
       {/* Mobile bottom tab bar */}

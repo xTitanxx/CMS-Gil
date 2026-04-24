@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
+import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
 import {
   X,
   Upload,
@@ -23,8 +23,6 @@ import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
 import { LifecycleChip } from "./LifecycleChip";
 import { StarRow } from "@/components/StarRow";
-
-const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
 
 const ACCEPTED_MIME_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
@@ -205,33 +203,7 @@ export function PostEditor({
 
   async function uploadFile(file: File) {
     try {
-      let newMedia: MediaItem;
-      if (file.size < DIRECT_UPLOAD_LIMIT) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch(`/api/posts/${postId}/media`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!res.ok) throw new Error(await res.text());
-        newMedia = await res.json();
-      } else {
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/blob",
-        });
-        const res = await fetch(`/api/posts/${postId}/media`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            blobUrl: blob.url,
-            filename: file.name,
-            mimeType: file.type,
-          }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        newMedia = await res.json();
-      }
+      const newMedia = await uploadPostMedia(postId, file);
       const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
       setMedia((prev) => [...prev, { ...newMedia, url: previewUrl }]);
     } catch {

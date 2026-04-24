@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, Menu, ExternalLink } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, Menu, ExternalLink, Pencil, CalendarDays } from "lucide-react";
+import { PostEditorModal } from "./PostEditorModal";
+import { ProposalCard, type ProposalData } from "./ProposalCard";
 
 const TOOL_LABELS: Record<string, string> = {
   recommend_posts: "Finding best posts",
@@ -34,9 +36,11 @@ const SILENT_TOOLS = new Set([
   "save_memory", "delete_memory",
 ]);
 
-// Tools that modify planner state — trigger planner panel refresh on success
+// Tools that modify planner state — trigger planner panel refresh on success.
+// propose_to_planner is intentionally NOT here: it returns a proposal card; the
+// V button on the card is what mutates (and triggers refresh from there).
 const PLANNER_TOOLS = new Set([
-  "propose_to_planner", "remove_planner_slot", "approve_planner_slot",
+  "remove_planner_slot", "approve_planner_slot",
   "swap_planner_slot", "clear_planner", "schedule_planner",
 ]);
 
@@ -109,10 +113,12 @@ function InlinePostRef({
   post: initialPost,
   id,
   onFetched,
+  onEdit,
 }: {
   post: CachedPost | undefined;
   id: string;
   onFetched?: (post: CachedPost) => void;
+  onEdit?: (postId: string) => void;
 }) {
   const [post, setPost] = useState(initialPost);
   const fetchedRef = useRef(false);
@@ -170,6 +176,21 @@ function InlinePostRef({
       className="group/card relative my-2 block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-300"
     >
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit(id);
+            }}
+            className="rounded-md bg-white/80 backdrop-blur-sm p-1.5 opacity-70 hover:opacity-100 shadow-sm text-[#0d0d0d] hover:text-black transition-colors"
+            aria-label="Edit post"
+            title="Edit post"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
         {post.platformUrl && (
           <a
             href={post.platformUrl}
@@ -234,6 +255,7 @@ function renderTextWithRefs(
   text: string,
   cache: Map<string, CachedPost>,
   onPostFetched?: (post: CachedPost) => void,
+  onEdit?: (postId: string) => void,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
@@ -250,6 +272,7 @@ function renderTextWithRefs(
         post={cache.get(id)}
         id={id}
         onFetched={onPostFetched}
+        onEdit={onEdit}
       />,
     );
     last = start + match[0].length;
@@ -260,26 +283,57 @@ function renderTextWithRefs(
 
 interface ThreadViewProps {
   onPlanProposed?: () => void;
+  onOpenPlanner?: () => void;
 }
 
-export function ThreadView({ onPlanProposed }: ThreadViewProps) {
+export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [input, setInput] = useState("");
   const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
+  const [proposalsByToolUseId, setProposalsByToolUseId] = useState<Map<string, ProposalData>>(new Map());
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Maps toolUseId → tool name so we can identify propose_to_planner results
+  // Maps toolUseId → tool name so we can identify planner-related results
   const toolUseNamesRef = useRef<Map<string, string>>(new Map());
 
 
-  function seedCacheFromToolResult(result: { ok: boolean; data?: unknown }) {
+  function seedCacheFromToolResult(
+    result: { ok: boolean; data?: unknown },
+    toolUseId?: string,
+  ) {
     if (!result.ok) return;
     const data = result.data as unknown;
     const entries: CachedPost[] = [];
-    if (Array.isArray(data)) {
+
+    // Proposal payload: store in proposalsByToolUseId + seed post into cache
+    if (
+      data &&
+      typeof data === "object" &&
+      (data as { kind?: string }).kind === "proposal"
+    ) {
+      const proposal = data as ProposalData;
+      if (toolUseId) {
+        setProposalsByToolUseId((prev) => {
+          const next = new Map(prev);
+          next.set(toolUseId, proposal);
+          return next;
+        });
+      }
+      const p = proposal.post;
+      entries.push({
+        postId: p.id,
+        body: p.body,
+        tags: p.tags,
+        stars: p.rating ?? null,
+        lifecycle: p.lifecycle ?? null,
+        thumbUrl: p.thumbUrl ?? null,
+        platformUrl: p.platformUrl ?? null,
+      });
+    } else if (Array.isArray(data)) {
       for (const raw of data as Record<string, unknown>[]) {
         if (!raw?.postId) continue;
         const item = raw as unknown as CachedPost;
@@ -333,10 +387,12 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
                 text: (b as unknown as { text: string }).text,
               });
             } else if (b.kind === "tool_use") {
+              const tu = b as unknown as { id: string; name: string; input: Record<string, unknown> };
+              toolUseNamesRef.current.set(tu.id, tu.name);
               rehydrated.push({
                 role: "assistant",
                 kind: "tool_use",
-                ...(b as unknown as { id: string; name: string; input: Record<string, unknown> }),
+                ...tu,
               });
             } else if (b.kind === "tool_result") {
               const tr = b as unknown as { toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } };
@@ -345,7 +401,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
                 kind: "tool_result",
                 ...tr,
               });
-              seedCacheFromToolResult(tr.result);
+              seedCacheFromToolResult(tr.result, tr.toolUseId);
             }
           }
         }
@@ -437,7 +493,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
                 result: evt.result,
               },
             ]);
-            seedCacheFromToolResult(evt.result);
+            seedCacheFromToolResult(evt.result, evt.toolUseId);
             if (evt.result.ok && PLANNER_TOOLS.has(toolUseNamesRef.current.get(evt.toolUseId) ?? "")) {
               onPlanProposed?.();
             }
@@ -494,6 +550,46 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
     });
   }, []);
 
+  const handleEditPost = useCallback((postId: string) => {
+    setEditingPostId(postId);
+  }, []);
+
+  const handleEditorSaved = useCallback(
+    (postId: string, patch: { body?: string; thumbUrl?: string | null }) => {
+      setPostCache((prev) => {
+        const existing = prev.get(postId);
+        if (!existing && !patch.body && patch.thumbUrl == null) return prev;
+        const next = new Map(prev);
+        next.set(postId, {
+          ...existing,
+          postId,
+          ...(patch.body !== undefined ? { body: patch.body } : {}),
+          ...(patch.thumbUrl !== undefined ? { thumbUrl: patch.thumbUrl } : {}),
+        });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleProposalApprove = useCallback(
+    async (proposal: ProposalData) => {
+      const res = await fetch("/api/planner/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postId: proposal.postId,
+          day: proposal.day,
+          platforms: proposal.platforms,
+          reasoning: proposal.reasoning,
+        }),
+      });
+      if (!res.ok) throw new Error(`propose failed: ${res.status}`);
+      onPlanProposed?.();
+    },
+    [onPlanProposed],
+  );
+
   function renderMsg(m: UiMsg, key: number) {
     if (m.kind === "text") {
       if (m.role === "user") {
@@ -511,7 +607,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0 max-w-[85%] text-xl leading-normal whitespace-pre-wrap text-[#0d0d0d]">
-            {renderTextWithRefs(m.text, postCache, handlePostFetched)}
+            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost)}
             <div className="mt-2 flex items-center gap-3">
               <CopyButton text={m.text.replace(/\[post:[a-zA-Z0-9_-]+\]/g, "").trim()} />
             </div>
@@ -575,27 +671,44 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
         </div>
       );
     }
-    // tool_result rendering is handled by the tool_use chip above
-    if (m.kind === "tool_result") return null;
+    if (m.kind === "tool_result") {
+      const proposal = proposalsByToolUseId.get(m.toolUseId);
+      if (proposal) {
+        return (
+          <div key={key} className="pl-9">
+            <ProposalCard proposal={proposal} onApprove={handleProposalApprove} />
+          </div>
+        );
+      }
+      // Other tool_result rendering is handled by the tool_use chip above.
+      return null;
+    }
     return null;
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-white">
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between px-2 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
-        <button
-          onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#0d0d0d] active:bg-gray-200 md:hidden touch-manipulation"
-          aria-label="Menu"
-        >
-          <Menu className="h-6 w-6" strokeWidth={1.5} />
-        </button>
+    <div className="relative h-full bg-white">
+      {/* Floating mobile sidebar burger (top-left) */}
+      <button
+        onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
+        className="absolute left-2 top-2 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 active:bg-gray-100 md:hidden touch-manipulation"
+        aria-label="Menu"
+      >
+        <Menu className="h-6 w-6" strokeWidth={1.5} />
+      </button>
 
-        <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-[#0d0d0d] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span>Assistant</span>
-        </div>
-
+      {/* Floating action buttons (top-right): Planner + New chat */}
+      <div className="absolute right-2 top-2 z-30 flex items-center gap-1.5">
+        {onOpenPlanner && (
+          <button
+            onClick={() => onOpenPlanner()}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 hover:bg-white active:bg-gray-100"
+            aria-label="Open planner"
+            title="Planner"
+          >
+            <CalendarDays className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        )}
         <button
           onClick={async () => {
             if (messages.length === 0) return;
@@ -603,18 +716,21 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
             setMessages([]);
             setConversationId(null);
             toolUseNamesRef.current.clear();
+            setProposalsByToolUseId(new Map());
           }}
           disabled={streaming || messages.length === 0}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#0d0d0d] active:bg-gray-200 disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 hover:bg-white active:bg-gray-100 disabled:opacity-30"
           aria-label="New chat"
+          title="New chat"
         >
-          <SquarePen className="h-6 w-6" strokeWidth={1.5} />
+          <SquarePen className="h-5 w-5" strokeWidth={1.75} />
         </button>
-      </header>
+      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      {/* Messages — full-height scroll, padding at top to clear floating buttons,
+          padding at bottom to clear floating composer. */}
+      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-16 md:px-4 md:pt-14">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
           {messages.length === 0 && !streaming && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#0d0d0d] text-white">
@@ -668,15 +784,17 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
       </div>
 
 
-      {/* Composer — ChatGPT style: + Message [send] inside one pill */}
-      <div className="bg-gradient-to-t from-white via-white to-white/0 px-5 pb-4 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)" }}>
-        <div className="mx-auto w-full max-w-3xl">
-          <div className="flex items-end rounded-3xl border border-[#e5e5e5] bg-[#f4f4f4] py-1 pl-1.5 pr-1.5">
-            {/* Plus / attach button inside pill */}
+      {/* Floating composer — sits above the scroll area, text flows underneath. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 md:px-4"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}
+      >
+        <div className="pointer-events-auto mx-auto w-full max-w-4xl">
+          <div className="flex items-center rounded-3xl border border-black/5 bg-white/70 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[#8e8ea0] transition-colors active:bg-gray-200"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[#8e8ea0] transition-colors active:bg-black/10"
               aria-label="Attach"
             >
               <Plus className="h-5 w-5" strokeWidth={2} />
@@ -692,9 +810,9 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
               }}
               onKeyDown={handleKeyDown}
               enterKeyHint="send"
-              placeholder="Message"
+              placeholder="Ask Assistant"
               rows={1}
-              className="flex-1 resize-none bg-transparent px-1.5 py-1.5 text-lg text-[#0d0d0d] placeholder-[#8e8ea0] focus:outline-none"
+              className="flex-1 resize-none self-center bg-transparent px-1.5 py-2 text-lg leading-5 text-[#0d0d0d] placeholder-[#8e8ea0] focus:outline-none"
               style={{ height: "auto", maxHeight: "120px", overflow: "auto" }}
             />
             {input.trim() ? (
@@ -704,13 +822,13 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
                   if (v && !streaming) send(v);
                 }}
                 disabled={streaming}
-                className="mb-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#0d0d0d] text-white disabled:opacity-40 transition-colors"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#0d0d0d] text-white disabled:opacity-40 transition-colors"
                 aria-label="Send"
               >
                 <ArrowUp className="h-5 w-5" />
               </button>
             ) : (
-              <div className="mb-0.5 h-8 w-8 flex-shrink-0" />
+              <div className="h-9 w-9 flex-shrink-0" />
             )}
           </div>
           <input
@@ -722,7 +840,6 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
               // TODO: handle image attachment
               const file = e.target.files?.[0];
               if (file) {
-                // For now, just log — will wire up to API later
                 console.log("Selected file:", file.name);
               }
               e.target.value = "";
@@ -730,6 +847,14 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
           />
         </div>
       </div>
+
+      {editingPostId && (
+        <PostEditorModal
+          postId={editingPostId}
+          onClose={() => setEditingPostId(null)}
+          onSaved={(patch) => handleEditorSaved(editingPostId, patch)}
+        />
+      )}
     </div>
   );
 }

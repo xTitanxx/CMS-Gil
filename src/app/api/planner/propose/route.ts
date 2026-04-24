@@ -1,0 +1,80 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { getMondayUTC } from "@/lib/planner/week";
+
+const ALLOWED_PLATFORMS = new Set([
+  "INSTAGRAM",
+  "FACEBOOK_PAGE",
+  "LINKEDIN",
+  "TIKTOK",
+  "YOUTUBE",
+]);
+
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = session.user.id;
+
+  const body = (await req.json()) as {
+    postId?: unknown;
+    day?: unknown;
+    platforms?: unknown;
+    reasoning?: unknown;
+  };
+
+  const postId = typeof body.postId === "string" ? body.postId : "";
+  const day = typeof body.day === "string" ? body.day : "";
+  if (!postId) return NextResponse.json({ error: "postId required" }, { status: 400 });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return NextResponse.json({ error: "day must be YYYY-MM-DD" }, { status: 400 });
+  }
+
+  const platforms = Array.isArray(body.platforms)
+    ? (body.platforms as unknown[]).filter(
+        (p): p is string => typeof p === "string" && ALLOWED_PLATFORMS.has(p),
+      )
+    : [];
+  if (platforms.length === 0) {
+    return NextResponse.json({ error: "platforms required" }, { status: 400 });
+  }
+
+  const reasoning = typeof body.reasoning === "string" ? body.reasoning : null;
+
+  const post = await prisma.post.findFirst({
+    where: { id: postId, userId },
+    select: { id: true },
+  });
+  if (!post) return NextResponse.json({ error: "post not found" }, { status: 404 });
+
+  const dayDate = new Date(day + "T00:00:00.000Z");
+  const weekStart = getMondayUTC(dayDate);
+
+  const plan = await prisma.weeklyPlan.upsert({
+    where: { userId_weekStart: { userId, weekStart } },
+    create: { userId, weekStart },
+    update: {},
+    select: { id: true },
+  });
+
+  // Match `pin` semantics: one slot per day. Replace any existing.
+  await prisma.weeklyPlanSlot.deleteMany({
+    where: { planId: plan.id, day: dayDate },
+  });
+
+  const slot = await prisma.weeklyPlanSlot.create({
+    data: {
+      planId: plan.id,
+      postId,
+      day: dayDate,
+      status: "PROPOSED",
+      reasoning,
+      platforms,
+    },
+    select: { id: true },
+  });
+
+  return NextResponse.json({ ok: true, planId: plan.id, slotId: slot.id });
+}

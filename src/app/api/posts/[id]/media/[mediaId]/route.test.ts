@@ -54,7 +54,7 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({ ok: true });
-    expect(mockDeleteObject).toHaveBeenCalledWith("users/user1/photo.jpg", "image/jpeg");
+    expect(mockDeleteObject).toHaveBeenCalledWith("users/user1/photo.jpg");
     expect(mockDeleteRecord).toHaveBeenCalledWith({ where: { id: "media1" } });
   });
 

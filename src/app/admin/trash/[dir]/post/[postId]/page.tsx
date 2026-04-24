@@ -26,9 +26,7 @@ export default async function TrashedPostPage({
   const mediaWithUrls = await Promise.all(
     post.media.map(async (m) => ({
       ...m,
-      url: await getSignedDownloadUrl(m.storageKey, 3600, m.mimeType).catch(
-        () => null,
-      ),
+      url: await getSignedDownloadUrl(m.storageKey).catch(() => null),
     })),
   );
 

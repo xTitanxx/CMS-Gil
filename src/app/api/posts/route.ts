@@ -75,11 +75,7 @@ async function decoratePosts(posts: PostWithIncludes[]) {
       const isSilent =
         videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
       const videoUrl = isVideo && firstMedia
-        ? await getSignedDownloadUrl(
-            firstMedia.storageKey,
-            undefined,
-            firstMedia.mimeType,
-          ).catch(() => null)
+        ? await getSignedDownloadUrl(firstMedia.storageKey).catch(() => null)
         : null;
       return { ...post, thumbUrl, videoUrl, isVideo, isSilent };
     }),

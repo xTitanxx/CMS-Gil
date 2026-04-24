@@ -22,8 +22,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await deleteObject(media.storageKey, media.mimeType).catch((err) => {
-    console.error("[media/delete] Cloudinary delete failed", { mediaId, storageKey: media.storageKey, err });
+  await deleteObject(media.storageKey).catch((err) => {
+    console.error("[media/delete] R2 delete failed", { mediaId, storageKey: media.storageKey, err });
   });
   await prisma.media.delete({ where: { id: mediaId } });
 

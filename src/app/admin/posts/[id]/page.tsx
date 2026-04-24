@@ -146,7 +146,7 @@ export default async function PostDetailPage({
         ? {
             id: m.audioTrack.id,
             title: m.audioTrack.title,
-            url: await getSignedDownloadUrl(m.audioTrack.storageKey, 3600, "audio/mpeg").catch(() => null),
+            url: await getSignedDownloadUrl(m.audioTrack.storageKey).catch(() => null),
           }
         : null,
       url: await getMediaUrl(m).catch(() => null),

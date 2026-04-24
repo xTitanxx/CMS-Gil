@@ -34,7 +34,7 @@ export async function GET() {
       durationSec: t.durationSec,
       sizeBytes: t.sizeBytes,
       createdAt: t.createdAt,
-      url: await getSignedDownloadUrl(t.storageKey, 3600, t.mimeType).catch(() => null),
+      url: await getSignedDownloadUrl(t.storageKey).catch(() => null),
     })),
   );
 
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
     buffer = Buffer.from(await file.arrayBuffer());
   }
 
-  const storageKey = audioKey(session.user.id, filename);
-  await uploadBuffer(storageKey, buffer);
+  const key = audioKey(session.user.id, filename);
+  const { url: storageKey } = await uploadBuffer(key, buffer, { contentType: mimeType });
 
   const track = await prisma.audioTrack.create({
     data: {
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const url = await getSignedDownloadUrl(storageKey, 3600, mimeType).catch(() => null);
+  const url = await getSignedDownloadUrl(storageKey).catch(() => null);
 
   return NextResponse.json(
     {

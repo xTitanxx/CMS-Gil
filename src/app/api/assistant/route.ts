@@ -88,7 +88,12 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const system = await buildSystemPrompt(userId, new Date());
+  const systemText = await buildSystemPrompt(userId, new Date());
+  // Cache tools + system — identical across all tool-use iterations in a turn,
+  // so every iteration after the first becomes a cache read (~90% cheaper, much faster).
+  const systemCached: Anthropic.TextBlockParam[] = [
+    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+  ];
   const encoder = new TextEncoder();
   const conversationIdFinal = conv.id;
 
@@ -100,22 +105,35 @@ export async function POST(req: NextRequest) {
 
       try {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
-          const resp = await client.messages.create({
+          const msgStream = client.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 2048,
-            system,
+            system: systemCached,
             tools: ASSISTANT_TOOLS,
             messages: convo,
           });
 
+          // Stream text deltas to the client as they arrive.
+          for await (const event of msgStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              controller.enqueue(
+                encoder.encode(
+                  JSON.stringify({ kind: "text", text: event.delta.text }) + "\n",
+                ),
+              );
+            }
+          }
+
+          const resp = await msgStream.finalMessage();
           const assistantBlocks: PersistedBlock[] = [];
 
           for (const block of resp.content) {
             if (block.type === "text") {
+              // Text was already streamed above — just persist it.
               assistantBlocks.push({ kind: "text", text: block.text });
-              controller.enqueue(
-                encoder.encode(JSON.stringify({ kind: "text", text: block.text }) + "\n"),
-              );
             } else if (block.type === "tool_use") {
               assistantBlocks.push({
                 kind: "tool_use",

@@ -499,7 +499,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
       if (m.role === "user") {
         return (
           <div key={key} className="flex justify-end">
-            <div className="max-w-[80%] rounded-3xl rounded-br-md px-4 py-3 text-lg leading-normal whitespace-pre-wrap bg-[#f4f4f4] text-[#0d0d0d]">
+            <div className="max-w-[80%] rounded-3xl rounded-br-md px-4 py-3 text-xl leading-normal whitespace-pre-wrap bg-[#f4f4f4] text-[#0d0d0d]">
               {m.text}
             </div>
           </div>
@@ -510,7 +510,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
           <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#0d0d0d] text-white mt-0.5">
             <Sparkles className="h-3.5 w-3.5" />
           </div>
-          <div className="min-w-0 max-w-[85%] text-lg leading-normal whitespace-pre-wrap text-[#0d0d0d]">
+          <div className="min-w-0 max-w-[85%] text-xl leading-normal whitespace-pre-wrap text-[#0d0d0d]">
             {renderTextWithRefs(m.text, postCache, handlePostFetched)}
             <div className="mt-2 flex items-center gap-3">
               <CopyButton text={m.text.replace(/\[post:[a-zA-Z0-9_-]+\]/g, "").trim()} />
@@ -694,7 +694,7 @@ export function ThreadView({ onPlanProposed }: ThreadViewProps) {
               enterKeyHint="send"
               placeholder="Message"
               rows={1}
-              className="flex-1 resize-none bg-transparent px-1.5 py-1.5 text-base text-[#0d0d0d] placeholder-[#8e8ea0] focus:outline-none"
+              className="flex-1 resize-none bg-transparent px-1.5 py-1.5 text-lg text-[#0d0d0d] placeholder-[#8e8ea0] focus:outline-none"
               style={{ height: "auto", maxHeight: "120px", overflow: "auto" }}
             />
             {input.trim() ? (

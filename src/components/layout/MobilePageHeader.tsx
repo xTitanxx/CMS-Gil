@@ -4,7 +4,6 @@ import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 const TITLES: Record<string, string> = {
-  "/admin/assistant": "Assistant",
   "/admin/dashboard": "Dashboard",
   "/admin/posts": "Posts",
   "/admin/triage": "Triage",
@@ -25,28 +24,39 @@ function titleFor(pathname: string): string {
   return match ? TITLES[match] : "";
 }
 
+// Two floating frosted pills (burger left, title centred) that sit OVER scrolling page
+// content — no opaque bar, no border. position: fixed so content fills the whole
+// viewport including the area under the iOS status bar (with viewport-fit=cover +
+// black-translucent status bar style, content shows through behind clock/wifi/battery).
+// The container is pointer-events-none so taps fall through to content; only the
+// pills themselves are interactive.
+// Skipped on /admin/assistant — that page provides its own floating burger.
 export function MobilePageHeader() {
   const pathname = usePathname();
+
+  if (pathname.startsWith("/admin/assistant")) return null;
+
   const title = titleFor(pathname);
 
   return (
-    <header
-      className="sticky top-0 z-30 flex items-center justify-center bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 ring-1 ring-black/5 md:hidden"
-      style={{
-        paddingTop: "max(env(safe-area-inset-top, 0px), 0px)",
-      }}
+    <div
+      className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-center justify-between px-2 md:hidden"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
-      <div className="relative flex h-12 w-full items-center justify-center px-2">
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="absolute left-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 active:bg-gray-100 touch-manipulation"
-          aria-label="Open menu"
-        >
-          <Menu className="h-5 w-5" strokeWidth={1.75} />
-        </button>
-        <h1 className="truncate text-base font-semibold text-[#0d0d0d]">{title}</h1>
-      </div>
-    </header>
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
+        className="pointer-events-auto my-2 flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 active:bg-white/70 touch-manipulation"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" strokeWidth={1.75} />
+      </button>
+      {title && (
+        <div className="my-2 rounded-full bg-white/40 px-4 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+          <span className="text-sm font-semibold text-[#0d0d0d]">{title}</span>
+        </div>
+      )}
+      <div className="h-10 w-10" aria-hidden />
+    </div>
   );
 }

@@ -89,7 +89,7 @@ export function ImprovementsFeed() {
 
   const Header = (
     <div className="mb-4">
-      <h1 className="text-xl font-bold text-gray-900 md:text-2xl">AI suggestions</h1>
+      <h1 className="hidden text-xl font-bold text-gray-900 md:block md:text-2xl">AI suggestions</h1>
       <p className="text-sm text-gray-500">
         AI-suggested caption rewrites for low-quality or non-evergreen posts.
       </p>

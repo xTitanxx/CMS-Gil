@@ -112,7 +112,7 @@ export default function ConnectionsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Connections</h1>
+        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">Connections</h1>
         <p className="text-sm text-gray-500">
           Connect your social accounts to enable publishing
         </p>
@@ -152,14 +152,14 @@ export default function ConnectionsPage() {
             <Card key={platform.id}>
               <CardContent className="py-5 space-y-4">
                 {/* Row 1: Name + status + actions */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className={`text-sm font-semibold ${platform.color}`}>
                       {platform.label}
                     </h3>
                     {connected && <Badge variant="success">Connected</Badge>}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {!connected ? (
                       <Button
                         size="sm"
@@ -230,28 +230,30 @@ export default function ConnectionsPage() {
                   <p className="text-sm text-gray-600">Connected via Google account</p>
                 )}
 
-                {/* Row 3: Capabilities */}
+                {/* Row 3: Capabilities — available first, then unavailable */}
                 <div className="flex flex-wrap gap-2">
-                  {CAPABILITY_KEYS.map((key) => {
-                    const on = platform.caps[key];
-                    return (
-                      <span
-                        key={key}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-                          on
-                            ? "bg-green-50 text-green-700"
-                            : "bg-gray-100 text-gray-500 line-through decoration-gray-400"
-                        }`}
-                      >
-                        {on ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <X className="h-3.5 w-3.5" />
-                        )}
-                        {key}
-                      </span>
-                    );
-                  })}
+                  {[...CAPABILITY_KEYS]
+                    .sort((a, b) => Number(platform.caps[b]) - Number(platform.caps[a]))
+                    .map((key) => {
+                      const on = platform.caps[key];
+                      return (
+                        <span
+                          key={key}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                            on
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-600 line-through decoration-red-300"
+                          }`}
+                        >
+                          {on ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          {key}
+                        </span>
+                      );
+                    })}
                   {platform.note && (
                     <span className="self-center text-xs text-gray-500">{platform.note}</span>
                   )}

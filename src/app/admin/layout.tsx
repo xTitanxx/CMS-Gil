@@ -31,7 +31,9 @@ export default async function DashboardLayout({
       <Sidebar />
       <main className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8">
         <MobilePageHeader />
-        <div className="p-4 md:p-0">{children}</div>
+        <div className="px-4 pb-4 pt-[calc(env(safe-area-inset-top,0px)+3.5rem)] md:p-0">
+          {children}
+        </div>
       </main>
     </div>
   );

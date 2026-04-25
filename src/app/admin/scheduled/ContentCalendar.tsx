@@ -112,19 +112,19 @@ export function ContentCalendar() {
       {/* Calendar area */}
       <div className="flex-1 min-w-0 space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-base font-semibold w-44 text-center">
+            <span className="text-base font-semibold min-w-0 truncate text-center sm:w-44">
               {periodLabel()}
             </span>
             <Button variant="ghost" size="icon" onClick={() => navigate(1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          <div className="flex shrink-0 rounded-lg border border-gray-200 overflow-hidden">
             <button
               onClick={() => setView("month")}
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${

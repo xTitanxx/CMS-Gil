@@ -295,6 +295,10 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [proposalsByToolUseId, setProposalsByToolUseId] = useState<Map<string, ProposalData>>(new Map());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Tracks whether the user is "pinned" to the bottom — when true, new content
+  // auto-scrolls; when false (user scrolled up to read), we leave them alone.
+  const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Maps toolUseId → tool name so we can identify planner-related results
@@ -412,8 +416,26 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       });
   }, []);
 
+  // Smart auto-scroll: only stay pinned to the bottom if the user hasn't
+  // scrolled up. Without this guard the unconditional scrollIntoView fires on
+  // every streaming text delta and yanks the user back, making manual scroll
+  // feel "stuck".
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distFromBottom < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    // "auto" (instant) during streaming so we don't queue smooth animations
+    // that fight rapid delta updates; "smooth" only when streaming finishes.
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth" });
   }, [messages, streaming]);
 
   async function send(text: string) {
@@ -737,7 +759,10 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
 
       {/* Messages — full-height scroll, padding at top to clear floating buttons,
           padding at bottom to clear floating composer. */}
-      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-[max(calc(env(safe-area-inset-top,0px)+3.5rem),4rem)] md:px-4 md:pt-14">
+      <div
+        ref={scrollRef}
+        className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-[max(calc(env(safe-area-inset-top,0px)+3.5rem),4rem)] md:px-4 md:pt-14"
+      >
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
           {messages.length === 0 && !streaming && (
             <div className="flex flex-col items-center justify-center py-16 text-center">

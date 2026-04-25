@@ -7,6 +7,7 @@ export const WEIGHTS = {
   rating: 1.0,
   fitness: 0.9,
   freshness: 0.6,
+  topicRecency: 0.7,
   variety: 0.4,
   diversity: 0.3,
 } as const;
@@ -23,6 +24,7 @@ export interface ScoringContext {
   recentTags: string[][];                           // tags of last N publishes
   recentKinds: string[];                            // kinds of last 3 publishes
   negativeReasonFrequency: Map<string, number>;     // how often each negative reason appears across all ratings
+  tagLastSeen: Map<string, Date>;                   // most recent publish date per tag (across the user's whole history) — drives "stale topic" boost
 }
 
 function jaccard(a: string[], b: string[]): number {
@@ -76,6 +78,26 @@ export function scorePost(
   const avgJaccard = ctx.recentTags.length ? jaccardSum / ctx.recentTags.length : 0;
   const tagVariety = (1 - avgJaccard) * WEIGHTS.variety;
 
+  // Topic recency: prioritise posts whose topics (tags) the user hasn't covered
+  // in a long time. For each tag on the candidate, look up the most recent
+  // publish date for ANY post carrying that tag, then take the staleness of
+  // the *most stale* tag (so a single neglected topic is enough to surface
+  // the post). Tags never published score full staleness (1.0).
+  let topicStaleness = 0;
+  for (const tag of post.tags) {
+    const lastSeen = ctx.tagLastSeen.get(tag);
+    let s: number;
+    if (!lastSeen) {
+      s = 1;
+    } else {
+      const days = (when.getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24);
+      // ~30d → 0.63, ~90d → 0.95, plateaus near 1.
+      s = 1 - Math.exp(-Math.max(0, days) / 30);
+    }
+    if (s > topicStaleness) topicStaleness = s;
+  }
+  const topicRecency = topicStaleness * WEIGHTS.topicRecency;
+
   // Kind diversity
   const last3SameKind =
     ctx.recentKinds.length >= 3 &&
@@ -89,7 +111,7 @@ export function scorePost(
   );
 
   const total =
-    ratingScore + lifecycleFit + freshness + tagVariety + kindDiversity - penaltyReasons;
+    ratingScore + lifecycleFit + freshness + topicRecency + tagVariety + kindDiversity - penaltyReasons;
 
   // Human-readable reasons
   const reasons: string[] = [];
@@ -104,6 +126,7 @@ export function scorePost(
   }
   if (!post.lastPublishedAt) reasons.push("never posted");
   else if (freshnessRaw > 0.8) reasons.push("rarely reposted");
+  if (topicStaleness > 0.85) reasons.push("stale topic");
   if (last3SameKind) reasons.push("same kind × 3 recent");
 
   return {
@@ -114,6 +137,7 @@ export function scorePost(
       lifecycleFit,
       freshness,
       tagVariety,
+      topicRecency,
       kindDiversity,
       penaltyReasons,
       total,
@@ -135,13 +159,15 @@ import { subDays } from "date-fns";
 
 const RECENCY_DAYS = 90;
 const RECENT_HISTORY_N = 10;
+const TOPIC_RECENCY_LOOKBACK_DAYS = 365;
 
 export async function recommend(opts: RecommendOptions): Promise<Recommendation[]> {
   const when = opts.when ?? new Date();
   const cutoff = subDays(when, RECENCY_DAYS);
+  const topicCutoff = subDays(when, TOPIC_RECENCY_LOOKBACK_DAYS);
   const limit = opts.limit ?? 10;
 
-  const [posts, recentPublishes, negativeReasonRows] = await Promise.all([
+  const [posts, recentPublishes, negativeReasonRows, topicHistory] = await Promise.all([
     prisma.post.findMany({
       where: {
         userId: opts.userId,
@@ -196,6 +222,20 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
       WHERE p."userId" = ${opts.userId}
       GROUP BY reason
     `.catch(() => [] as { reason: string; count: bigint }[]),
+    // Last year of publishes — used to compute per-tag staleness for the
+    // topic-recency boost. Tags absent from this list score full staleness.
+    prisma.publishRecord.findMany({
+      where: {
+        status: "PUBLISHED",
+        post: { userId: opts.userId },
+        publishedAt: { gte: topicCutoff },
+      },
+      orderBy: { publishedAt: "desc" },
+      select: {
+        publishedAt: true,
+        post: { select: { tags: true } },
+      },
+    }),
   ]);
 
   const rows: CandidateRow[] = posts.map((p) => {
@@ -227,9 +267,20 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     negativeReasonFrequency.set(row.reason, Number(row.count));
   }
 
+  // Build the per-tag last-published map. The query is ordered desc, so the
+  // first time we see a tag we record the latest date and skip subsequent
+  // older publishes of the same tag.
+  const tagLastSeen = new Map<string, Date>();
+  for (const r of topicHistory) {
+    if (!r.publishedAt) continue;
+    for (const tag of r.post.tags) {
+      if (!tagLastSeen.has(tag)) tagLastSeen.set(tag, r.publishedAt);
+    }
+  }
+
   const filtered = opts.contentKind ? rows.filter((r) => r.contentKind === opts.contentKind) : rows;
   const scored = filtered.map((r) =>
-    scorePost(r, when, { recentTags, recentKinds, negativeReasonFrequency }),
+    scorePost(r, when, { recentTags, recentKinds, negativeReasonFrequency, tagLastSeen }),
   );
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);

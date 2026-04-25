@@ -10,6 +10,7 @@ export interface ScoreBreakdown {
   lifecycleFit: number;
   freshness: number;
   tagVariety: number;
+  topicRecency: number;
   kindDiversity: number;
   penaltyReasons: number;
   total: number;

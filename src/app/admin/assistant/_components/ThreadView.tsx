@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, Menu, ExternalLink, Pencil, CalendarDays } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 
@@ -688,15 +688,6 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
 
   return (
     <div className="relative h-full bg-white">
-      {/* Floating mobile sidebar burger (top-left) */}
-      <button
-        onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-        className="absolute left-2 top-2 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 active:bg-gray-100 md:hidden touch-manipulation"
-        aria-label="Menu"
-      >
-        <Menu className="h-6 w-6" strokeWidth={1.5} />
-      </button>
-
       {/* Floating action buttons (top-right): Planner + New chat */}
       <div className="absolute right-2 top-2 z-30 flex items-center gap-1.5">
         {onOpenPlanner && (
@@ -729,7 +720,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
 
       {/* Messages — full-height scroll, padding at top to clear floating buttons,
           padding at bottom to clear floating composer. */}
-      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-16 md:px-4 md:pt-14">
+      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-3 md:px-4 md:pt-14">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
           {messages.length === 0 && !streaming && (
             <div className="flex flex-col items-center justify-center py-16 text-center">

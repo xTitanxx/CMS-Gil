@@ -175,19 +175,28 @@ Never commit feature work directly to `claude/personal-cms-social-posting-QV57t`
 
 ### Branch Hygiene
 
-After a feature is deployed and confirmed working, **merge the branch into main and delete it** in the same session:
+**Cleanup is part of "done".** A feature is not finished when the code is merged — it's finished when the branch is gone too. Whenever work in a session reaches the deployed-and-working state, immediately:
+
+1. Merge the PR (or fast-forward main if local-only)
+2. Delete the local branch (`git branch -d feature/<short-name>`)
+3. Delete the remote branch (`git push origin --delete feature/<short-name>`, or `gh pr merge --delete-branch`)
+
+Do this **without being asked** — the user should never have to say "clean up the branches". If you deployed it, delete the branch in the same response.
 
 ```bash
 git checkout claude/personal-cms-social-posting-QV57t
-git merge feature/<short-name>
+git pull --ff-only
 git branch -d feature/<short-name>
+git push origin --delete feature/<short-name>
 ```
 
-Do not leave stale branches around. The only branches that should exist are:
+Also at the **start and end of every session**, run `git fetch --prune && git branch -r` and check for branches with merged or stale PRs. Delete the merged ones; flag stale open PRs to the user for a judgment call (don't auto-close them).
+
+The only branches that should exist are:
 - `claude/personal-cms-social-posting-QV57t` (main)
 - 1–3 branches with **active, in-progress work**
 
-At the **end of every session**, check for and delete any branches whose work has been merged or deployed. Stale branches cause confusion (e.g. localhost vs prod mismatch when the dev server runs from the wrong branch).
+Stale branches cause real bugs (e.g. localhost vs prod mismatch when the dev server runs from the wrong branch) — they're not just cosmetic clutter.
 
 ## UI Testing
 The user handles browser/UI verification. Do **not** start a dev server, open Playwright, or otherwise drive the UI to validate frontend changes — just implement the change, make sure it type-checks and unit tests pass, then hand off. The user will test in the browser and report back if anything is broken.

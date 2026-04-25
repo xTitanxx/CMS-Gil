@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { MobilePageHeader } from "@/components/layout/MobilePageHeader";
 
 const DEV_ADMIN_FAVICON =
   "data:image/svg+xml," +
@@ -28,7 +29,10 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-dvh flex-col md:h-screen md:flex-row md:overflow-hidden">
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 p-4 pt-14 md:p-8 md:pt-8">{children}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8">
+        <MobilePageHeader />
+        <div className="p-4 md:p-0">{children}</div>
+      </main>
     </div>
   );
 }

@@ -24,7 +24,7 @@ export const metadata: Metadata = {
       : { icon: "/icon-192.png", apple: "/icon.jpg" },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Gil Alter",
   },
 };
@@ -37,8 +37,8 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full bg-gray-50 font-sans">
+    <html lang="en" className="h-full antialiased" style={{ backgroundColor: "#f9fafb" }}>
+      <body className="min-h-full bg-gray-50 font-sans" style={{ backgroundColor: "#f9fafb" }}>
         <SessionProvider session={session}>{children}</SessionProvider>
       </body>
     </html>

@@ -185,7 +185,7 @@ export default function NewPostPage() {
             Back
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">New Post</h1>
+        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">New Post</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

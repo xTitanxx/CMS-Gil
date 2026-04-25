@@ -285,7 +285,7 @@ export default function ImportPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Import Posts</h1>
+        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">Import Posts</h1>
         <p className="text-sm text-gray-500">
           Import your Facebook data export into the CMS
         </p>

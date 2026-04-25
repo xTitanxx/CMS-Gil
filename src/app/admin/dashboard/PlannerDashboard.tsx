@@ -103,7 +103,7 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col md:-m-8">
       {/* Stats bar */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 md:gap-6 md:px-8">
-        <h1 className="text-base font-bold text-gray-900">Content Hub</h1>
+        <h1 className="hidden text-base font-bold text-gray-900 md:block">Content Hub</h1>
         <div className="flex items-center gap-3 text-sm text-gray-600 md:gap-5">
           <span>
             <span className="font-semibold text-gray-900">{stats.totalPosts}</span> posts

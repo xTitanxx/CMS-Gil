@@ -29,9 +29,12 @@ export default async function AudioLibraryPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="mb-6 text-sm text-gray-500">
-        Upload music tracks (e.g. from Suno) and overlay them onto silent videos in posts.
-      </p>
+      <div className="mb-6">
+        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">Audio Library</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Upload music tracks (e.g. from Suno) and overlay them onto silent videos in posts.
+        </p>
+      </div>
       <AudioLibrary initialTracks={withUrls} />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 
@@ -688,12 +688,29 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
 
   return (
     <div className="relative h-full bg-white">
+      {/* Floating mobile burger (top-left) — assistant has no MobilePageHeader */}
+      <div
+        className="absolute left-2 z-30 md:hidden"
+        style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
+      >
+        <button
+          onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 active:bg-white/70 touch-manipulation"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" strokeWidth={1.75} />
+        </button>
+      </div>
+
       {/* Floating action buttons (top-right): Planner + New chat */}
-      <div className="absolute right-2 top-2 z-30 flex items-center gap-1.5">
+      <div
+        className="absolute right-2 z-30 flex items-center gap-1.5"
+        style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
+      >
         {onOpenPlanner && (
           <button
             onClick={() => onOpenPlanner()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 hover:bg-white active:bg-gray-100"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 hover:bg-white/70 active:bg-white/80"
             aria-label="Open planner"
             title="Planner"
           >
@@ -710,7 +727,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             setProposalsByToolUseId(new Map());
           }}
           disabled={streaming || messages.length === 0}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#0d0d0d] shadow-[0_1px_3px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-black/5 hover:bg-white active:bg-gray-100 disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 hover:bg-white/70 active:bg-white/80 disabled:opacity-30"
           aria-label="New chat"
           title="New chat"
         >
@@ -720,7 +737,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
 
       {/* Messages — full-height scroll, padding at top to clear floating buttons,
           padding at bottom to clear floating composer. */}
-      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-3 md:px-4 md:pt-14">
+      <div className="absolute inset-0 overflow-y-auto px-3 pb-32 pt-[max(calc(env(safe-area-inset-top,0px)+3.5rem),4rem)] md:px-4 md:pt-14">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
           {messages.length === 0 && !streaming && (
             <div className="flex flex-col items-center justify-center py-16 text-center">

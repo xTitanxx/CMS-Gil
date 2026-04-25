@@ -72,7 +72,7 @@ export function ReelsFeed() {
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">All Reels</h1>
+          <h1 className="hidden text-2xl font-bold text-gray-900 md:block">All Reels</h1>
           <p className="text-sm text-gray-500">
             {reels.length > 0 ? `${reels.length} loaded` : "Reels"}
           </p>

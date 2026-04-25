@@ -556,7 +556,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     <div className="space-y-4 md:space-y-6" ref={rootRef}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">{title}</h1>
+          <h1 className="hidden text-xl font-bold text-gray-900 md:block md:text-2xl">{title}</h1>
           <p className="text-sm text-gray-500">{countLabel}</p>
         </div>
         {headerActions && <div className="flex flex-wrap items-center gap-2">{headerActions}</div>}

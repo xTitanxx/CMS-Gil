@@ -186,7 +186,7 @@ export default async function TrashPage() {
       <div className="flex-shrink-0 space-y-3 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Trash</h1>
+            <h1 className="hidden text-2xl font-bold text-gray-900 md:block">Trash</h1>
             <p className="text-sm text-gray-500">
               Deleted duplicates from cleanup runs. Review, restore, or purge.
             </p>

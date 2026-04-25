@@ -30,6 +30,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.ratingScore).toBe(1.0 * WEIGHTS.rating);
   });
@@ -39,6 +40,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.ratingScore).toBe(-0.4 * WEIGHTS.rating);
   });
@@ -48,6 +50,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.ratingScore).toBeCloseTo(-0.15 * WEIGHTS.rating);
   });
@@ -57,6 +60,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.lifecycleFit).toBe(1.0 * WEIGHTS.fitness);
   });
@@ -67,6 +71,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.lifecycleFit).toBe(-1.0 * WEIGHTS.fitness);
   });
@@ -76,6 +81,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.lifecycleFit).toBe(1.0 * WEIGHTS.fitness);
   });
@@ -85,6 +91,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.lifecycleFit).toBe(-0.8 * WEIGHTS.fitness);
   });
@@ -94,7 +101,7 @@ describe("scorePost", () => {
     const r = scorePost(
       row({ lastPublishedAt: new Date("2024-04-16") }),
       now,
-      { recentTags: [], recentKinds: [], negativeReasonFrequency: new Map() },
+      { recentTags: [], recentKinds: [], negativeReasonFrequency: new Map(), tagLastSeen: new Map() },
     );
     expect(r.breakdown.freshness).toBeCloseTo(0.632 * WEIGHTS.freshness, 2);
   });
@@ -104,6 +111,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.freshness).toBeCloseTo(0.6 * WEIGHTS.freshness);
   });
@@ -113,6 +121,7 @@ describe("scorePost", () => {
       recentTags: [["breath", "mornings"]], // jaccard = 1
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.tagVariety).toBe(0);
   });
@@ -122,6 +131,7 @@ describe("scorePost", () => {
       recentTags: [["cooking", "outdoor"]], // jaccard = 0
       recentKinds: [],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.tagVariety).toBeCloseTo(WEIGHTS.variety);
   });
@@ -131,6 +141,7 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: ["POST", "POST", "POST"],
       negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.kindDiversity).toBe(-1 * WEIGHTS.diversity);
   });
@@ -141,8 +152,61 @@ describe("scorePost", () => {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: freq,
+      tagLastSeen: new Map(),
     });
     expect(r.breakdown.penaltyReasons).toBe(0.15);
+  });
+
+  it("boosts posts whose tags haven't been published recently (stale-topic)", () => {
+    // Tag "breath" was last published a year ago → effectively max staleness.
+    const lastSeen = new Map<string, Date>([
+      ["breath", new Date("2025-04-16")],
+    ]);
+    const r = scorePost(row({ tags: ["breath"] }), now, {
+      recentTags: [],
+      recentKinds: [],
+      negativeReasonFrequency: new Map(),
+      tagLastSeen: lastSeen,
+    });
+    expect(r.breakdown.topicRecency).toBeCloseTo(WEIGHTS.topicRecency, 1);
+  });
+
+  it("gives near-zero topic recency when the topic was just published", () => {
+    const lastSeen = new Map<string, Date>([
+      ["breath", new Date("2026-04-15")], // 1 day before "now"
+    ]);
+    const r = scorePost(row({ tags: ["breath"] }), now, {
+      recentTags: [],
+      recentKinds: [],
+      negativeReasonFrequency: new Map(),
+      tagLastSeen: lastSeen,
+    });
+    // 1 - exp(-1/30) ≈ 0.033
+    expect(r.breakdown.topicRecency).toBeCloseTo(0.033 * WEIGHTS.topicRecency, 2);
+  });
+
+  it("uses the *most stale* tag when a post has multiple tags", () => {
+    const lastSeen = new Map<string, Date>([
+      ["breath", new Date("2026-04-15")], // 1 day ago — fresh
+      ["travel", new Date("2025-04-16")], // 365 days ago — stale
+    ]);
+    const r = scorePost(row({ tags: ["breath", "travel"] }), now, {
+      recentTags: [],
+      recentKinds: [],
+      negativeReasonFrequency: new Map(),
+      tagLastSeen: lastSeen,
+    });
+    expect(r.breakdown.topicRecency).toBeCloseTo(WEIGHTS.topicRecency, 1);
+  });
+
+  it("treats never-seen tags as full staleness", () => {
+    const r = scorePost(row({ tags: ["uncovered-topic"] }), now, {
+      recentTags: [],
+      recentKinds: [],
+      negativeReasonFrequency: new Map(),
+      tagLastSeen: new Map(),
+    });
+    expect(r.breakdown.topicRecency).toBe(1.0 * WEIGHTS.topicRecency);
   });
 });
 

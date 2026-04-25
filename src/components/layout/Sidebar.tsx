@@ -15,7 +15,6 @@ import {
   Sparkles,
   AlertCircle,
   Star,
-  Menu,
   X,
   Settings,
 } from "lucide-react";
@@ -78,6 +77,25 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Allow the MobilePageHeader (or anything else) to open the drawer
+  // by dispatching a window event. Single source of truth for "open menu".
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener("open-sidebar", open);
+    return () => window.removeEventListener("open-sidebar", open);
+  }, []);
+
+  // Lock body scroll while drawer is open — without this, swipes on the
+  // overlay can bleed through and the drawer can wedge into an unresponsive state.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
   const navContent = (
     <>
       <div className="mb-6 flex items-center justify-between px-3">
@@ -129,18 +147,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button — floating, not sticky */}
-      <div className="absolute left-2 top-2 z-30 md:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#0d0d0d] active:bg-gray-200 touch-manipulation"
-          aria-label="Open menu"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-      </div>
-
       {/* Desktop sidebar */}
       <aside className="hidden h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white px-3 py-4 md:flex">
         {navContent}
@@ -153,7 +159,10 @@ export function Sidebar() {
             className="fixed inset-0 z-40 bg-black/40 md:hidden touch-manipulation"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="fixed left-0 top-0 z-50 flex h-dvh w-[85%] max-w-xs flex-col border-r border-gray-200 bg-white px-3 py-4 md:hidden">
+          <aside
+            className="fixed left-0 top-0 z-50 flex h-dvh w-[85%] max-w-xs flex-col border-r border-gray-200 bg-white px-3 py-4 md:hidden"
+            style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 1rem)" }}
+          >
             {navContent}
           </aside>
         </>

@@ -43,13 +43,13 @@ describe("scorePost", () => {
     expect(r.breakdown.ratingScore).toBe(-0.4 * WEIGHTS.rating);
   });
 
-  it("treats unrated posts as small positive prior", () => {
+  it("treats unrated posts as small negative prior (prefer rated content)", () => {
     const r = scorePost(row({ stars: null }), now, {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
     });
-    expect(r.breakdown.ratingScore).toBeCloseTo(0.15 * WEIGHTS.rating);
+    expect(r.breakdown.ratingScore).toBeCloseTo(-0.15 * WEIGHTS.rating);
   });
 
   it("rewards evergreen", () => {
@@ -99,13 +99,13 @@ describe("scorePost", () => {
     expect(r.breakdown.freshness).toBeCloseTo(0.632 * WEIGHTS.freshness, 2);
   });
 
-  it("gives never-published full freshness", () => {
+  it("gives never-published a moderate freshness score", () => {
     const r = scorePost(row({ lastPublishedAt: null }), now, {
       recentTags: [],
       recentKinds: [],
       negativeReasonFrequency: new Map(),
     });
-    expect(r.breakdown.freshness).toBe(1.0 * WEIGHTS.freshness);
+    expect(r.breakdown.freshness).toBeCloseTo(0.6 * WEIGHTS.freshness);
   });
 
   it("penalizes tag overlap with recent publishes", () => {

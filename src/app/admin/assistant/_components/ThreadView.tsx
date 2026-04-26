@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 
@@ -77,13 +77,14 @@ interface CachedPost {
   loaded?: boolean;
 }
 
-function reasonBadgeStyle(reason: string): string {
-  if (/★/.test(reason)) return "bg-amber-50 text-amber-600";
-  if (/evergreen/i.test(reason)) return "bg-emerald-50 text-emerald-600";
-  if (/season/i.test(reason)) return "bg-teal-50 text-teal-600";
-  if (/rarely|never/i.test(reason)) return "bg-purple-50 text-purple-600";
-  if (/tag|keyword/i.test(reason)) return "bg-blue-50 text-blue-600";
-  return "bg-gray-100 text-gray-500";
+function reasonChipStyle(reason: string): string {
+  if (/★/.test(reason)) return "border-amber-200 bg-amber-50 text-amber-700";
+  if (/evergreen/i.test(reason)) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (/season/i.test(reason)) return "border-teal-200 bg-teal-50 text-teal-700";
+  if (/rarely|never/i.test(reason)) return "border-purple-200 bg-purple-50 text-purple-700";
+  if (/tag|keyword/i.test(reason)) return "border-blue-200 bg-blue-50 text-blue-700";
+  if (/stale/i.test(reason)) return "border-orange-200 bg-orange-50 text-orange-700";
+  return "border-[#eae7df] bg-white/50 text-[#7a7870]";
 }
 
 // Separate regexes: one for testing (no /g), one for matching (with /g)
@@ -174,13 +175,17 @@ function InlinePostRef({
     );
   }
   const body = (post.body ?? "").replace(/\s+/g, " ").trim();
-  const truncated = body.length > 120 ? body.slice(0, 120).trimEnd() + "…" : body;
   const isVideo = post.thumbUrl?.includes("/video/") || post.thumbUrl?.endsWith(".mp4") || post.thumbUrl?.endsWith(".mov");
+  const ContentIcon = isVideo ? Film : post.thumbUrl ? ImageIcon : Type;
+  const contentLabel = isVideo ? "Video" : post.thumbUrl ? "Image" : "Text";
+  const stars = post.stars ?? null;
+  const showReasons = post.reasons && post.reasons.length > 0;
+  const showTags = !showReasons && post.tags && post.tags.length > 0;
 
   return (
     <a
       href={href}
-      className="group/card relative my-2 block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-300"
+      className="group/card relative my-2 block overflow-hidden rounded-[14px] border border-[#eae7df] bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-300"
     >
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
         {onSchedule && (
@@ -263,43 +268,70 @@ function InlinePostRef({
         />
       </div>
       {post.thumbUrl && (
-        <div className="relative h-32 w-full overflow-hidden bg-gray-100">
+        <div className="relative w-full overflow-hidden bg-gray-100">
           {isVideo ? (
             <video
               src={`${post.thumbUrl}#t=0.1`}
               muted
               playsInline
               preload="metadata"
-              className="h-full w-full object-cover"
+              className="h-72 w-full object-cover md:h-80"
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.thumbUrl} alt="" className="h-full w-full object-cover" />
+            <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
           )}
         </div>
       )}
-      <div className="px-3 py-2">
-        {truncated ? (
-          <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
-        ) : (
-          <p className="text-sm italic text-gray-400">No caption</p>
-        )}
-        <div className="mt-1.5 flex items-center gap-2">
-          {post.stars ? (
-            <span className="text-xs text-amber-500">{"★".repeat(post.stars)}</span>
-          ) : null}
-          {post.lifecycle && post.lifecycle !== "UNKNOWN" ? (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase">{post.lifecycle}</span>
-          ) : null}
-          {post.tags && post.tags.length > 0 ? (
-            <span className="truncate text-[11px] text-gray-400">{post.tags.slice(0, 3).join(", ")}</span>
-          ) : null}
+      <div className="p-3.5 md:p-4">
+        {/* Row 1: type · leaf · stars (right side reserved for floating actions) */}
+        <div className={`flex items-center gap-1.5 ${!post.thumbUrl ? "pr-28" : ""}`}>
+          <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#3a3832]">
+            <ContentIcon className="h-3 w-3 text-[#7a7870]" />
+            {contentLabel}
+          </span>
+          {post.lifecycle === "EVERGREEN" && (
+            <span title="Evergreen"><Leaf className="h-3.5 w-3.5 text-green-500" /></span>
+          )}
+          {stars != null && stars > 0 && (
+            <span className="inline-flex items-center gap-px" title={`${stars}/5`}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <svg key={i} viewBox="0 0 16 16" className="h-3 w-3" fill={i < stars ? "#d4a23e" : "#ddd"}>
+                  <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
+                </svg>
+              ))}
+            </span>
+          )}
         </div>
-        {post.reasons && post.reasons.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {post.reasons.map((r, i) => (
-              <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${reasonBadgeStyle(r)}`}>
+
+        {/* Row 2: body — bigger + more lines so the caption is the focus */}
+        {body ? (
+          <p className="mt-2.5 line-clamp-[6] text-[15px] leading-[1.55] text-[#161513]">{body}</p>
+        ) : (
+          <p className="mt-2.5 text-[13px] italic text-gray-400">No caption</p>
+        )}
+
+        {/* Row 3: reason chips (or tag fallback) */}
+        {showReasons && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            {post.reasons!.map((r, i) => (
+              <span
+                key={i}
+                className={`inline-flex items-center rounded-[8px] border px-2 py-0.5 text-[11px] ${reasonChipStyle(r)}`}
+              >
                 {r}
+              </span>
+            ))}
+          </div>
+        )}
+        {showTags && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            {post.tags!.slice(0, 3).map((t, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center rounded-[8px] border border-[#eae7df] bg-white/50 px-2 py-0.5 text-[11px] text-[#7a7870]"
+              >
+                {t}
               </span>
             ))}
           </div>

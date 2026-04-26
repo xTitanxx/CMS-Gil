@@ -10,13 +10,18 @@ interface PostNavBarProps {
   actions?: ReactNode;
 }
 
-// The dashboard layout's <main> has `p-8`, and `sticky top-0` on a child pins
-// relative to the scroll container's PADDING edge, not its border edge — so
-// a naive top-0 would leave a 32px transparent strip above the bar at all
-// scroll positions. `-mt-8 -mx-8` pulls the bar up/out to cover the padding,
-// and `-top-8` (negative top) shifts the sticky pin point to the border edge
-// so the bar stays flush to y=0 while scrolling. `px-8` restores inner
+// On desktop, the dashboard layout's <main> has `p-8`, and `sticky top-0` on a
+// child pins relative to the scroll container's PADDING edge, not its border
+// edge — so a naive top-0 would leave a 32px transparent strip above the bar
+// at all scroll positions. `md:-mt-8 md:-mx-8` pulls the bar up/out to cover
+// the padding, and `md:-top-8` shifts the sticky pin point to the border edge
+// so the bar stays flush to y=0 while scrolling. `md:px-8` restores inner
 // padding so content lines up with the rest of the page.
+//
+// On mobile, <main> has no padding and the page wrapper has only `px-4`, so
+// applying those negative offsets would (a) overflow horizontally and (b)
+// drag the opaque white bar up under the iOS status bar. Instead, mobile
+// uses a frosted translucent bar with `top-0` and no negative margins.
 export function PostNavBar({
   prevHref,
   nextHref,
@@ -25,14 +30,14 @@ export function PostNavBar({
   actions,
 }: PostNavBarProps) {
   return (
-    <div className="sticky -top-8 z-20 -mx-8 -mt-8 mb-3 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-8 py-2 shadow-sm">
+    <div className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/85 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/65 md:-top-8 md:-mx-8 md:-mt-8 md:gap-3 md:bg-white md:px-8 md:supports-[backdrop-filter]:bg-white">
       <Link
         href={listHref}
         scroll={false}
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
       >
         <ArrowLeft className="h-4 w-4" />
-        {backLabel}
+        <span className="hidden sm:inline">{backLabel}</span>
       </Link>
       <div className="flex items-center gap-2">
         {actions}

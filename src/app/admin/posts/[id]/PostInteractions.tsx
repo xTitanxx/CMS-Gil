@@ -37,7 +37,9 @@ export function DeleteButton({ postId }: { postId: string }) {
       onClick={trigger}
     >
       {isLoading ? <Spinner /> : <Trash2 className="h-4 w-4" />}
-      {isLoading ? "Deleting..." : confirming ? "Are you sure?" : "Delete"}
+      <span className={confirming || isLoading ? "" : "hidden sm:inline"}>
+        {isLoading ? "Deleting..." : confirming ? "Are you sure?" : "Delete"}
+      </span>
     </Button>
   );
 }

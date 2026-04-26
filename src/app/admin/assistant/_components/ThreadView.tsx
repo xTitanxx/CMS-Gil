@@ -74,6 +74,7 @@ interface CachedPost {
   thumbUrl?: string | null;
   reasons?: string[];
   platformUrl?: string | null;
+  loaded?: boolean;
 }
 
 function reasonBadgeStyle(reason: string): string {
@@ -114,23 +115,28 @@ function InlinePostRef({
   id,
   onFetched,
   onEdit,
+  onSchedule,
 }: {
   post: CachedPost | undefined;
   id: string;
   onFetched?: (post: CachedPost) => void;
   onEdit?: (postId: string) => void;
+  onSchedule?: (postId: string) => Promise<void>;
 }) {
   const [post, setPost] = useState(initialPost);
+  const [scheduleStatus, setScheduleStatus] = useState<
+    "idle" | "sending" | "scheduled" | "error"
+  >("idle");
   const fetchedRef = useRef(false);
 
   // Sync with prop updates (e.g. cache populated after initial render)
   useEffect(() => {
-    if (initialPost?.body) setPost(initialPost);
+    if (initialPost) setPost(initialPost);
   }, [initialPost]);
 
   // Fetch on-demand if not in cache
   useEffect(() => {
-    if (post?.body || fetchedRef.current) return;
+    if (post?.loaded || fetchedRef.current) return;
     fetchedRef.current = true;
     fetch(`/api/posts/${id}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -148,15 +154,16 @@ function InlinePostRef({
           lifecycle: data.lifecycle,
           thumbUrl: thumb,
           platformUrl: data.platformUrl ?? null,
+          loaded: true,
         };
         setPost(fetched);
         onFetched?.(fetched);
       })
       .catch(() => {});
-  }, [id, post?.body, onFetched]);
+  }, [id, post?.loaded, onFetched]);
 
   const href = `/admin/posts/${id}?from=assistant`;
-  if (!post?.body) {
+  if (!post?.loaded) {
     return (
       <a
         href={href}
@@ -166,7 +173,7 @@ function InlinePostRef({
       </a>
     );
   }
-  const body = post.body.replace(/\s+/g, " ").trim();
+  const body = (post.body ?? "").replace(/\s+/g, " ").trim();
   const truncated = body.length > 120 ? body.slice(0, 120).trimEnd() + "…" : body;
   const isVideo = post.thumbUrl?.includes("/video/") || post.thumbUrl?.endsWith(".mp4") || post.thumbUrl?.endsWith(".mov");
 
@@ -176,6 +183,53 @@ function InlinePostRef({
       className="group/card relative my-2 block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-300"
     >
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        {onSchedule && (
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (scheduleStatus === "sending" || scheduleStatus === "scheduled") return;
+              setScheduleStatus("sending");
+              try {
+                await onSchedule(id);
+                setScheduleStatus("scheduled");
+              } catch {
+                setScheduleStatus("error");
+              }
+            }}
+            disabled={scheduleStatus === "sending" || scheduleStatus === "scheduled"}
+            className={`rounded-md bg-white/80 backdrop-blur-sm p-1.5 shadow-sm transition-colors ${
+              scheduleStatus === "scheduled"
+                ? "text-emerald-600 opacity-100"
+                : scheduleStatus === "error"
+                ? "text-red-500 opacity-100 hover:text-red-600"
+                : "text-emerald-600 opacity-70 hover:opacity-100 hover:text-emerald-700"
+            }`}
+            aria-label={
+              scheduleStatus === "scheduled"
+                ? "Scheduled"
+                : scheduleStatus === "error"
+                ? "Schedule failed — click to retry"
+                : "Schedule to next slot"
+            }
+            title={
+              scheduleStatus === "scheduled"
+                ? "Scheduled"
+                : scheduleStatus === "error"
+                ? "Schedule failed — click to retry"
+                : "Schedule to next slot"
+            }
+          >
+            {scheduleStatus === "sending" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : scheduleStatus === "error" ? (
+              <X className="h-4 w-4" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+          </button>
+        )}
         {onEdit && (
           <button
             type="button"
@@ -225,7 +279,11 @@ function InlinePostRef({
         </div>
       )}
       <div className="px-3 py-2">
-        <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
+        {truncated ? (
+          <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
+        ) : (
+          <p className="text-sm italic text-gray-400">No caption</p>
+        )}
         <div className="mt-1.5 flex items-center gap-2">
           {post.stars ? (
             <span className="text-xs text-amber-500">{"★".repeat(post.stars)}</span>
@@ -256,6 +314,7 @@ function renderTextWithRefs(
   cache: Map<string, CachedPost>,
   onPostFetched?: (post: CachedPost) => void,
   onEdit?: (postId: string) => void,
+  onSchedule?: (postId: string) => Promise<void>,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
@@ -273,6 +332,7 @@ function renderTextWithRefs(
         id={id}
         onFetched={onPostFetched}
         onEdit={onEdit}
+        onSchedule={onSchedule}
       />,
     );
     last = start + match[0].length;
@@ -336,6 +396,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         lifecycle: p.lifecycle ?? null,
         thumbUrl: p.thumbUrl ?? null,
         platformUrl: p.platformUrl ?? null,
+        loaded: true,
       });
     } else if (Array.isArray(data)) {
       for (const raw of data as Record<string, unknown>[]) {
@@ -345,6 +406,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         if (!item.reasons && Array.isArray(raw.matchReasons)) {
           item.reasons = raw.matchReasons as string[];
         }
+        item.loaded = true;
         entries.push(item);
       }
     } else if (data && typeof data === "object" && "id" in data) {
@@ -360,6 +422,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         stars: p.rating?.stars ?? null,
         lifecycle: p.lifecycle ?? null,
         thumbUrl: thumb,
+        loaded: true,
       });
     }
     if (!entries.length) return;
@@ -585,6 +648,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         next.set(postId, {
           ...existing,
           postId,
+          loaded: true,
           ...(patch.body !== undefined ? { body: patch.body } : {}),
           ...(patch.thumbUrl !== undefined ? { thumbUrl: patch.thumbUrl } : {}),
         });
@@ -612,6 +676,24 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
     [onPlanProposed],
   );
 
+  const handleQuickSchedule = useCallback(
+    async (postId: string) => {
+      const res = await fetch(`/api/posts/${postId}/quick-schedule`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) detail = body.error;
+        } catch { /* no JSON body */ }
+        throw new Error(`quick-schedule failed: ${detail}`);
+      }
+      onPlanProposed?.();
+    },
+    [onPlanProposed],
+  );
+
   function renderMsg(m: UiMsg, key: number) {
     if (m.kind === "text") {
       if (m.role === "user") {
@@ -629,7 +711,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0 max-w-[85%] text-xl leading-normal whitespace-pre-wrap text-[#0d0d0d]">
-            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost)}
+            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost, handleQuickSchedule)}
             <div className="mt-2 flex items-center gap-3">
               <CopyButton text={m.text.replace(/\[post:[a-zA-Z0-9_-]+\]/g, "").trim()} />
             </div>

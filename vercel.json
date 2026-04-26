@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "claude/personal-cms-social-posting-QV57t": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/publish",

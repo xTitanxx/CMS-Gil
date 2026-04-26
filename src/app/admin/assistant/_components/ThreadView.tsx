@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf, Clock, RotateCcw } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
+import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
+import { formatScheduledTime } from "@/lib/planner/format-slot";
+
+const PUBLISHABLE_PLATFORMS = ["INSTAGRAM", "FACEBOOK_PAGE", "LINKEDIN", "TIKTOK", "YOUTUBE"] as const;
 
 const TOOL_LABELS: Record<string, string> = {
   recommend_posts: "Finding best posts",
@@ -74,7 +78,28 @@ interface CachedPost {
   thumbUrl?: string | null;
   reasons?: string[];
   platformUrl?: string | null;
+  hasVideo?: boolean;
+  originalDate?: string | null;
+  publishCount?: number;
+  /** ISO scheduledAt of the next planner placement (PublishRecord or slot). */
+  nextScheduledAt?: string | null;
+  /** Slot id + plan id for the next planner placement (if known). */
+  nextSlotId?: string | null;
+  nextPlanId?: string | null;
+  /** Platforms set on the matching planner slot (preferred over user defaults). */
+  nextSlotPlatforms?: string[];
   loaded?: boolean;
+}
+
+function timeSinceShort(dateStr: string): string {
+  const then = new Date(dateStr).getTime();
+  const now = Date.now();
+  const days = Math.round((now - then) / (1000 * 60 * 60 * 24));
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.round(days / 7)}w ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.round(months / 12)}y ago`;
 }
 
 function reasonChipStyle(reason: string): string {
@@ -119,7 +144,10 @@ type ScheduleState =
 
 function formatScheduledShort(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  // Compact: "Mon Apr 27 12pm" — no comma so it stays on one line in tight footers.
+  const day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    .replace(",", "");
+  return `${day} ${formatScheduledTime(d)}`;
 }
 
 function InlinePostRef({
@@ -129,6 +157,7 @@ function InlinePostRef({
   onEdit,
   onSchedule,
   onUnschedule,
+  userPlatforms,
 }: {
   post: CachedPost | undefined;
   id: string;
@@ -136,9 +165,19 @@ function InlinePostRef({
   onEdit?: (postId: string) => void;
   onSchedule?: (postId: string) => Promise<{ slotId: string; planId: string; scheduledAt: string }>;
   onUnschedule?: (slotId: string, planId: string) => Promise<void>;
+  userPlatforms?: string[];
 }) {
   const [post, setPost] = useState(initialPost);
-  const [schedule, setSchedule] = useState<ScheduleState>({ status: "idle" });
+  const [schedule, setSchedule] = useState<ScheduleState>(() =>
+    initialPost?.nextScheduledAt
+      ? {
+          status: "scheduled",
+          scheduledAt: initialPost.nextScheduledAt,
+          slotId: initialPost.nextSlotId ?? "",
+          planId: initialPost.nextPlanId ?? "",
+        }
+      : { status: "idle" },
+  );
   const fetchedRef = useRef(false);
 
   // Sync with prop updates (e.g. cache populated after initial render)
@@ -146,9 +185,35 @@ function InlinePostRef({
     if (initialPost) setPost(initialPost);
   }, [initialPost]);
 
-  // Fetch on-demand if not in cache
+  // Hydrate the schedule state from the post's known next pending publish, but
+  // only when we're still in the idle state (don't override an in-progress or
+  // user-initiated state from this session).
   useEffect(() => {
-    if (post?.loaded || fetchedRef.current) return;
+    if (!post?.nextScheduledAt) return;
+    setSchedule((prev) =>
+      prev.status === "idle"
+        ? {
+            status: "scheduled",
+            scheduledAt: post.nextScheduledAt!,
+            slotId: post.nextSlotId ?? "",
+            planId: post.nextPlanId ?? "",
+          }
+        : prev,
+    );
+  }, [post?.nextScheduledAt, post?.nextSlotId, post?.nextPlanId]);
+
+  // Re-fetch when fields added by recent versions of the API are missing on a
+  // cached entry (older messages were cached without hasVideo / originalDate /
+  // publishCount, which would otherwise leave the chip and badges stale).
+  const isStale = !!post?.loaded && (
+    post?.hasVideo === undefined ||
+    post?.originalDate === undefined ||
+    post?.publishCount === undefined
+  );
+
+  // Fetch on-demand if not in cache or if cached fields are stale
+  useEffect(() => {
+    if ((post?.loaded && !isStale) || fetchedRef.current) return;
     fetchedRef.current = true;
     fetch(`/api/posts/${id}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -158,6 +223,8 @@ function InlinePostRef({
         const imgMedia = data.media?.find((m: { mimeType: string }) => m.mimeType?.startsWith("image/"));
         const firstMedia = data.media?.[0];
         const thumb = imgMedia?.url ?? firstMedia?.url ?? null;
+        const hasVideo = Array.isArray(data.media) &&
+          data.media.some((m: { mimeType?: string }) => m.mimeType?.startsWith("video/"));
         const fetched: CachedPost = {
           postId: id,
           body: data.body,
@@ -166,13 +233,20 @@ function InlinePostRef({
           lifecycle: data.lifecycle,
           thumbUrl: thumb,
           platformUrl: data.platformUrl ?? null,
+          hasVideo,
+          originalDate: data.originalDate ?? null,
+          publishCount: typeof data.publishCount === "number" ? data.publishCount : 0,
+          nextScheduledAt: data.nextScheduledAt ?? null,
+          nextSlotId: data.nextSlotId ?? null,
+          nextPlanId: data.nextPlanId ?? null,
+          nextSlotPlatforms: Array.isArray(data.nextSlotPlatforms) ? data.nextSlotPlatforms : [],
           loaded: true,
         };
         setPost(fetched);
         onFetched?.(fetched);
       })
       .catch(() => {});
-  }, [id, post?.loaded, onFetched]);
+  }, [id, post?.loaded, isStale, onFetched]);
 
   const href = `/admin/posts/${id}?from=assistant`;
   if (!post?.loaded) {
@@ -186,12 +260,25 @@ function InlinePostRef({
     );
   }
   const body = (post.body ?? "").replace(/\s+/g, " ").trim();
-  const isVideo = post.thumbUrl?.includes("/video/") || post.thumbUrl?.endsWith(".mp4") || post.thumbUrl?.endsWith(".mov");
+  // Prefer the explicit hasVideo flag from the API; fall back to URL hints for
+  // cached entries that pre-date that field.
+  const isVideo = post.hasVideo ?? (
+    post.thumbUrl?.includes("/video/") || post.thumbUrl?.endsWith(".mp4") || post.thumbUrl?.endsWith(".mov") || false
+  );
   const ContentIcon = isVideo ? Film : post.thumbUrl ? ImageIcon : Type;
   const contentLabel = isVideo ? "Video" : post.thumbUrl ? "Image" : "Text";
   const stars = post.stars ?? null;
-  const showReasons = post.reasons && post.reasons.length > 0;
+  // Hide reason chips that just restate the star rating (e.g. "5★") since the
+  // visual stars row already conveys that.
+  const visibleReasons = post.reasons?.filter((r) => !/^\s*\d+\s*★\s*$/.test(r));
+  const showReasons = visibleReasons && visibleReasons.length > 0;
   const showTags = !showReasons && post.tags && post.tags.length > 0;
+  // Prefer the platforms recorded on the matching planner slot (so chat mirrors
+  // what the planner shows). Fall back to the user's connected publishable
+  // platforms when the post has no slot yet.
+  const platformsToShow = post.nextSlotPlatforms && post.nextSlotPlatforms.length > 0
+    ? post.nextSlotPlatforms
+    : (userPlatforms ?? []);
 
   const isScheduled = schedule.status === "scheduled";
   const cardBg = isScheduled
@@ -287,8 +374,8 @@ function InlinePostRef({
       )}
 
       <div className="p-3.5 md:p-4">
-        {/* Row 1: type · leaf · stars (right side reserved for floating actions) */}
-        <div className={`flex items-center gap-1.5 ${!post.thumbUrl ? "pr-28" : ""}`}>
+        {/* Row 1: type · leaf · stars · ··· · Originally · Reposted */}
+        <div className={`flex flex-wrap items-center gap-1.5 ${!post.thumbUrl ? "pr-28" : ""}`}>
           <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#3a3832]">
             <ContentIcon className="h-3 w-3 text-[#7a7870]" />
             {contentLabel}
@@ -297,12 +384,28 @@ function InlinePostRef({
             <span title="Evergreen"><Leaf className="h-3.5 w-3.5 text-green-500" /></span>
           )}
           {stars != null && stars > 0 && (
-            <span className="inline-flex items-center gap-px" title={`${stars}/5`}>
-              {Array.from({ length: 5 }, (_, i) => (
-                <svg key={i} viewBox="0 0 16 16" className="h-3 w-3" fill={i < stars ? "#d4a23e" : "#ddd"}>
-                  <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
-                </svg>
-              ))}
+            <span
+              className="inline-flex items-center gap-0.5 rounded-[8px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
+              title={`${stars}/5`}
+            >
+              {stars}★
+            </span>
+          )}
+          <span className="flex-1" />
+          {post.originalDate && (
+            <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/50 px-2 py-0.5 text-[11px] text-[#7a7870]">
+              <Clock className="h-3 w-3" />
+              Originally {timeSinceShort(post.originalDate)}
+            </span>
+          )}
+          {typeof post.publishCount === "number" && (
+            <span className={`inline-flex items-center gap-1 rounded-[8px] border px-2 py-0.5 text-[11px] ${
+              post.publishCount > 0
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-[#eae7df] bg-white/50 text-[#7a7870]"
+            }`}>
+              <RotateCcw className="h-3 w-3" />
+              {post.publishCount > 0 ? `Reposted ${post.publishCount}×` : "Never reposted"}
             </span>
           )}
         </div>
@@ -317,7 +420,7 @@ function InlinePostRef({
         {/* Row 3: reason chips (or tag fallback) */}
         {showReasons && (
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            {post.reasons!.map((r, i) => (
+            {visibleReasons!.map((r, i) => (
               <span
                 key={i}
                 className={`inline-flex items-center rounded-[8px] border px-2 py-0.5 text-[11px] ${reasonChipStyle(r)}`}
@@ -341,42 +444,49 @@ function InlinePostRef({
         )}
       </div>
 
-      {/* Status footer — parallel to PlanSlotCard: dot · label · date · spacer · V/X */}
+      {/* Status footer — parallel to PlanSlotCard: dot · label · date · spacer · platforms · V/X */}
       {onSchedule && (
-        <div className={`flex items-center gap-2 border-t border-black/5 px-3.5 py-2.5 text-[13px] md:px-4 ${footerBg}`}>
+        <div className={`flex items-center gap-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
           <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
           <span className="font-semibold text-[#3a3832]">
             {isScheduled ? "Scheduled" : schedule.status === "error" ? "Schedule failed" : "Proposed"}
           </span>
           {isScheduled && (
-            <span className="text-[#7a7870]">
+            <span className="whitespace-nowrap text-[#7a7870]">
               · <span className="font-semibold text-[#161513]">{formatScheduledShort(schedule.scheduledAt)}</span>
             </span>
           )}
           <span className="flex-1" />
+          {dedupePlatforms(platformsToShow).map((p) => {
+            const meta = PLATFORM_META[p];
+            if (!meta) return null;
+            return <meta.Icon key={p} className={`h-4 w-4 shrink-0 ${meta.color}`} />;
+          })}
           {isScheduled ? (
-            <button
-              type="button"
-              onClick={handleUnscheduleClick}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]"
-              title="Cancel scheduled post"
-              aria-label="Cancel scheduled post"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            schedule.slotId && schedule.planId ? (
+              <button
+                type="button"
+                onClick={handleUnscheduleClick}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]"
+                title="Cancel scheduled post"
+                aria-label="Cancel scheduled post"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null
           ) : (
             <button
               type="button"
               onClick={handleScheduleClick}
               disabled={schedule.status === "sending"}
-              className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
               title={schedule.status === "error" ? "Try scheduling again" : "Schedule to next slot"}
               aria-label={schedule.status === "error" ? "Try scheduling again" : "Schedule to next slot"}
             >
               {schedule.status === "sending" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Check className="h-4 w-4" strokeWidth={2.5} />
+                <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
               )}
             </button>
           )}
@@ -393,6 +503,7 @@ function renderTextWithRefs(
   onEdit?: (postId: string) => void,
   onSchedule?: (postId: string) => Promise<{ slotId: string; planId: string; scheduledAt: string }>,
   onUnschedule?: (slotId: string, planId: string) => Promise<void>,
+  userPlatforms?: string[],
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
@@ -412,6 +523,7 @@ function renderTextWithRefs(
         onEdit={onEdit}
         onSchedule={onSchedule}
         onUnschedule={onUnschedule}
+        userPlatforms={userPlatforms}
       />,
     );
     last = start + match[0].length;
@@ -433,6 +545,25 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
   const [proposalsByToolUseId, setProposalsByToolUseId] = useState<Map<string, ProposalData>>(new Map());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  // User's connected publishing platforms — used as the suggested platforms on
+  // inline post cards. Fetched once on mount.
+  const [userPlatforms, setUserPlatforms] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/connections")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const publishable = new Set<string>(PUBLISHABLE_PLATFORMS);
+        const tokens = (data.tokens as { platform?: string }[] | undefined) ?? [];
+        const platforms = tokens
+          .map((t) => t.platform)
+          .filter((p): p is string => typeof p === "string" && publishable.has(p));
+        if (data?.youtube?.connected) platforms.push("YOUTUBE");
+        setUserPlatforms(dedupePlatforms(Array.from(new Set(platforms))));
+      })
+      .catch(() => {});
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Tracks whether the user is "pinned" to the bottom — when true, new content
@@ -475,6 +606,9 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         lifecycle: p.lifecycle ?? null,
         thumbUrl: p.thumbUrl ?? null,
         platformUrl: p.platformUrl ?? null,
+        hasVideo: p.hasVideo ?? false,
+        originalDate: p.originalDate ?? null,
+        publishCount: typeof p.publishCount === "number" ? p.publishCount : 0,
         loaded: true,
       });
     } else if (Array.isArray(data)) {
@@ -814,7 +948,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0 max-w-[85%] text-xl leading-normal whitespace-pre-wrap text-[#0d0d0d]">
-            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost, handleQuickSchedule, handleQuickUnschedule)}
+            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost, handleQuickSchedule, handleQuickUnschedule, userPlatforms)}
             <div className="mt-2 flex items-center gap-3">
               <CopyButton text={m.text.replace(/\[post:[a-zA-Z0-9_-]+\]/g, "").trim()} />
             </div>

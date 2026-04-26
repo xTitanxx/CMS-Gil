@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getMediaUrl, deleteObject } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
 import { refreshReadiness } from "@/lib/readiness-service";
+import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
 export async function GET(
   _req: NextRequest,
@@ -33,7 +35,55 @@ export async function GET(
     }))
   );
 
-  return NextResponse.json({ ...post, media: mediaWithUrls });
+  // Surface the next planner placement so chat clients can show date+time and
+  // offer cancel without a second round-trip. We prefer a real PublishRecord
+  // when one exists (gives the precise scheduled time), and fall back to any
+  // active WeeklyPlanSlot (PROPOSED/APPROVED/SCHEDULED) — for those we use the
+  // slot's day at the first fixed hour as a sensible default.
+  const todayMidnightUTC = new Date(Date.UTC(
+    new Date().getUTCFullYear(),
+    new Date().getUTCMonth(),
+    new Date().getUTCDate(),
+  ));
+  const upcomingSlot = await prisma.weeklyPlanSlot.findFirst({
+    where: {
+      postId: post.id,
+      status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+      day: { gte: todayMidnightUTC },
+    },
+    orderBy: { day: "asc" },
+    select: { id: true, planId: true, day: true, platforms: true },
+  });
+
+  const nextPending = post.publishes
+    .filter((p) => p.status === "PENDING" && p.scheduledAt && p.scheduledAt.getTime() > Date.now())
+    .sort((a, b) => a.scheduledAt!.getTime() - b.scheduledAt!.getTime())[0];
+
+  let nextScheduledAt: Date | null = nextPending?.scheduledAt ?? null;
+  let nextSlotId: string | null = null;
+  let nextPlanId: string | null = null;
+  let nextSlotPlatforms: string[] = [];
+
+  if (upcomingSlot) {
+    nextSlotId = upcomingSlot.id;
+    nextPlanId = upcomingSlot.planId;
+    nextSlotPlatforms = upcomingSlot.platforms;
+    if (!nextScheduledAt) {
+      // No PublishRecord yet — synthesize a UTC instant for the slot day at the
+      // first fixed slot hour (Asia/Jerusalem). This gives the chat card a
+      // sensible "Mon Apr 27 12pm" without inventing fake records.
+      nextScheduledAt = buildSlotDate(upcomingSlot.day, FIXED_SLOT_HOURS[0]);
+    }
+  }
+
+  return NextResponse.json({
+    ...post,
+    media: mediaWithUrls,
+    nextScheduledAt: nextScheduledAt?.toISOString() ?? null,
+    nextSlotId,
+    nextPlanId,
+    nextSlotPlatforms,
+  });
 }
 
 export async function PATCH(

@@ -54,20 +54,40 @@ export const SPINE_RING: Record<string, string> = {
 
 /* ── Platform config ── */
 
-export const PLATFORM_META: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
-  INSTAGRAM: { Icon: SiInstagram, color: "text-[#E1306C]", bg: "bg-[#FCE7F0]" },
-  instagram: { Icon: SiInstagram, color: "text-[#E1306C]", bg: "bg-[#FCE7F0]" },
-  FACEBOOK_PAGE: { Icon: SiFacebook, color: "text-[#1877F2]", bg: "bg-[#E5EFFE]" },
-  facebook_page: { Icon: SiFacebook, color: "text-[#1877F2]", bg: "bg-[#E5EFFE]" },
-  FACEBOOK: { Icon: SiFacebook, color: "text-[#1877F2]", bg: "bg-[#E5EFFE]" },
-  facebook: { Icon: SiFacebook, color: "text-[#1877F2]", bg: "bg-[#E5EFFE]" },
-  LINKEDIN: { Icon: FaLinkedin, color: "text-[#0A66C2]", bg: "bg-[#E3EEF9]" },
-  linkedin: { Icon: FaLinkedin, color: "text-[#0A66C2]", bg: "bg-[#E3EEF9]" },
-  YOUTUBE: { Icon: SiYoutube, color: "text-[#FF0000]", bg: "bg-[#FDE7E7]" },
-  youtube: { Icon: SiYoutube, color: "text-[#FF0000]", bg: "bg-[#FDE7E7]" },
-  TIKTOK: { Icon: SiTiktok, color: "text-[#111111]", bg: "bg-[#ECECEC]" },
-  tiktok: { Icon: SiTiktok, color: "text-[#111111]", bg: "bg-[#ECECEC]" },
+export const PLATFORM_META: Record<string, { Icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  INSTAGRAM: { Icon: SiInstagram, color: "text-[#E1306C]" },
+  instagram: { Icon: SiInstagram, color: "text-[#E1306C]" },
+  FACEBOOK_PAGE: { Icon: SiFacebook, color: "text-[#1877F2]" },
+  facebook_page: { Icon: SiFacebook, color: "text-[#1877F2]" },
+  FACEBOOK: { Icon: SiFacebook, color: "text-[#1877F2]" },
+  facebook: { Icon: SiFacebook, color: "text-[#1877F2]" },
+  LINKEDIN: { Icon: FaLinkedin, color: "text-[#0A66C2]" },
+  linkedin: { Icon: FaLinkedin, color: "text-[#0A66C2]" },
+  YOUTUBE: { Icon: SiYoutube, color: "text-[#FF0000]" },
+  youtube: { Icon: SiYoutube, color: "text-[#FF0000]" },
+  TIKTOK: { Icon: SiTiktok, color: "text-[#111111]" },
+  tiktok: { Icon: SiTiktok, color: "text-[#111111]" },
 };
+
+/** Map a platform key to its canonical brand identity so duplicates collapse
+ *  (e.g. FACEBOOK + FACEBOOK_PAGE both render the Facebook icon — show one). */
+function platformBrand(p: string): string {
+  const u = p.toUpperCase();
+  if (u === "FACEBOOK" || u === "FACEBOOK_PAGE") return "FACEBOOK";
+  return u;
+}
+
+export function dedupePlatforms(platforms: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of platforms) {
+    const brand = platformBrand(p);
+    if (seen.has(brand)) continue;
+    seen.add(brand);
+    out.push(p);
+  }
+  return out;
+}
 
 /* ── Helpers ── */
 
@@ -84,7 +104,9 @@ function timeSince(dateStr: string): string {
 
 function formatScheduleDate(dayStr: string): string {
   const d = new Date(dayStr + "T00:00:00Z");
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  // Compact: "Mon Apr 27" — no comma so it stays on one line in tight footers.
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
+    .replace(",", "");
 }
 
 /* ── Component ── */
@@ -132,21 +154,20 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
               className="shrink-0 transition-opacity hover:opacity-80"
             >
               {post.thumbUrl ? (
-                post.hasVideo ? (
-                  <video
-                    src={post.thumbUrl}
-                    muted
-                    preload="metadata"
-                    className="h-[72px] w-[72px] rounded-[10px] object-cover md:h-[92px] md:w-[92px]"
-                  />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
+                <div className="relative">
+                  {/* thumbUrl is .poster.jpg for videos, so render as <img> in both cases. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={post.thumbUrl}
                     alt=""
                     className="h-[72px] w-[72px] rounded-[10px] object-cover md:h-[92px] md:w-[92px]"
                   />
-                )
+                  {post.hasVideo && (
+                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white">
+                      <Film className="h-3 w-3" />
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[10px] bg-white/50 text-[#7a7870] md:h-[92px] md:w-[92px]">
                   <Film className="h-7 w-7" />
@@ -156,7 +177,7 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
             {/* Right column */}
             <div className="min-w-0 flex-1">
-              {/* Row 1: type · leaf · stars ··· platforms */}
+              {/* Row 1: type · leaf · stars ··· original-link */}
               <div className="flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#3a3832]">
                   <ContentIcon className="h-3 w-3 text-[#7a7870]" />
@@ -166,24 +187,25 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
                   <span title="Evergreen"><Leaf className="h-3.5 w-3.5 text-green-500" /></span>
                 )}
                 {post.rating != null && (
-                  <span className="inline-flex items-center gap-px" title={`${post.rating}/5`}>
-                    {Array.from({ length: 5 }, (_, i) => (
-                      <svg key={i} viewBox="0 0 16 16" className="h-3 w-3" fill={i < post.rating! ? "#d4a23e" : "#ddd"}>
-                        <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
-                      </svg>
-                    ))}
+                  <span
+                    className="inline-flex items-center gap-0.5 rounded-[8px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
+                    title={`${post.rating}/5`}
+                  >
+                    {post.rating}★
                   </span>
                 )}
                 <span className="flex-1" />
-                {slot.platforms.map((p) => {
-                  const meta = PLATFORM_META[p];
-                  if (!meta) return null;
-                  return (
-                    <span key={p} className={`inline-flex h-6 w-6 items-center justify-center rounded-[7px] ${meta.bg} md:h-7 md:w-7`}>
-                      <meta.Icon className={`h-3 w-3 ${meta.color} md:h-3.5 md:w-3.5`} />
-                    </span>
-                  );
-                })}
+                {post.platformUrl && (
+                  <a
+                    href={post.platformUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-[7px] border border-[#eae7df] bg-white text-[#7a7870] hover:text-[#3a3832] hover:bg-gray-50 transition-colors md:h-7 md:w-7"
+                    title="View original post"
+                  >
+                    <ExternalLink className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                  </a>
+                )}
               </div>
 
               {/* Row 2: text */}
@@ -212,14 +234,14 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
         {/* Bottom section — status + actions on one line, why this? below */}
         <div className={`border-t border-black/5 px-3.5 py-2.5 md:px-4 ${STATUS_FOOTER_BG[slot.status] ?? STATUS_FOOTER_BG.PROPOSED}`}>
-          {/* Single row: status + date + spacer + original link + actions */}
-          <div className="flex items-center gap-2 text-[13px]">
+          {/* Single row: status + date + spacer + platform icons + actions */}
+          <div className="flex items-center gap-1.5 text-[12px]">
             <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[slot.status] ?? STATUS_DOT.PROPOSED}`} />
             <span className="font-semibold text-[#3a3832]">
               {isScheduled ? "Scheduled" : "Proposed"}
             </span>
             {slot.day && (
-              <span className="text-[#7a7870]">
+              <span className="whitespace-nowrap text-[#7a7870]">
                 · <span className="font-semibold text-[#161513]">{formatScheduleDate(slot.day)}</span>
                 {slot.hour != null && (
                   <span className="ml-1 font-semibold text-[#161513]">{formatSlotHour(slot.hour)}</span>
@@ -229,27 +251,22 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
             <span className="flex-1" />
 
-            {post.platformUrl && (
-              <a
-                href={post.platformUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-[7px] border border-[#eae7df] bg-white px-2 py-1 text-[11px] text-[#7a7870] hover:text-[#3a3832] hover:bg-gray-50 transition-colors"
-                title="View original post"
-              >
-                <ExternalLink className="h-3 w-3" />
-                <span className="hidden sm:inline">Original</span>
-              </a>
-            )}
+            {dedupePlatforms(slot.platforms).map((p) => {
+              const meta = PLATFORM_META[p];
+              if (!meta) return null;
+              return (
+                <meta.Icon key={p} className={`h-4 w-4 shrink-0 ${meta.color}`} />
+              );
+            })}
 
             {isProposed && (
               <>
-                <button onClick={() => onRemove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Skip"><X className="h-4 w-4" /></button>
-                <button onClick={() => onApprove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80" title="Schedule"><Check className="h-4 w-4" strokeWidth={2.5} /></button>
+                <button onClick={() => onRemove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Skip"><X className="h-3.5 w-3.5" /></button>
+                <button onClick={() => onApprove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80" title="Schedule"><Check className="h-3.5 w-3.5" strokeWidth={2.5} /></button>
               </>
             )}
             {isScheduled && (
-              <button onClick={() => onRemove(slot.id)} className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Unschedule"><X className="h-4 w-4" /></button>
+              <button onClick={() => onRemove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Unschedule"><X className="h-3.5 w-3.5" /></button>
             )}
           </div>
 

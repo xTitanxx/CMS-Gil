@@ -15,6 +15,7 @@ import {
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { AiReasoningTip } from "./AiReasoningTip";
+import { formatSlotHour } from "@/lib/planner/format-slot";
 import type { PlanSlotData } from "@/lib/planner/types";
 
 /* ── Status styling ── */
@@ -220,6 +221,9 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
             {slot.day && (
               <span className="text-[#7a7870]">
                 · <span className="font-semibold text-[#161513]">{formatScheduleDate(slot.day)}</span>
+                {slot.hour != null && (
+                  <span className="ml-1 font-semibold text-[#161513]">{formatSlotHour(slot.hour)}</span>
+                )}
               </span>
             )}
 

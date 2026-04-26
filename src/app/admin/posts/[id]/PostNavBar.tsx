@@ -30,7 +30,10 @@ export function PostNavBar({
   actions,
 }: PostNavBarProps) {
   return (
-    <div className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/85 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/65 md:-top-8 md:-mx-8 md:-mt-8 md:gap-3 md:bg-white md:px-8 md:supports-[backdrop-filter]:bg-white">
+    <div
+      className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/85 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/65 md:-top-8 md:-mx-8 md:-mt-8 md:gap-3 md:bg-white md:px-8 md:supports-[backdrop-filter]:bg-white"
+      style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top, 0px))" }}
+    >
       <Link
         href={listHref}
         scroll={false}

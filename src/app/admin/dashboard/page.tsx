@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { PlannerDashboard } from "./PlannerDashboard";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import { getMondayUTC } from "@/lib/planner/week";
+import { FIXED_SLOT_HOURS } from "@/lib/planner/fixed-slots";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
 export const metadata = { title: "Dashboard" };
@@ -56,13 +57,27 @@ export default async function DashboardPage() {
 
   let initialPlan: WeeklyPlanData | null = null;
   if (plan) {
+    // Group slots by day so we can derive each slot's fixed-slot hour from its
+    // index within the day (matches the schedule route's assignment).
+    const slotsByDay = new Map<string, typeof plan.slots>();
+    for (const s of plan.slots) {
+      const dayKey = format(s.day, "yyyy-MM-dd");
+      const arr = slotsByDay.get(dayKey) ?? [];
+      arr.push(s);
+      slotsByDay.set(dayKey, arr);
+    }
+
     const slots: PlanSlotData[] = plan.slots.map((s) => {
       const firstMedia = s.post.media[0];
       const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
+      const dayKey = format(s.day, "yyyy-MM-dd");
+      const idx = (slotsByDay.get(dayKey) ?? [s]).indexOf(s);
+      const hour = FIXED_SLOT_HOURS[idx] ?? null;
 
       return {
         id: s.id,
         day: format(s.day, "yyyy-MM-dd"),
+        hour,
         postId: s.postId,
         status: s.status as PlanSlotData["status"],
         reasoning: s.reasoning,

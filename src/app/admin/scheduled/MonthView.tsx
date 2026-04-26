@@ -78,6 +78,9 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
                     className={`flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${statusClass(e.status)}`}
                     title={e.body}
                   >
+                    {e.time && (
+                      <span className="font-semibold tabular-nums">{e.time}</span>
+                    )}
                     {e.platforms.length > 0 ? (
                       <PlatformIcons platforms={e.platforms} size={11} />
                     ) : (

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
@@ -10,6 +11,8 @@ import { DELETE } from "./route";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deleteObject } from "@/lib/storage";
+
+const fakeReq = {} as NextRequest;
 
 const mockAuth = vi.mocked(auth);
 const mockFindFirst = vi.mocked(prisma.media.findFirst);
@@ -24,15 +27,15 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 401 when not authenticated", async () => {
-    mockAuth.mockResolvedValue(null);
-    const res = await DELETE({} as Request, makeParams("post1", "media1"));
+    mockAuth.mockResolvedValue(null as never);
+    const res = await DELETE(fakeReq, makeParams("post1", "media1"));
     expect(res.status).toBe(401);
   });
 
   it("returns 404 when media does not belong to user", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user1" } } as never);
     mockFindFirst.mockResolvedValue(null);
-    const res = await DELETE({} as Request, makeParams("post1", "media1"));
+    const res = await DELETE(fakeReq, makeParams("post1", "media1"));
     expect(res.status).toBe(404);
     expect(mockFindFirst).toHaveBeenCalledWith({
       where: { id: "media1", post: { id: "post1", userId: "user1" } },
@@ -49,7 +52,7 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
     mockDeleteObject.mockResolvedValue(undefined);
     mockDeleteRecord.mockResolvedValue({} as never);
 
-    const res = await DELETE({} as Request, makeParams("post1", "media1"));
+    const res = await DELETE(fakeReq, makeParams("post1", "media1"));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -69,7 +72,7 @@ describe("DELETE /api/posts/[id]/media/[mediaId]", () => {
     mockDeleteObject.mockRejectedValue(new Error("Cloudinary error"));
     mockDeleteRecord.mockResolvedValue({} as never);
 
-    const res = await DELETE({} as Request, makeParams("post1", "media1"));
+    const res = await DELETE(fakeReq, makeParams("post1", "media1"));
     expect(res.status).toBe(200);
     expect(mockDeleteRecord).toHaveBeenCalled();
     consoleSpy.mockRestore();

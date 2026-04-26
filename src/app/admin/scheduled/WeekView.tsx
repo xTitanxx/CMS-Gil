@@ -18,9 +18,11 @@ export function WeekView({ cursor, entries, onDayClick, selectedDay }: Props) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto md:overflow-x-visible snap-x snap-mandatory">
+        <div className="min-w-[980px] md:min-w-0">
       <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
         {days.map((day) => (
-          <div key={format(day, "yyyy-MM-dd")} className="px-2 py-2 text-center">
+          <div key={format(day, "yyyy-MM-dd")} className="snap-start px-2 py-2 text-center">
             <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
               {WEEKDAYS[day.getDay()]}
             </div>
@@ -45,7 +47,7 @@ export function WeekView({ cursor, entries, onDayClick, selectedDay }: Props) {
             <div
               key={key}
               onClick={() => onDayClick(day)}
-              className={`flex h-[calc(100vh-16rem)] min-h-[420px] cursor-pointer flex-col border-r border-gray-200 transition-colors ${
+              className={`flex h-[calc(100vh-16rem)] min-h-[420px] cursor-pointer flex-col snap-start border-r border-gray-200 transition-colors ${
                 isSelected ? "bg-blue-50" : "bg-white hover:bg-gray-50"
               }`}
             >
@@ -94,6 +96,8 @@ export function WeekView({ cursor, entries, onDayClick, selectedDay }: Props) {
             </div>
           );
         })}
+      </div>
+        </div>
       </div>
     </div>
   );

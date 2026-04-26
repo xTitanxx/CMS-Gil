@@ -1,6 +1,13 @@
-import { format, isSameMonth, isSameDay, isToday } from "date-fns";
+import {
+  eachDayOfInterval,
+  endOfMonth,
+  format,
+  isSameDay,
+  isToday,
+  startOfMonth,
+} from "date-fns";
 import type { CalendarEntry } from "./types";
-import { getGridDays, groupEntriesByDate } from "./calendar-utils";
+import { groupEntriesByDate } from "./calendar-utils";
 import { PlatformIcons } from "./PlatformIcons";
 
 interface Props {
@@ -13,7 +20,11 @@ interface Props {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
-  const days = getGridDays("month", cursor);
+  const days = eachDayOfInterval({
+    start: startOfMonth(cursor),
+    end: endOfMonth(cursor),
+  });
+  const firstDayOffset = days[0].getDay();
   const byDate = groupEntriesByDate(entries);
 
   return (
@@ -29,10 +40,9 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
         ))}
       </div>
       <div className="grid grid-cols-7">
-        {days.map((day) => {
+        {days.map((day, idx) => {
           const key = format(day, "yyyy-MM-dd");
           const dayEntries = byDate[key] ?? [];
-          const inMonth = isSameMonth(day, cursor);
           const isSelected = selectedDay ? isSameDay(day, selectedDay) : false;
           const today = isToday(day);
           return (
@@ -40,9 +50,8 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
               key={key}
               type="button"
               onClick={() => onDayClick(day)}
-              className={`min-h-[100px] border-b border-r border-gray-200 p-1.5 text-left transition-colors ${
-                inMonth ? "bg-white" : "bg-gray-50/60"
-              } ${
+              style={idx === 0 ? { gridColumnStart: firstDayOffset + 1 } : undefined}
+              className={`min-h-[100px] border-b border-r border-gray-200 bg-white p-1.5 text-left transition-colors ${
                 isSelected
                   ? "ring-2 ring-inset ring-blue-600"
                   : "hover:bg-gray-50"
@@ -51,11 +60,7 @@ export function MonthView({ cursor, entries, onDayClick, selectedDay }: Props) {
               <div className="flex items-center justify-between">
                 <span
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                    today
-                      ? "bg-blue-600 text-white"
-                      : inMonth
-                        ? "text-gray-900"
-                        : "text-gray-400"
+                    today ? "bg-blue-600 text-white" : "text-gray-900"
                   }`}
                 >
                   {format(day, "d")}

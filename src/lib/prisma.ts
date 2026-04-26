@@ -38,6 +38,23 @@ function createPrismaClient() {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+// Lazy proxy: defer createPrismaClient() until something actually reads a
+// property on the export. Two reasons:
+//   1. Importing this module from a unit test that mocks @/lib/prisma should
+//      never hit createPrismaClient — but vitest's module load still touches
+//      the export when the source file under test imports it. With eager
+//      init, every test run without DATABASE_URL set throws at module load.
+//   2. Lets transitively-imported modules in build/typecheck contexts not
+//      require a connection string.
+function getClient(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+  return globalForPrisma.prisma;
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getClient(), prop, receiver);
+  },
+}) as PrismaClient;

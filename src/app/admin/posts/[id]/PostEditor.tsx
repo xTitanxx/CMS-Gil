@@ -89,9 +89,9 @@ function formatDatePretty(iso: string): string {
   return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    year: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -272,7 +272,7 @@ export function PostEditor({
 
         {/* Compact meta bar */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-2.5 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
             <Calendar className="h-3 w-3 text-gray-400" />
             {editingDate ? (
               <input
@@ -287,36 +287,16 @@ export function PostEditor({
               <button
                 type="button"
                 onClick={() => setEditingDate(true)}
-                className="rounded px-1 py-0.5 text-gray-700 hover:bg-gray-100"
+                className="whitespace-nowrap rounded px-1 py-0.5 text-gray-700 hover:bg-gray-100"
               >
                 {formatDatePretty(date) || "Set date"}
               </button>
             )}
           </span>
           <span className="text-gray-300">·</span>
-          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
-            {(["POST", "REEL", "STORY"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={async () => {
-                  setPostType(t);
-                  await fetch(`/api/posts/${postId}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ postType: t }),
-                  });
-                }}
-                className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                  postType === t
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {t === "POST" ? "Post" : t === "REEL" ? "Reel" : "Story"}
-              </button>
-            ))}
-          </div>
+          <span className="whitespace-nowrap rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+            {postType === "POST" ? "Post" : postType === "REEL" ? "Reel" : "Story"}
+          </span>
           {currentPlatformUrl && (
             <>
               <span className="text-gray-300">·</span>
@@ -324,7 +304,7 @@ export function PostEditor({
                 href={currentPlatformUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                className="inline-flex items-center gap-1 whitespace-nowrap text-blue-600 hover:underline"
               >
                 Original <ExternalLink className="h-3 w-3" />
               </a>
@@ -531,6 +511,34 @@ export function PostEditor({
                 initialLifecycle={initialLifecycle}
                 initialSeason={initialSeason}
               />
+            </div>
+
+            {/* Type */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-500">Type</span>
+              <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-0.5">
+                {(["POST", "REEL", "STORY"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={async () => {
+                      setPostType(t);
+                      await fetch(`/api/posts/${postId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ postType: t }),
+                      });
+                    }}
+                    className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                      postType === t
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {t === "POST" ? "Post" : t === "REEL" ? "Reel" : "Story"}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Source */}

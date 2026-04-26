@@ -170,7 +170,9 @@ export default async function PostDetailPage({
         }
         actions={
           <div className="flex items-center gap-2">
-            <CopyIdChip id={id} />
+            <span className="hidden sm:inline-flex">
+              <CopyIdChip id={id} />
+            </span>
             <DeleteButton postId={id} />
           </div>
         }

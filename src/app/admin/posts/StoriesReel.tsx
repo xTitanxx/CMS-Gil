@@ -108,7 +108,7 @@ export function StoriesReel() {
           <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
-              New Post
+              <span className="hidden sm:inline">New Post</span>
             </Button>
           </Link>
         </div>

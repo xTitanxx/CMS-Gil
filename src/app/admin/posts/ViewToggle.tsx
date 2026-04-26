@@ -44,7 +44,7 @@ export function ViewToggle() {
         aria-pressed={current === "list"}
       >
         <List className="h-3.5 w-3.5" />
-        List
+        <span className="hidden sm:inline">List</span>
       </button>
       <button
         type="button"
@@ -57,7 +57,7 @@ export function ViewToggle() {
         aria-pressed={current === "feed"}
       >
         <Rows className="h-3.5 w-3.5" />
-        Feed
+        <span className="hidden sm:inline">Feed</span>
       </button>
     </div>
   );

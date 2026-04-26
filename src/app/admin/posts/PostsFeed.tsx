@@ -375,8 +375,8 @@ export function PostsFeed() {
 
       {/* Search + filters toolbar */}
       <div className="space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2">
+          <div className="relative min-w-0 flex-1" style={{ minWidth: "160px" }}>
             {aiMode ? (
               <Sparkles className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-purple-500" />
             ) : (

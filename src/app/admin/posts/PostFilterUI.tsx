@@ -1,11 +1,49 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   SlidersHorizontal,
   ArrowUpDown,
   CalendarDays,
 } from "lucide-react";
+
+/**
+ * Clamps a `right-0`-anchored dropdown so it stays within the viewport.
+ * Returns the inline `right` value (in px) to apply to the menu element.
+ * Falls back to 0 (button-anchored) when the dropdown already fits.
+ */
+function useClampedDropdown(
+  open: boolean,
+  parentRef: React.RefObject<HTMLDivElement | null>,
+  menuRef: React.RefObject<HTMLDivElement | null>,
+) {
+  const [right, setRight] = useState(0);
+  useLayoutEffect(() => {
+    if (!open) return;
+    function update() {
+      const parent = parentRef.current;
+      const menu = menuRef.current;
+      if (!parent || !menu) return;
+      const parentRect = parent.getBoundingClientRect();
+      const menuWidth = menu.offsetWidth;
+      const margin = 8;
+      const vw = window.innerWidth;
+      // dropdown.right (screen) = parent.right - r; dropdown.left = parent.right - r - menuWidth
+      // want dropdown.right <= vw - margin → r >= parent.right - vw + margin (minR)
+      // want dropdown.left >= margin     → r <= parent.right - menuWidth - margin (maxR)
+      const minR = parentRect.right - vw + margin;
+      const maxR = parentRect.right - menuWidth - margin;
+      let r = 0;
+      if (r < minR) r = minR;
+      if (r > maxR) r = maxR;
+      setRight(r);
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open, parentRef, menuRef]);
+  return right;
+}
 import {
   CONTENT_CATEGORIES,
   AUDIO_CATEGORIES,
@@ -359,6 +397,8 @@ function toggleIn<T extends string>(
 export function FilterMenu(props: FilterMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const clampedRight = useClampedDropdown(open, ref, menuRef);
 
   useEffect(() => {
     if (!open) return;
@@ -397,7 +437,11 @@ export function FilterMenu(props: FilterMenuProps) {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5">
+        <div
+          ref={menuRef}
+          style={{ right: clampedRight }}
+          className="absolute top-full z-20 mt-1.5 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
+        >
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-900">Filters</span>
@@ -623,6 +667,8 @@ export function SortMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const clampedRight = useClampedDropdown(open, ref, menuRef);
   useEffect(() => {
     if (!open) return;
     function onClick(e: MouseEvent) {
@@ -644,7 +690,11 @@ export function SortMenu({
         Sort
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+        <div
+          ref={menuRef}
+          style={{ right: clampedRight }}
+          className="absolute top-full z-20 mt-1 w-56 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-2 shadow-lg"
+        >
           {SORT_OPTIONS.map((o) => (
             <RadioRow
               key={o.value}
@@ -675,6 +725,8 @@ export function JumpToDateMenu({
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const clampedRight = useClampedDropdown(open, ref, menuRef);
   useEffect(() => {
     if (!open) return;
     function onClick(e: MouseEvent) {
@@ -699,7 +751,11 @@ export function JumpToDateMenu({
         Jump to date
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+        <div
+          ref={menuRef}
+          style={{ right: clampedRight }}
+          className="absolute top-full z-20 mt-1 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+        >
           <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-gray-400">
             Jump to
           </label>

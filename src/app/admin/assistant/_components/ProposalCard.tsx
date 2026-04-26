@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Film, ImageIcon, Type, Leaf, Check, X, Loader2, Sparkles } from "lucide-react";
-import { PLATFORM_META } from "../../dashboard/PlanSlotCard";
+import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
+import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
+import { formatSlotHour } from "@/lib/planner/format-slot";
 
 export interface ProposalData {
   kind: "proposal";
@@ -29,12 +31,13 @@ export interface ProposalData {
 
 function formatDay(day: string): string {
   const d = new Date(day + "T00:00:00Z");
+  // Compact: "Mon Apr 27" — no comma so it stays on one line in tight footers.
   return d.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
     timeZone: "UTC",
-  });
+  }).replace(",", "");
 }
 
 interface ProposalCardProps {
@@ -122,32 +125,14 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
             </span>
           )}
           {post.rating != null && (
-            <span className="inline-flex items-center gap-px" title={`${post.rating}/5`}>
-              {Array.from({ length: 5 }, (_, i) => (
-                <svg
-                  key={i}
-                  viewBox="0 0 16 16"
-                  className="h-3 w-3"
-                  fill={i < (post.rating ?? 0) ? "#d4a23e" : "#ddd"}
-                >
-                  <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
-                </svg>
-              ))}
+            <span
+              className="inline-flex items-center gap-0.5 rounded-[8px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
+              title={`${post.rating}/5`}
+            >
+              {post.rating}★
             </span>
           )}
           <span className="flex-1" />
-          {proposal.platforms.map((p) => {
-            const meta = PLATFORM_META[p];
-            if (!meta) return null;
-            return (
-              <span
-                key={p}
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-[7px] ${meta.bg}`}
-              >
-                <meta.Icon className={`h-3 w-3 ${meta.color}`} />
-              </span>
-            );
-          })}
         </div>
 
         {body ? (
@@ -159,13 +144,14 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
         )}
       </div>
 
-      <div className={`flex items-center gap-2 border-t border-black/5 px-3.5 py-2.5 text-[13px] md:px-4 ${footerBg}`}>
+      <div className={`flex items-center gap-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
         <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
         <span className="font-semibold text-[#3a3832]">
           {isAdded ? "Scheduled" : state.status === "error" ? "Add failed" : "Proposed"}
         </span>
-        <span className="text-[#7a7870]">
+        <span className="whitespace-nowrap text-[#7a7870]">
           · <span className="font-semibold text-[#161513]">{formatDay(proposal.day)}</span>
+          <span className="ml-1 font-semibold text-[#161513]">{formatSlotHour(FIXED_SLOT_HOURS[0])}</span>
         </span>
 
         {proposal.reasoning && (
@@ -182,29 +168,35 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
 
         <span className="flex-1" />
 
+        {dedupePlatforms(proposal.platforms).map((p) => {
+          const meta = PLATFORM_META[p];
+          if (!meta) return null;
+          return <meta.Icon key={p} className={`h-4 w-4 shrink-0 ${meta.color}`} />;
+        })}
+
         {isAdded ? (
           <button
             type="button"
             onClick={handleCancel}
             disabled={!onCancel}
-            className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832] disabled:opacity-60"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832] disabled:opacity-60"
             title="Remove from planner"
             aria-label="Remove from planner"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         ) : (
           <button
             onClick={handleApprove}
             disabled={state.status === "sending"}
-            className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
             title={state.status === "error" ? "Try again" : "Add to planner"}
             aria-label={state.status === "error" ? "Try again" : "Add to planner"}
           >
             {state.status === "sending" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Check className="h-4 w-4" strokeWidth={2.5} />
+              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
             )}
           </button>
         )}

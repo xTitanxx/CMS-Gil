@@ -66,10 +66,27 @@ export async function PATCH(
       if (!slotId) {
         return NextResponse.json({ error: "slotId required" }, { status: 400 });
       }
+      // Look up the slot before mutating so we can also cancel any
+      // PublishRecords created by quick-schedule. Without this, removing a
+      // SCHEDULED slot only flips the planner UI — the post still publishes.
+      const slot = await prisma.weeklyPlanSlot.findFirst({
+        where: { id: slotId, planId },
+        select: { postId: true, platforms: true, status: true },
+      });
       await prisma.weeklyPlanSlot.updateMany({
         where: { id: slotId, planId },
         data: { status: "SKIPPED" },
       });
+      if (slot && slot.status === "SCHEDULED" && slot.platforms.length > 0) {
+        await prisma.publishRecord.updateMany({
+          where: {
+            postId: slot.postId,
+            platform: { in: slot.platforms as never[] },
+            status: "PENDING",
+          },
+          data: { status: "CANCELLED" },
+        });
+      }
       break;
     }
 

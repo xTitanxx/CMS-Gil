@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Film, ImageIcon, Type, Leaf, Check, Loader2, Sparkles } from "lucide-react";
+import { Film, ImageIcon, Type, Leaf, Check, X, Loader2, Sparkles } from "lucide-react";
 import { PLATFORM_META } from "../../dashboard/PlanSlotCard";
 
 export interface ProposalData {
@@ -39,112 +39,130 @@ function formatDay(day: string): string {
 
 interface ProposalCardProps {
   proposal: ProposalData;
-  onApprove: (proposal: ProposalData) => Promise<void>;
+  onApprove: (proposal: ProposalData) => Promise<{ slotId: string; planId: string }>;
+  onCancel?: (slotId: string, planId: string) => Promise<void>;
 }
 
-export function ProposalCard({ proposal, onApprove }: ProposalCardProps) {
-  const [status, setStatus] = useState<"idle" | "sending" | "added" | "error">("idle");
+type ProposalState =
+  | { status: "idle" }
+  | { status: "sending" }
+  | { status: "added"; slotId: string; planId: string }
+  | { status: "error" };
+
+export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProps) {
+  const [state, setState] = useState<ProposalState>({ status: "idle" });
   const [showReason, setShowReason] = useState(false);
 
   const post = proposal.post;
   const ContentIcon = post.hasVideo ? Film : post.mediaCount > 0 ? ImageIcon : Type;
   const contentLabel = post.hasVideo ? "Video" : post.mediaCount > 0 ? "Image" : "Text";
   const body = post.body.replace(/\s+/g, " ").trim();
-  const truncated = body.length > 140 ? body.slice(0, 140).trimEnd() + "…" : body;
+
+  const isAdded = state.status === "added";
+  const cardBg = isAdded
+    ? "border-[#d6e4d3] bg-[#f0f6ef]"
+    : "border-[#ebe3cc] bg-[#fbf7ee]";
+  const footerBg = isAdded ? "bg-[#e6ede5]/60" : "bg-[#f5f0e3]/60";
+  const dotBg = isAdded ? "bg-green-500" : "bg-[#d4a23e]";
 
   async function handleApprove() {
-    if (status !== "idle") return;
-    setStatus("sending");
+    if (state.status === "sending" || state.status === "added") return;
+    setState({ status: "sending" });
     try {
-      await onApprove(proposal);
-      setStatus("added");
+      const result = await onApprove(proposal);
+      setState({ status: "added", slotId: result.slotId, planId: result.planId });
     } catch {
-      setStatus("error");
+      setState({ status: "error" });
+    }
+  }
+
+  async function handleCancel() {
+    if (state.status !== "added" || !onCancel) return;
+    const { slotId, planId } = state;
+    setState({ status: "sending" });
+    try {
+      await onCancel(slotId, planId);
+      setState({ status: "idle" });
+    } catch {
+      setState({ status: "error" });
     }
   }
 
   return (
-    <div className="my-2 overflow-hidden rounded-[14px] border border-[#ebe3cc] bg-[#fbf7ee] transition-shadow hover:shadow-md">
-      <div className="p-3.5">
-        <div className="flex gap-3">
-          <Link
-            href={`/admin/posts/${post.id}?from=assistant`}
-            className="shrink-0 transition-opacity hover:opacity-80"
-          >
-            {post.thumbUrl ? (
-              post.hasVideo ? (
-                <video
-                  src={post.thumbUrl}
-                  muted
-                  preload="metadata"
-                  className="h-[72px] w-[72px] rounded-[10px] object-cover"
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.thumbUrl}
-                  alt=""
-                  className="h-[72px] w-[72px] rounded-[10px] object-cover"
-                />
-              )
-            ) : (
-              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-[10px] bg-white/50 text-[#7a7870]">
-                <Film className="h-7 w-7" />
-              </div>
-            )}
-          </Link>
+    <div className={`my-2 overflow-hidden rounded-[14px] border transition-shadow hover:shadow-md ${cardBg}`}>
+      {post.thumbUrl ? (
+        <Link
+          href={`/admin/posts/${post.id}?from=assistant`}
+          className="relative block w-full overflow-hidden bg-gray-100"
+        >
+          {post.hasVideo ? (
+            <video
+              src={`${post.thumbUrl}#t=0.1`}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-72 w-full object-cover md:h-80"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
+          )}
+        </Link>
+      ) : null}
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#3a3832]">
-                <ContentIcon className="h-3 w-3 text-[#7a7870]" />
-                {contentLabel}
+      <div className="p-3.5 md:p-4">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 rounded-[8px] border border-[#eae7df] bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#3a3832]">
+            <ContentIcon className="h-3 w-3 text-[#7a7870]" />
+            {contentLabel}
+          </span>
+          {post.lifecycle === "EVERGREEN" && (
+            <span title="Evergreen">
+              <Leaf className="h-3.5 w-3.5 text-green-500" />
+            </span>
+          )}
+          {post.rating != null && (
+            <span className="inline-flex items-center gap-px" title={`${post.rating}/5`}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <svg
+                  key={i}
+                  viewBox="0 0 16 16"
+                  className="h-3 w-3"
+                  fill={i < (post.rating ?? 0) ? "#d4a23e" : "#ddd"}
+                >
+                  <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
+                </svg>
+              ))}
+            </span>
+          )}
+          <span className="flex-1" />
+          {proposal.platforms.map((p) => {
+            const meta = PLATFORM_META[p];
+            if (!meta) return null;
+            return (
+              <span
+                key={p}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-[7px] ${meta.bg}`}
+              >
+                <meta.Icon className={`h-3 w-3 ${meta.color}`} />
               </span>
-              {post.lifecycle === "EVERGREEN" && (
-                <span title="Evergreen">
-                  <Leaf className="h-3.5 w-3.5 text-green-500" />
-                </span>
-              )}
-              {post.rating != null && (
-                <span className="inline-flex items-center gap-px" title={`${post.rating}/5`}>
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <svg
-                      key={i}
-                      viewBox="0 0 16 16"
-                      className="h-3 w-3"
-                      fill={i < (post.rating ?? 0) ? "#d4a23e" : "#ddd"}
-                    >
-                      <path d="M8 1.12l1.95 3.95 4.36.64-3.16 3.08.75 4.33L8 10.93l-3.9 2.19.75-4.33L1.69 5.71l4.36-.64L8 1.12z" />
-                    </svg>
-                  ))}
-                </span>
-              )}
-              <span className="flex-1" />
-              {proposal.platforms.map((p) => {
-                const meta = PLATFORM_META[p];
-                if (!meta) return null;
-                return (
-                  <span
-                    key={p}
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-[7px] ${meta.bg}`}
-                  >
-                    <meta.Icon className={`h-3 w-3 ${meta.color}`} />
-                  </span>
-                );
-              })}
-            </div>
-
-            <Link href={`/admin/posts/${post.id}?from=assistant`} className="mt-1.5 block">
-              <p className="line-clamp-2 text-[14px] leading-[1.45] text-[#161513]">{truncated}</p>
-            </Link>
-          </div>
+            );
+          })}
         </div>
+
+        {body ? (
+          <Link href={`/admin/posts/${post.id}?from=assistant`} className="mt-2.5 block">
+            <p className="line-clamp-[6] text-[15px] leading-[1.55] text-[#161513]">{body}</p>
+          </Link>
+        ) : (
+          <p className="mt-2.5 text-[13px] italic text-gray-400">No caption</p>
+        )}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-black/5 bg-[#f5f0e3]/60 px-3.5 py-2.5 text-[13px]">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-[#d4a23e]" />
+      <div className={`flex items-center gap-2 border-t border-black/5 px-3.5 py-2.5 text-[13px] md:px-4 ${footerBg}`}>
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
         <span className="font-semibold text-[#3a3832]">
-          {status === "added" ? "Added to planner" : "Proposed"}
+          {isAdded ? "Scheduled" : state.status === "error" ? "Add failed" : "Proposed"}
         </span>
         <span className="text-[#7a7870]">
           · <span className="font-semibold text-[#161513]">{formatDay(proposal.day)}</span>
@@ -164,28 +182,26 @@ export function ProposalCard({ proposal, onApprove }: ProposalCardProps) {
 
         <span className="flex-1" />
 
-        {status === "added" ? (
-          <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] bg-green-100 px-3 text-[12px] font-medium text-green-700">
-            <Check className="h-4 w-4" strokeWidth={2.5} />
-            Added
-          </span>
-        ) : status === "error" ? (
+        {isAdded ? (
           <button
-            onClick={handleApprove}
-            className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-red-200 bg-white px-3 text-[12px] font-medium text-red-600 hover:bg-red-50"
-            title="Try again"
+            type="button"
+            onClick={handleCancel}
+            disabled={!onCancel}
+            className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832] disabled:opacity-60"
+            title="Remove from planner"
+            aria-label="Remove from planner"
           >
-            Retry
+            <X className="h-4 w-4" />
           </button>
         ) : (
           <button
             onClick={handleApprove}
-            disabled={status === "sending"}
+            disabled={state.status === "sending"}
             className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
-            title="Add to planner"
-            aria-label="Add to planner"
+            title={state.status === "error" ? "Try again" : "Add to planner"}
+            aria-label={state.status === "error" ? "Try again" : "Add to planner"}
           >
-            {status === "sending" ? (
+            {state.status === "sending" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Check className="h-4 w-4" strokeWidth={2.5} />

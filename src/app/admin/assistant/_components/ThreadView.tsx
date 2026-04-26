@@ -111,23 +111,34 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
   );
 }
 
+type ScheduleState =
+  | { status: "idle" }
+  | { status: "sending" }
+  | { status: "scheduled"; slotId: string; planId: string; scheduledAt: string }
+  | { status: "error"; message?: string };
+
+function formatScheduledShort(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 function InlinePostRef({
   post: initialPost,
   id,
   onFetched,
   onEdit,
   onSchedule,
+  onUnschedule,
 }: {
   post: CachedPost | undefined;
   id: string;
   onFetched?: (post: CachedPost) => void;
   onEdit?: (postId: string) => void;
-  onSchedule?: (postId: string) => Promise<void>;
+  onSchedule?: (postId: string) => Promise<{ slotId: string; planId: string; scheduledAt: string }>;
+  onUnschedule?: (slotId: string, planId: string) => Promise<void>;
 }) {
   const [post, setPost] = useState(initialPost);
-  const [scheduleStatus, setScheduleStatus] = useState<
-    "idle" | "sending" | "scheduled" | "error"
-  >("idle");
+  const [schedule, setSchedule] = useState<ScheduleState>({ status: "idle" });
   const fetchedRef = useRef(false);
 
   // Sync with prop updates (e.g. cache populated after initial render)
@@ -182,59 +193,49 @@ function InlinePostRef({
   const showReasons = post.reasons && post.reasons.length > 0;
   const showTags = !showReasons && post.tags && post.tags.length > 0;
 
+  const isScheduled = schedule.status === "scheduled";
+  const cardBg = isScheduled
+    ? "border-[#d6e4d3] bg-[#f0f6ef]"
+    : "border-[#ebe3cc] bg-[#fbf7ee]";
+  const footerBg = isScheduled ? "bg-[#e6ede5]/60" : "bg-[#f5f0e3]/60";
+  const dotBg = isScheduled ? "bg-green-500" : "bg-[#d4a23e]";
+
+  async function handleScheduleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onSchedule) return;
+    if (schedule.status === "sending" || schedule.status === "scheduled") return;
+    setSchedule({ status: "sending" });
+    try {
+      const result = await onSchedule(id);
+      setSchedule({ status: "scheduled", ...result });
+    } catch (err) {
+      setSchedule({ status: "error", message: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  async function handleUnscheduleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (schedule.status !== "scheduled" || !onUnschedule) return;
+    const { slotId, planId } = schedule;
+    setSchedule({ status: "sending" });
+    try {
+      await onUnschedule(slotId, planId);
+      setSchedule({ status: "idle" });
+    } catch (err) {
+      // Restore prior scheduled state so the user can retry
+      setSchedule({ status: "error", message: err instanceof Error ? err.message : undefined });
+    }
+  }
+
   return (
     <a
       href={href}
-      className="group/card relative my-2 block overflow-hidden rounded-[14px] border border-[#eae7df] bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-300"
+      className={`group/card relative my-2 block overflow-hidden rounded-[14px] border shadow-sm transition-shadow hover:shadow-md ${cardBg}`}
     >
+      {/* Floating actions — edit / external / copy. Schedule moved to footer. */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-        {onSchedule && (
-          <button
-            type="button"
-            onClick={async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (scheduleStatus === "sending" || scheduleStatus === "scheduled") return;
-              setScheduleStatus("sending");
-              try {
-                await onSchedule(id);
-                setScheduleStatus("scheduled");
-              } catch {
-                setScheduleStatus("error");
-              }
-            }}
-            disabled={scheduleStatus === "sending" || scheduleStatus === "scheduled"}
-            className={`rounded-md bg-white/80 backdrop-blur-sm p-1.5 shadow-sm transition-colors ${
-              scheduleStatus === "scheduled"
-                ? "text-emerald-600 opacity-100"
-                : scheduleStatus === "error"
-                ? "text-red-500 opacity-100 hover:text-red-600"
-                : "text-emerald-600 opacity-70 hover:opacity-100 hover:text-emerald-700"
-            }`}
-            aria-label={
-              scheduleStatus === "scheduled"
-                ? "Scheduled"
-                : scheduleStatus === "error"
-                ? "Schedule failed — click to retry"
-                : "Schedule to next slot"
-            }
-            title={
-              scheduleStatus === "scheduled"
-                ? "Scheduled"
-                : scheduleStatus === "error"
-                ? "Schedule failed — click to retry"
-                : "Schedule to next slot"
-            }
-          >
-            {scheduleStatus === "sending" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : scheduleStatus === "error" ? (
-              <X className="h-4 w-4" />
-            ) : (
-              <Check className="h-4 w-4" />
-            )}
-          </button>
-        )}
         {onEdit && (
           <button
             type="button"
@@ -267,6 +268,7 @@ function InlinePostRef({
           className="rounded-md bg-white/80 backdrop-blur-sm p-1.5 opacity-70 hover:opacity-100 shadow-sm"
         />
       </div>
+
       {post.thumbUrl && (
         <div className="relative w-full overflow-hidden bg-gray-100">
           {isVideo ? (
@@ -283,6 +285,7 @@ function InlinePostRef({
           )}
         </div>
       )}
+
       <div className="p-3.5 md:p-4">
         {/* Row 1: type · leaf · stars (right side reserved for floating actions) */}
         <div className={`flex items-center gap-1.5 ${!post.thumbUrl ? "pr-28" : ""}`}>
@@ -337,6 +340,48 @@ function InlinePostRef({
           </div>
         )}
       </div>
+
+      {/* Status footer — parallel to PlanSlotCard: dot · label · date · spacer · V/X */}
+      {onSchedule && (
+        <div className={`flex items-center gap-2 border-t border-black/5 px-3.5 py-2.5 text-[13px] md:px-4 ${footerBg}`}>
+          <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
+          <span className="font-semibold text-[#3a3832]">
+            {isScheduled ? "Scheduled" : schedule.status === "error" ? "Schedule failed" : "Proposed"}
+          </span>
+          {isScheduled && (
+            <span className="text-[#7a7870]">
+              · <span className="font-semibold text-[#161513]">{formatScheduledShort(schedule.scheduledAt)}</span>
+            </span>
+          )}
+          <span className="flex-1" />
+          {isScheduled ? (
+            <button
+              type="button"
+              onClick={handleUnscheduleClick}
+              className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]"
+              title="Cancel scheduled post"
+              aria-label="Cancel scheduled post"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleScheduleClick}
+              disabled={schedule.status === "sending"}
+              className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80 disabled:opacity-60"
+              title={schedule.status === "error" ? "Try scheduling again" : "Schedule to next slot"}
+              aria-label={schedule.status === "error" ? "Try scheduling again" : "Schedule to next slot"}
+            >
+              {schedule.status === "sending" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" strokeWidth={2.5} />
+              )}
+            </button>
+          )}
+        </div>
+      )}
     </a>
   );
 }
@@ -346,7 +391,8 @@ function renderTextWithRefs(
   cache: Map<string, CachedPost>,
   onPostFetched?: (post: CachedPost) => void,
   onEdit?: (postId: string) => void,
-  onSchedule?: (postId: string) => Promise<void>,
+  onSchedule?: (postId: string) => Promise<{ slotId: string; planId: string; scheduledAt: string }>,
+  onUnschedule?: (slotId: string, planId: string) => Promise<void>,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let last = 0;
@@ -365,6 +411,7 @@ function renderTextWithRefs(
         onFetched={onPostFetched}
         onEdit={onEdit}
         onSchedule={onSchedule}
+        onUnschedule={onUnschedule}
       />,
     );
     last = start + match[0].length;
@@ -703,7 +750,9 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         }),
       });
       if (!res.ok) throw new Error(`propose failed: ${res.status}`);
+      const data = (await res.json()) as { slotId: string; planId: string };
       onPlanProposed?.();
+      return { slotId: data.slotId, planId: data.planId };
     },
     [onPlanProposed],
   );
@@ -720,6 +769,28 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
           if (body?.error) detail = body.error;
         } catch { /* no JSON body */ }
         throw new Error(`quick-schedule failed: ${detail}`);
+      }
+      const data = (await res.json()) as { slotId: string; planId: string; scheduledAt: string };
+      onPlanProposed?.();
+      return { slotId: data.slotId, planId: data.planId, scheduledAt: data.scheduledAt };
+    },
+    [onPlanProposed],
+  );
+
+  const handleQuickUnschedule = useCallback(
+    async (slotId: string, planId: string) => {
+      const res = await fetch(`/api/planner/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", slotId }),
+      });
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) detail = body.error;
+        } catch { /* no JSON body */ }
+        throw new Error(`unschedule failed: ${detail}`);
       }
       onPlanProposed?.();
     },
@@ -743,7 +814,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0 max-w-[85%] text-xl leading-normal whitespace-pre-wrap text-[#0d0d0d]">
-            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost, handleQuickSchedule)}
+            {renderTextWithRefs(m.text, postCache, handlePostFetched, handleEditPost, handleQuickSchedule, handleQuickUnschedule)}
             <div className="mt-2 flex items-center gap-3">
               <CopyButton text={m.text.replace(/\[post:[a-zA-Z0-9_-]+\]/g, "").trim()} />
             </div>
@@ -812,7 +883,11 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       if (proposal) {
         return (
           <div key={key} className="pl-9">
-            <ProposalCard proposal={proposal} onApprove={handleProposalApprove} />
+            <ProposalCard
+              proposal={proposal}
+              onApprove={handleProposalApprove}
+              onCancel={handleQuickUnschedule}
+            />
           </div>
         );
       }

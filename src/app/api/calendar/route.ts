@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getThumbnailUrl } from "@/lib/storage";
+import { formatScheduledTime, formatSlotHour } from "@/lib/planner/format-slot";
+import { FIXED_SLOT_HOURS } from "@/lib/planner/fixed-slots";
 
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -68,6 +70,7 @@ export async function GET(req: NextRequest) {
   type GroupedEntry = {
     postId: string;
     date: string;
+    time: string | null;
     status: "PENDING" | "PUBLISHED" | "IMPORTED" | "PROPOSED" | "PLAN_APPROVED";
     platforms: string[];
     thumbUrl: string | null;
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
       groups.set(groupKey, {
         postId: r.postId,
         date: dateKey,
+        time: formatScheduledTime(date),
         status,
         platforms: [r.platform],
         thumbUrl: null,
@@ -110,6 +114,7 @@ export async function GET(req: NextRequest) {
     groups.set(groupKey, {
       postId: p.id,
       date: dateKey,
+      time: null,
       status: "IMPORTED",
       platforms: [],
       thumbUrl: null,
@@ -127,6 +132,15 @@ export async function GET(req: NextRequest) {
     publishedPostDateKeys.add(`${postId}|${date}`);
   }
 
+  // Group plan slots by day so we can derive each slot's time from its index.
+  const slotsByDay = new Map<string, typeof planSlots>();
+  for (const slot of planSlots) {
+    const dateKey = toDateKey(slot.day);
+    const arr = slotsByDay.get(dateKey) ?? [];
+    arr.push(slot);
+    slotsByDay.set(dateKey, arr);
+  }
+
   for (const slot of planSlots) {
     const dateKey = toDateKey(slot.day);
     // Skip if this post already has a PublishRecord entry on the same day
@@ -136,9 +150,12 @@ export async function GET(req: NextRequest) {
     // Only add if not already present (prefer higher-priority status if duplicate)
     if (!groups.has(groupKey)) {
       const media = slot.post.media[0];
+      const idx = (slotsByDay.get(dateKey) ?? [slot]).indexOf(slot);
+      const hour = FIXED_SLOT_HOURS[idx] ?? null;
       groups.set(groupKey, {
         postId: slot.postId,
         date: dateKey,
+        time: hour != null ? formatSlotHour(hour) : null,
         status: slotStatus,
         platforms: [],
         thumbUrl: null,
@@ -157,6 +174,7 @@ export async function GET(req: NextRequest) {
       return {
         postId: g.postId,
         date: g.date,
+        time: g.time,
         status: g.status,
         platforms: g.platforms,
         thumbUrl,

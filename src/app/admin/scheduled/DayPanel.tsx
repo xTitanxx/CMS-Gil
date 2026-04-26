@@ -66,6 +66,9 @@ export function DayPanel({ day, entries, onClose }: Props) {
                           ? "Approved"
                           : "Imported"}
                   </span>
+                  {e.time && (
+                    <span className="text-[11px] font-medium text-gray-600">{e.time}</span>
+                  )}
                 </div>
                 <div className="mt-1 line-clamp-3 text-xs text-gray-700">
                   {e.body || "(no caption)"}

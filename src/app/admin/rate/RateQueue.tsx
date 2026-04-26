@@ -104,7 +104,10 @@ export function RateQueue() {
 
   return (
     <div className="relative min-h-dvh flex flex-col">
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur p-3 text-xs space-y-2">
+      <div
+        className="sticky top-0 z-10 bg-white/80 backdrop-blur px-3 pb-3 text-xs space-y-2"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}
+      >
         <div className="flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <button

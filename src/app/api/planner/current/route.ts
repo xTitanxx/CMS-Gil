@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { getMondayUTC } from "@/lib/planner/week";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
+import { FIXED_SLOT_HOURS, SCHEDULE_TZ } from "@/lib/planner/fixed-slots";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
 const SLOT_INCLUDE = {
@@ -31,7 +33,7 @@ const SLOT_INCLUDE = {
 } as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeSlot(s: any): PlanSlotData {
+function serializeSlot(s: any, hour: number | null): PlanSlotData {
   const firstMedia = s.post.media[0];
   const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
   const lastPub = s.post.publishes?.[0]?.publishedAt;
@@ -39,6 +41,7 @@ function serializeSlot(s: any): PlanSlotData {
   return {
     id: s.id,
     day: format(s.day, "yyyy-MM-dd"),
+    hour,
     postId: s.postId,
     status: s.status as PlanSlotData["status"],
     reasoning: s.reasoning,
@@ -90,17 +93,66 @@ export async function GET() {
       slots: {
         where: { status: { not: "SKIPPED" } },
         include: SLOT_INCLUDE,
-        orderBy: { day: "asc" },
+        // Stable order so derived slot index matches schedule-route ordering
+        orderBy: [{ day: "asc" }, { id: "asc" }],
       },
     },
     orderBy: { weekStart: "asc" },
   });
 
+  // For SCHEDULED slots, look up the matching PublishRecord to get the actual
+  // publish time. Otherwise the time is derived from slot index (fixed slots
+  // 12/15/18/21 in order). Batch into one query.
+  const scheduledPostIds = new Set<string>();
+  for (const plan of plans) {
+    for (const s of plan.slots) {
+      if (s.status === "SCHEDULED") scheduledPostIds.add(s.postId);
+    }
+  }
+  const scheduledTimes = scheduledPostIds.size
+    ? await prisma.publishRecord.findMany({
+        where: {
+          postId: { in: [...scheduledPostIds] },
+          status: { in: ["PENDING", "PUBLISHED", "PROCESSING"] },
+          scheduledAt: { not: null },
+        },
+        select: { postId: true, scheduledAt: true },
+        orderBy: { scheduledAt: "asc" },
+      })
+    : [];
+  // Map from postId|YYYY-MM-DD (UTC) → first matching scheduledAt
+  const scheduledByPostDay = new Map<string, Date>();
+  for (const r of scheduledTimes) {
+    if (!r.scheduledAt) continue;
+    const dayKey = r.scheduledAt.toISOString().slice(0, 10);
+    const key = `${r.postId}|${dayKey}`;
+    if (!scheduledByPostDay.has(key)) scheduledByPostDay.set(key, r.scheduledAt);
+  }
+
   // Merge all slots across all weeks into one flat array
   const allSlots: PlanSlotData[] = [];
   for (const plan of plans) {
+    // Derive hour-of-day per slot. Group by day, assign FIXED_SLOT_HOURS by
+    // index. SCHEDULED slots prefer the actual PublishRecord scheduledAt hour.
+    const byDay = new Map<string, typeof plan.slots>();
     for (const s of plan.slots) {
-      allSlots.push(serializeSlot(s));
+      const dayKey = format(s.day, "yyyy-MM-dd");
+      const arr = byDay.get(dayKey) ?? [];
+      arr.push(s);
+      byDay.set(dayKey, arr);
+    }
+    for (const s of plan.slots) {
+      const dayKey = format(s.day, "yyyy-MM-dd");
+      const daySlots = byDay.get(dayKey) ?? [s];
+      const idx = daySlots.indexOf(s);
+      let hour: number | null = FIXED_SLOT_HOURS[idx] ?? null;
+      if (s.status === "SCHEDULED") {
+        const at = scheduledByPostDay.get(`${s.postId}|${dayKey}`);
+        if (at) {
+          hour = Number(formatInTimeZone(at, SCHEDULE_TZ, "H"));
+        }
+      }
+      allSlots.push(serializeSlot(s, hour));
     }
   }
 

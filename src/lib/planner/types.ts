@@ -14,6 +14,9 @@ export interface CandidatePost {
 export interface PlanSlotData {
   id: string;
   day: string;
+  /** Hour-of-day this slot will publish at (Asia/Jerusalem). One of FIXED_SLOT_HOURS.
+   *  Null if no slot time can be computed (shouldn't happen in practice). */
+  hour: number | null;
   postId: string;
   status: "PROPOSED" | "APPROVED" | "SCHEDULED" | "SKIPPED";
   reasoning: string | null;

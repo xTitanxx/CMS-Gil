@@ -84,6 +84,11 @@ export function WeekView({ cursor, entries, onDayClick, selectedDay }: Props) {
                                   : "Imported"}
                             </span>
                           )}
+                          {e.time && (
+                            <span className="ml-auto text-[10px] font-semibold tabular-nums">
+                              {e.time}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-90">
                           {e.body || "(no caption)"}

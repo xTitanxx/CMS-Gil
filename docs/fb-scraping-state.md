@@ -1,5 +1,16 @@
 # Facebook Analytics Scraping — State & Reference
 
+> ⚠️ **LIVE WORKING DOCUMENT — DO NOT DELETE.**
+> This is the persistent state file for the Facebook analytics scraper
+> (Playwright MCP pipeline). Every scraping session reads progress from here
+> and updates it before stopping. Without it, sessions can't resume.
+>
+> - **Purpose:** progress tracker + technique reference for the FB scraper
+> - **Updated by:** Claude at the end of each scraping session
+> - **Treat it like code, not like notes** — keep it committed; never `rm` or
+>   stash-and-forget; recover from git if it disappears.
+> - **Counterpart memory:** `~/.claude/.../project_fb_scraping.md`
+
 ## Status
 - **Phase 1 (URL collection)**: Complete. 515 URLs in `/tmp/fb-scraped-urls.json`.
 - **Phase 2 (post detail scraping)**: 206 of 515 URLs scraped. 249 remaining in `/tmp/fb-phase2-queue.json`. Visited tracker: `/tmp/fb-scrape-visited.json`.

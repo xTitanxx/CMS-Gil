@@ -221,6 +221,16 @@ Never ask Eitan to run a command. Running scripts, migrations, backfills, tests,
 - Do not chain commands with `&&` or `;` — run each command as a separate step
 - Never combine `cd` with another command in the same line
 
+## Live Working Documents (Do Not Delete)
+
+Some files in `docs/` are **persistent state for ongoing pipelines**, not historical notes. They get read and rewritten across sessions, and losing them breaks resumption. Keep them committed; never delete, stash-and-forget, or treat them as scratch.
+
+| File | What it tracks |
+|---|---|
+| `docs/fb-scraping-state.md` | Live progress + technique reference for the Facebook analytics scraper (Playwright MCP). Updated at the end of every scraping session. |
+
+If a file like this turns up uncommitted on a feature branch where it doesn't belong, commit it to main as a docs change rather than discarding it.
+
 ## Common Gotchas
 - `serverActions.bodySizeLimit: "500mb"` in `next.config.ts` applies to Server Actions only, not Route Handlers
 - `after()` from `next/server` keeps the lambda alive post-response for background work

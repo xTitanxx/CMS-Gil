@@ -1,5 +1,5 @@
 import { formatInTimeZone } from "date-fns-tz";
-import { SCHEDULE_TZ, FIXED_SLOT_HOURS } from "./fixed-slots";
+import { SCHEDULE_TZ, FIXED_SLOT_HOURS } from "./slot-constants";
 
 /** Format a fixed-slot hour as "12pm", "3pm", "6pm", "9pm". */
 export function formatSlotHour(hour: number): string {

@@ -1,8 +1,8 @@
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/lib/prisma";
+import { FIXED_SLOT_HOURS, SCHEDULE_TZ } from "./slot-constants";
 
-export const FIXED_SLOT_HOURS = [12, 15, 18, 21] as const;
-export const SCHEDULE_TZ = "Asia/Jerusalem";
+export { FIXED_SLOT_HOURS, SCHEDULE_TZ };
 
 /** Build a UTC `Date` for `hour:00` on `dayInTZ` (a date interpreted as Asia/Jerusalem). */
 export function buildSlotDate(dayInTZ: Date, hour: number): Date {

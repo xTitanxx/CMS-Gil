@@ -13,7 +13,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f9fafb",
+  // Scoped to browser tabs only. In iOS standalone PWAs, an unscoped
+  // theme-color overrides apple-mobile-web-app-status-bar-style:black-translucent
+  // and paints an opaque bar behind the clock/wifi/battery.
+  themeColor: [{ media: "(display-mode: browser)", color: "#f9fafb" }],
 };
 
 export const metadata: Metadata = {

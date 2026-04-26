@@ -22,6 +22,10 @@ interface PostNavBarProps {
 // applying those negative offsets would (a) overflow horizontally and (b)
 // drag the opaque white bar up under the iOS status bar. Instead, mobile
 // uses a frosted translucent bar with `top-0` and no negative margins.
+//
+// `pl-14` on mobile reserves the top-left for the floating MobilePageHeader
+// burger (h-10 w-10 at left=8px). Without it, the back arrow ends up under
+// the burger.
 export function PostNavBar({
   prevHref,
   nextHref,
@@ -31,7 +35,7 @@ export function PostNavBar({
 }: PostNavBarProps) {
   return (
     <div
-      className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/85 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/65 md:-top-8 md:-mx-8 md:-mt-8 md:gap-3 md:bg-white md:px-8 md:supports-[backdrop-filter]:bg-white"
+      className="sticky top-0 z-20 mb-3 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/85 pl-14 pr-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/65 md:-top-8 md:-mx-8 md:-mt-8 md:gap-3 md:bg-white md:px-8 md:supports-[backdrop-filter]:bg-white"
       style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top, 0px))" }}
     >
       <Link

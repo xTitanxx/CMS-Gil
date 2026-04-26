@@ -105,7 +105,7 @@ export function RateQueue() {
   return (
     <div className="relative min-h-dvh flex flex-col">
       <div
-        className="sticky top-0 z-10 bg-white/80 backdrop-blur px-3 pb-3 text-xs space-y-2"
+        className="sticky top-0 z-10 bg-white/80 backdrop-blur pl-14 pr-3 pb-3 text-xs space-y-2 md:px-3"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}
       >
         <div className="flex gap-1 overflow-x-auto">

@@ -1,12 +1,24 @@
 # Facebook Analytics Scraping — State & Reference
 
 ## Status
-- **Phase 1 (URL collection)**: 481 URLs saved to `/tmp/fb-scraped-urls.json`. Coverage: posts from ~April 2026 back past **October 2025** (515 URLs). More older posts remain. Year filter exists on FB profiles but doesn't work from secondary account.
-- **Phase 2 (post detail scraping)**: 93 of 515 URLs visited with engagement data. 427 URLs remaining in `/tmp/fb-phase2-queue.json`. Visited tracker: `/tmp/fb-visited-urls.json`.
-- **Phase 2 workflow**: Read queue → scrape batch of 5 → update visited → repeat. No DB import during scraping (matching needs fixing). Bulk import after all scraped.
-- **DB import**: 15 posts matched and imported to local DB. Matching needs improvement (longer text, encoding handling).
-- **Last session**: 2026-04-22
-- **Next session**: Continue Phase 1 scrolling further back (start by fast-scrolling past known posts). Then Phase 2 on remaining 347 URLs. Check what date the last post reached to track progress.
+- **Phase 1 (URL collection)**: Complete. 515 URLs in `/tmp/fb-scraped-urls.json`.
+- **Phase 2 (post detail scraping)**: 206 of 515 URLs scraped. 249 remaining in `/tmp/fb-phase2-queue.json`. Visited tracker: `/tmp/fb-scrape-visited.json`.
+- **Phase 2 workflow**: Navigate to URL → extract (body, reactions, comments, shares) → match to DB by body text → write PostAnalytics + FacebookComment records → track in success/no-match JSON files.
+- **DB import**: 114 PostAnalytics records in production Supabase (was 7 at start of 2026-04-23 session). Live at cms-gil.vercel.app.
+- **Unmatched**: 64 posts (24 no_body/photo-only, 33 no_db_match/deleted quotes, 7 ambiguous). Tracked in `/tmp/fb-scrape-no-match.json`.
+- **Last session**: 2026-04-24
+- **Next session**: Continue Phase 2 on remaining 249 URLs. Script: `/tmp/fb-save-analytics.py` handles scrape→match→DB write pipeline. Extraction JS improved mid-session (emoji capture, multi-div comment text, better author regex).
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `/tmp/fb-phase2-queue.json` | 427 URLs to scrape (249 remaining) |
+| `/tmp/fb-scrape-visited.json` | 178 visited URLs (dedup tracker) |
+| `/tmp/fb-scrape-success.json` | 114 URLs matched + written to DB |
+| `/tmp/fb-scrape-no-match.json` | 64 URLs with reason (no_body/no_db_match/ambiguous) |
+| `/tmp/fb-scraped-posts.json` | 206 full scraped post records (body, reactions, comments) |
+| `/tmp/fb-save-analytics.py` | Pipeline script: extract → match → DB write |
+| `/tmp/fb-scraping-progress.md` | Human-readable progress overview |
 
 ## Profile Info
 - Profile URL: `https://www.facebook.com/gil.alter.7`

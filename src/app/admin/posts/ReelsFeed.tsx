@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Volume2, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
+import { posterUrlFor } from "@/components/LazyVideo";
 
 interface ReelItem {
   id: string;
@@ -82,7 +83,7 @@ export function ReelsFeed() {
           <Link href="/admin/posts/new">
             <Button size="sm">
               <Plus className="h-4 w-4" />
-              New Post
+              <span className="hidden sm:inline">New Post</span>
             </Button>
           </Link>
         </div>
@@ -128,19 +129,51 @@ function ReelSlide({ reel, muted }: { reel: ReelItem; muted: boolean }) {
   const ref = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver(
+    const root = el.parentElement;
+
+    // Active observer — controls play/pause on the slide that's actually
+    // centred in the snap viewport.
+    const visibleIO = new IntersectionObserver(
       (entries) => {
         for (const e of entries) setVisible(e.intersectionRatio > 0.6);
       },
-      { root: el.parentElement, threshold: [0, 0.6, 1] },
+      { root, threshold: [0, 0.6, 1] },
     );
-    io.observe(el);
-    return () => io.disconnect();
+
+    // Mount observer — keeps a real <video> on the active slide and one
+    // neighbour on either side; everything else stays a poster image so iOS
+    // doesn't run out of decoder slots.
+    const mountIO = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) setMounted(true);
+        }
+      },
+      { root, rootMargin: "100% 0px" },
+    );
+    const unmountIO = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) setMounted(false);
+        }
+      },
+      { root, rootMargin: "150% 0px" },
+    );
+
+    visibleIO.observe(el);
+    mountIO.observe(el);
+    unmountIO.observe(el);
+    return () => {
+      visibleIO.disconnect();
+      mountIO.disconnect();
+      unmountIO.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -158,7 +191,7 @@ function ReelSlide({ reel, muted }: { reel: ReelItem; muted: boolean }) {
     } else {
       v.pause();
     }
-  }, [visible, muted]);
+  }, [visible, muted, mounted]);
 
   const isVideo = reel.isVideo && reel.videoUrl;
   const videoMedia = reel.media.filter((m) => m.mimeType.startsWith("video/"));
@@ -177,15 +210,26 @@ function ReelSlide({ reel, muted }: { reel: ReelItem; muted: boolean }) {
       className="relative flex h-full w-full snap-start snap-always items-center justify-center"
     >
       {isVideo ? (
-        <video
-          ref={videoRef}
-          src={reel.videoUrl!}
-          poster={reel.thumbUrl ?? undefined}
-          className="h-full w-full object-contain"
-          autoPlay
-          loop
-          playsInline
-        />
+        mounted ? (
+          <video
+            ref={videoRef}
+            src={reel.videoUrl!}
+            poster={reel.thumbUrl ?? posterUrlFor(reel.videoUrl!)}
+            className="h-full w-full object-contain"
+            autoPlay
+            loop
+            playsInline
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={reel.thumbUrl ?? posterUrlFor(reel.videoUrl!)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-contain"
+          />
+        )
       ) : reel.thumbUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img

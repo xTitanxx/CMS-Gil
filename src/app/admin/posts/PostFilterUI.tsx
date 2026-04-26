@@ -429,7 +429,7 @@ export function FilterMenu(props: FilterMenuProps) {
         }`}
       >
         <SlidersHorizontal className="h-4 w-4" />
-        Filters
+        <span className="hidden sm:inline">Filters</span>
         {props.activeCount > 0 && (
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
             {props.activeCount}
@@ -687,7 +687,7 @@ export function SortMenu({
         title={current}
       >
         <ArrowUpDown className="h-4 w-4" />
-        Sort
+        <span className="hidden sm:inline">Sort</span>
       </button>
       {open && (
         <div
@@ -748,7 +748,7 @@ export function JumpToDateMenu({
         className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-blue-500 focus:outline-none"
       >
         <CalendarDays className="h-4 w-4" />
-        Jump to date
+        <span className="hidden sm:inline">Jump to date</span>
       </button>
       {open && (
         <div

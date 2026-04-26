@@ -21,6 +21,7 @@ import { KindTabs, type PostKind } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
 import { displayBody } from "@/lib/post-body";
 import { Link as LinkIcon } from "lucide-react";
+import { LazyVideo } from "@/components/LazyVideo";
 import {
   CONTENT_CATEGORIES,
   AUDIO_CATEGORIES,
@@ -549,27 +550,6 @@ export function PostsFeed() {
 function FeedCard({ post, href }: { post: FeedPost; href: string }) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Autoplay muted when the card is in view; pause when it scrolls out.
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            v.play().catch(() => {});
-          } else {
-            v.pause();
-          }
-        }
-      },
-      { threshold: 0.5 },
-    );
-    io.observe(v);
-    return () => io.disconnect();
-  }, []);
 
   const typeLabel =
     post.postType && post.postType !== "POST"
@@ -665,20 +645,18 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
 
       {/* Media — edge to edge */}
       {isVideo && post.videoUrl ? (
-        <div className="relative w-full bg-black">
-          <video
-            ref={videoRef}
-            src={post.videoUrl}
-            poster={post.thumbUrl ?? undefined}
-            controls
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            className="w-full object-contain max-h-[75vh]"
-          />
-        </div>
+        <LazyVideo
+          src={post.videoUrl}
+          poster={post.thumbUrl}
+          wrapperClassName="relative w-full bg-black"
+          className="w-full object-contain max-h-[75vh]"
+          controls
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        />
       ) : post.thumbUrl ? (
         <Link href={href} className="block">
           {/* eslint-disable-next-line @next/next/no-img-element */}

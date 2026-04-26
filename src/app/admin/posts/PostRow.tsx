@@ -163,28 +163,27 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
       </div>
 
       <Link href={href} className="flex min-w-0 flex-1 items-start gap-3 md:items-center md:gap-4">
-        <div
-          className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28"
-          onClick={(e) => {
-            if (post.isVideo && post.videoUrl) e.preventDefault();
-          }}
-        >
-          {post.isVideo && post.videoUrl ? (
-            <video
-              src={post.videoUrl}
-              poster={post.thumbUrl ?? undefined}
-              controls
-              preload="metadata"
-              playsInline
-              className="h-full w-full object-cover"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : post.thumbUrl ? (
+        <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28">
+          {post.thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.thumbUrl} alt="" className="h-full w-full object-cover" />
+            <img
+              src={post.thumbUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full items-center justify-center">
               <ImageIcon className="h-6 w-6 text-gray-300" />
+            </div>
+          )}
+          {post.isVideo && (
+            <div
+              className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
+              title="Video"
+            >
+              <Video className="h-3 w-3 text-white" />
             </div>
           )}
           {post.isSilent && (

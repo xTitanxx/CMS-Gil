@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, BadgeCheck, VolumeX } from "lucide-react";
+import { LazyVideo } from "@/components/LazyVideo";
 
 interface Media {
   id: string;
@@ -95,11 +96,13 @@ function PostCard({ post }: { post: FeedPost }) {
           {post.media.map((m) =>
             m.url && m.mimeType.startsWith("video/") ? (
               <div key={m.id} className="relative">
-                <video
+                <LazyVideo
                   src={m.url}
                   controls
-                  className="w-full bg-black"
                   preload="metadata"
+                  playsInline
+                  wrapperClassName="w-full bg-black"
+                  className="w-full"
                 />
                 {m.hasAudio === false && (
                   <div

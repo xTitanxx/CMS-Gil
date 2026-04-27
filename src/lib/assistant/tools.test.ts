@@ -84,6 +84,43 @@ describe("handleTool recommend_posts / search_archive", () => {
     await handleTool("search_archive", { query: "hi" }, { userId: "u1" });
     expect((retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].userId).toBe("u1");
   });
+
+  it("forwards from/to as a dateRange to retrieve", async () => {
+    (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "search_archive",
+      { query: "hi", from: "2023-01-01", to: "2023-12-31" },
+      { userId: "u1" },
+    );
+    const call = (retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.dateRange.from).toBeInstanceOf(Date);
+    expect(call.dateRange.to).toBeInstanceOf(Date);
+    expect(call.dateRange.from.getUTCFullYear()).toBe(2023);
+    expect(call.dateRange.to.getUTCFullYear()).toBe(2023);
+  });
+
+  it("ignores invalid date strings", async () => {
+    (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "search_archive",
+      { query: "hi", from: "not-a-date", to: "also-bad" },
+      { userId: "u1" },
+    );
+    const call = (retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.dateRange).toBeUndefined();
+  });
+
+  it("accepts a single bound (only from)", async () => {
+    (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "search_archive",
+      { query: "hi", from: "2024-06-01" },
+      { userId: "u1" },
+    );
+    const call = (retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.dateRange.from).toBeInstanceOf(Date);
+    expect(call.dateRange.to).toBeUndefined();
+  });
 });
 
 describe("handleTool unknown tool", () => {

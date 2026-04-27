@@ -46,12 +46,21 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "search_archive",
-    description: "Searches the archive by tag + keyword. Use for 'find a post about X'.",
+    description:
+      "Searches the archive by tag, keyword, exact phrase, and optional date range. Use for 'find a post about X', 'find posts from 2023 about Y', or when the user pastes exact text from a remembered post. Date params are ISO strings (YYYY-MM-DD or full ISO) — translate user phrasing like 'last month' or 'in 2023' into concrete from/to. Smart-quotes / em-dashes in pasted text are handled automatically.",
     input_schema: {
       type: "object",
       properties: {
         query: { type: "string" },
         limit: { type: "number" },
+        from: {
+          type: "string",
+          description: "ISO date inclusive lower bound on Post.originalDate (YYYY-MM-DD or full ISO).",
+        },
+        to: {
+          type: "string",
+          description: "ISO date inclusive upper bound on Post.originalDate (YYYY-MM-DD or full ISO).",
+        },
         lifecycle: {
           type: "string",
           enum: ["EVERGREEN", "EPHEMERAL", "SEASONAL", "UNKNOWN"],
@@ -245,6 +254,10 @@ export async function handleTool(
       return { ok: true, data };
     }
     case "search_archive": {
+      const fromRaw = typeof input.from === "string" ? new Date(input.from) : null;
+      const toRaw = typeof input.to === "string" ? new Date(input.to) : null;
+      const from = fromRaw && !isNaN(fromRaw.getTime()) ? fromRaw : undefined;
+      const to = toRaw && !isNaN(toRaw.getTime()) ? toRaw : undefined;
       const data = await retrieve({
         userId: ctx.userId,
         query: String(input.query ?? ""),
@@ -252,6 +265,7 @@ export async function handleTool(
         lifecycle: input.lifecycle as never,
         season: input.season as never,
         contentKind: input.contentKind as never,
+        dateRange: from || to ? { from, to } : undefined,
       });
       return { ok: true, data };
     }

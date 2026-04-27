@@ -573,12 +573,12 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
 
       {/* Search + filter row */}
       <div className="space-y-2">
-        <div className="flex flex-wrap gap-2">
-          <div className="relative min-w-0 flex-1" style={{ minWidth: "160px" }}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
             {aiMode ? (
-              <Sparkles className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-purple-500" />
+              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-purple-500" />
             ) : (
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             )}
             <input
               type="text"
@@ -596,7 +596,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               onKeyDown={(e) => {
                 if (aiMode && e.key === "Enter") runAiSearch();
               }}
-              className={`w-full rounded-lg border bg-white py-2 pl-10 pr-11 text-sm focus:outline-none ${
+              className={`h-9 w-full rounded-lg border bg-white pl-10 pr-11 text-sm focus:outline-none ${
                 aiMode
                   ? "border-purple-300 focus:border-purple-500"
                   : "border-gray-300 focus:border-blue-500"
@@ -616,53 +616,55 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               <Sparkles className="h-4 w-4" />
             </button>
           </div>
-          {aiMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={runAiSearch}
-              disabled={aiSearching || !aiQuery.trim()}
-              className="border-purple-200 text-purple-700 hover:bg-purple-50"
-            >
-              {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Search
-            </Button>
-          )}
-          {aiResult && (
-            <Button variant="ghost" size="sm" onClick={clearAiSearch}>
-              <X className="h-4 w-4" />
-              Clear
-            </Button>
-          )}
-          <SortMenu sort={sort} setSort={setSort} />
-          <JumpToDateMenu
-            onJump={(dateStr) => {
-              const c = jumpCursorForDate(dateStr, sort);
-              setJumpCursor(c);
-            }}
-          />
-          <FilterMenu
-            content={content}
-            setContent={setContent}
-            audio={audio}
-            setAudio={setAudio}
-            link={link}
-            setLink={setLink}
-            multiMedia={multiMedia}
-            setMultiMedia={setMultiMedia}
-            tagged={tagged}
-            setTagged={setTagged}
-            share={share}
-            setShare={setShare}
-            quality={quality}
-            setQuality={setQuality}
-            captionQuality={captionQuality}
-            setCaptionQuality={setCaptionQuality}
-            enriched={enriched}
-            setEnriched={setEnriched}
-            activeCount={activeFilterCount}
-            onReset={resetFilters}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {aiMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={runAiSearch}
+                disabled={aiSearching || !aiQuery.trim()}
+                className="h-9 border-purple-200 text-purple-700 hover:bg-purple-50"
+              >
+                {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Search
+              </Button>
+            )}
+            {aiResult && (
+              <Button variant="ghost" size="sm" onClick={clearAiSearch} className="h-9">
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            )}
+            <SortMenu sort={sort} setSort={setSort} />
+            <JumpToDateMenu
+              onJump={(dateStr) => {
+                const c = jumpCursorForDate(dateStr, sort);
+                setJumpCursor(c);
+              }}
+            />
+            <FilterMenu
+              content={content}
+              setContent={setContent}
+              audio={audio}
+              setAudio={setAudio}
+              link={link}
+              setLink={setLink}
+              multiMedia={multiMedia}
+              setMultiMedia={setMultiMedia}
+              tagged={tagged}
+              setTagged={setTagged}
+              share={share}
+              setShare={setShare}
+              quality={quality}
+              setQuality={setQuality}
+              captionQuality={captionQuality}
+              setCaptionQuality={setCaptionQuality}
+              enriched={enriched}
+              setEnriched={setEnriched}
+              activeCount={activeFilterCount}
+              onReset={resetFilters}
+            />
+          </div>
         </div>
 
         {aiResult && (

@@ -879,6 +879,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         body: JSON.stringify({
           postId: proposal.postId,
           day: proposal.day,
+          hour: proposal.hour,
           platforms: proposal.platforms,
           reasoning: proposal.reasoning,
         }),

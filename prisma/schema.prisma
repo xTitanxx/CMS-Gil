@@ -463,6 +463,9 @@ model WeeklyPlanSlot {
   postId    String
   post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
   day       DateTime
+  // Optional hour-of-day (Asia/Jerusalem). When set, the schedule route uses
+  // it directly; otherwise it falls back to FIXED_SLOT_HOURS by index in day.
+  hour      Int?
   status    SlotStatus @default(PROPOSED)
   reasoning String?
   platforms String[]

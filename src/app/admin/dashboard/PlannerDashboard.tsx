@@ -101,17 +101,17 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col md:-m-8">
-      {/* Stats bar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 md:gap-6 md:px-8">
+      {/* Stats bar — compact on mobile so all three numbers stay visible */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-200 bg-white px-3 py-2 md:gap-6 md:px-8 md:py-3">
         <h1 className="hidden text-base font-bold text-gray-900 md:block">Content Hub</h1>
-        <div className="flex items-center gap-3 text-sm text-gray-600 md:gap-5">
-          <span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-600 md:gap-5 md:text-sm">
+          <span className="whitespace-nowrap">
             <span className="font-semibold text-gray-900">{stats.totalPosts}</span> posts
           </span>
-          <span>
+          <span className="whitespace-nowrap">
             <span className="font-semibold text-green-700">{stats.published}</span> published
           </span>
-          <span>
+          <span className="whitespace-nowrap">
             <span className="font-semibold text-blue-700">{stats.scheduled}</span> scheduled
           </span>
         </div>

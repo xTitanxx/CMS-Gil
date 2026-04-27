@@ -234,14 +234,14 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
         {/* Bottom section — status + actions on one line, why this? below */}
         <div className={`border-t border-black/5 px-3.5 py-2.5 md:px-4 ${STATUS_FOOTER_BG[slot.status] ?? STATUS_FOOTER_BG.PROPOSED}`}>
-          {/* Single row: status + date + spacer + platform icons + actions */}
-          <div className="flex items-center gap-1.5 text-[12px]">
+          {/* Wraps on narrow widths so the action buttons stay reachable. */}
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[12px]">
             <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[slot.status] ?? STATUS_DOT.PROPOSED}`} />
-            <span className="font-semibold text-[#3a3832]">
+            <span className="shrink-0 font-semibold text-[#3a3832]">
               {isScheduled ? "Scheduled" : "Proposed"}
             </span>
             {slot.day && (
-              <span className="whitespace-nowrap text-[#7a7870]">
+              <span className="shrink-0 whitespace-nowrap text-[#7a7870]">
                 · <span className="font-semibold text-[#161513]">{formatScheduleDate(slot.day)}</span>
                 {slot.hour != null && (
                   <span className="ml-1 font-semibold text-[#161513]">{formatSlotHour(slot.hour)}</span>

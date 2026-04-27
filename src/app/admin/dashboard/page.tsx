@@ -72,7 +72,9 @@ export default async function DashboardPage() {
       const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
       const dayKey = format(s.day, "yyyy-MM-dd");
       const idx = (slotsByDay.get(dayKey) ?? [s]).indexOf(s);
-      const hour = FIXED_SLOT_HOURS[idx] ?? null;
+      // Prefer the slot's stored hour (set by assistant proposals); fall back to
+      // index-based assignment for legacy slots without one.
+      const hour = s.hour ?? FIXED_SLOT_HOURS[idx] ?? null;
 
       return {
         id: s.id,

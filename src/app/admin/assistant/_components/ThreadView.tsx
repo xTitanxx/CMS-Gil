@@ -407,17 +407,15 @@ function InlinePostRef({
 
       {post.thumbUrl && (
         <div className="relative w-full overflow-hidden bg-gray-100">
-          {isVideo ? (
-            <video
-              src={`${post.thumbUrl}#t=0.1`}
-              muted
-              playsInline
-              preload="metadata"
-              className="h-72 w-full object-cover md:h-80"
-            />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
+          {/* thumbUrl is .poster.jpg for videos (see buildThumbUrl), so always render as <img>.
+              Natural aspect ratio (w-full h-auto) so portraits and landscapes show
+              uncropped; max-h caps very tall portraits so the card doesn't dominate. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={post.thumbUrl} alt="" className="block h-auto w-full max-h-[70vh] object-contain" />
+          {isVideo && (
+            <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white">
+              <Film className="h-4 w-4" />
+            </span>
           )}
         </div>
       )}
@@ -725,6 +723,14 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         // Normalize matchReasons (search) to reasons (recommend)
         if (!item.reasons && Array.isArray(raw.matchReasons)) {
           item.reasons = raw.matchReasons as string[];
+        }
+        // recommend_posts / search_archive return contentKind but not a separate
+        // hasVideo flag. Derive it so the inline card shows "Video" + the right
+        // platform set instead of falling back to "Image" via a broken URL hint
+        // (buildThumbUrl rewrites the extension to .poster.jpg, so the URL
+        // never ends in .mp4 / .mov anyway).
+        if (item.hasVideo === undefined && typeof raw.contentKind === "string") {
+          item.hasVideo = raw.contentKind === "video";
         }
         item.loaded = true;
         entries.push(item);

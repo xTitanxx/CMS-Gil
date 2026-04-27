@@ -100,9 +100,11 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
           href={`/admin/posts/${post.id}?from=assistant`}
           className="relative block w-full overflow-hidden bg-gray-100"
         >
-          {/* thumbUrl is .poster.jpg for videos (see buildThumbUrl), so always render as <img>. */}
+          {/* thumbUrl is .poster.jpg for videos (see buildThumbUrl), so always render as <img>.
+              Natural aspect ratio (w-full h-auto) so portraits and landscapes show
+              uncropped; max-h caps very tall portraits so the card doesn't dominate. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
+          <img src={post.thumbUrl} alt="" className="block h-auto w-full max-h-[70vh] object-contain" />
           {post.hasVideo && (
             <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white">
               <Film className="h-4 w-4" />

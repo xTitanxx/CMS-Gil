@@ -260,8 +260,16 @@ export async function handleTool(
       return { ok: true, data };
     }
     case "search_archive": {
+      // Date-only strings (YYYY-MM-DD) parse to midnight UTC. For `to` that
+      // means a `lte` boundary at 00:00, which excludes any post made later
+      // that same day (or later in the last day of a month). Expand date-only
+      // `to` values to end-of-day so single-day and inclusive-month queries
+      // actually capture every post on that boundary.
+      const isDateOnly = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
       const fromRaw = typeof input.from === "string" ? new Date(input.from) : null;
-      const toRaw = typeof input.to === "string" ? new Date(input.to) : null;
+      const toRaw = typeof input.to === "string"
+        ? new Date(isDateOnly(input.to) ? `${input.to}T23:59:59.999Z` : input.to)
+        : null;
       const from = fromRaw && !isNaN(fromRaw.getTime()) ? fromRaw : undefined;
       const to = toRaw && !isNaN(toRaw.getTime()) ? toRaw : undefined;
       const data = await retrieve({

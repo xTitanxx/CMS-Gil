@@ -3,8 +3,10 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, BadgeCheck, VolumeX } from "lucide-react";
+import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, BadgeCheck } from "lucide-react";
 import { LazyVideo } from "@/components/LazyVideo";
+import { AudioStateBadge } from "@/components/AudioStateBadge";
+import { postAudioState } from "@/lib/post-audio-state";
 
 interface Media {
   id: string;
@@ -13,6 +15,8 @@ interface Media {
   height: number | null;
   altText: string | null;
   hasAudio: boolean | null;
+  /** Optional — only populated by /api/public/feed (and /api/public/stories), not the SSR initial fetch. */
+  audioTrackId?: string | null;
   url: string | null;
 }
 
@@ -104,15 +108,10 @@ function PostCard({ post }: { post: FeedPost }) {
                   wrapperClassName="w-full bg-black"
                   className="w-full"
                 />
-                {m.hasAudio === false && (
-                  <div
-                    className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[11px] font-medium text-white"
-                    title="Silent video — no audio track"
-                  >
-                    <VolumeX className="h-3.5 w-3.5" />
-                    <span>Silent</span>
-                  </div>
-                )}
+                <AudioStateBadge
+                  state={postAudioState([m])}
+                  className="pointer-events-none absolute left-2 top-2"
+                />
               </div>
             ) : m.url ? (
               // eslint-disable-next-line @next/next/no-img-element

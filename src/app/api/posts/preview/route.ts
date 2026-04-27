@@ -64,6 +64,9 @@ export async function GET(req: NextRequest) {
         mediaHeight: firstMedia?.height ?? null,
         mediaAltText: firstMedia?.altText ?? null,
         hasAudio: firstMedia?.hasAudio ?? null,
+        // Stable id for the badge layer when an AudioTrack is attached;
+        // we don't leak the audio storage URL itself to the public chat.
+        audioTrackId: firstMedia?.audioTrack?.storageKey ? firstMedia.id : null,
       };
     })
   );

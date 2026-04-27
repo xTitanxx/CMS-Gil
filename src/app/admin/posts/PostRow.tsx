@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Trash2,
   Send,
+  Music,
   VolumeX,
   Link as LinkIcon,
   Video,
@@ -31,10 +32,11 @@ export interface PostRowData {
   videoUrl: string | null;
   isVideo: boolean;
   isSilent: boolean;
+  audioState: "has-audio" | "silent" | "music-added";
   tags: string[];
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
-  media: { id: string; mimeType: string; hasAudio: boolean | null }[];
+  media: { id: string; mimeType: string; hasAudio: boolean | null; audioTrackId: string | null }[];
   publishes: { platform: string; status: string }[];
   analytics: { platform: string; reactions: number | null; comments: number | null; shares: number | null }[];
   rating: { stars: number } | null;
@@ -186,12 +188,20 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
               <Video className="h-3 w-3 text-white" />
             </div>
           )}
-          {post.isSilent && (
+          {post.audioState === "silent" && (
             <div
-              className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 p-0.5"
-              title="Silent video — no audio track"
+              className="absolute bottom-0.5 right-0.5 rounded-full bg-orange-500/85 p-0.5"
+              title="Silent video — no audio track. Attach music before publishing."
             >
               <VolumeX className="h-3 w-3 text-white" />
+            </div>
+          )}
+          {post.audioState === "music-added" && (
+            <div
+              className="absolute bottom-0.5 right-0.5 rounded-full bg-blue-500/85 p-0.5"
+              title="Silent video with custom audio attached — will be muxed at publish time."
+            >
+              <Music className="h-3 w-3 text-white" />
             </div>
           )}
         </div>

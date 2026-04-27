@@ -27,6 +27,10 @@ export async function GET(req: NextRequest) {
           height: m.height,
           altText: m.altText,
           hasAudio: m.hasAudio,
+          // audioTrackId is derived from the included relation in public-posts.ts
+          // (audioTrack: { storageKey } | null) — surface a stable boolean-ish id
+          // for the chat/badge layer without leaking the private audio storage URL.
+          audioTrackId: m.audioTrack?.storageKey ? m.id : null,
           url: await getMediaUrl(m).catch(
             () => null
           ),

@@ -10,6 +10,7 @@ import {
   Plus,
   Image as ImageIcon,
   Pencil,
+  Music,
   VolumeX,
   Search,
   Sparkles,
@@ -62,10 +63,11 @@ interface FeedPost {
   videoUrl: string | null;
   isVideo: boolean;
   isSilent: boolean;
+  audioState: "has-audio" | "silent" | "music-added";
   tags: string[];
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
-  media: { id: string; mimeType: string; hasAudio: boolean | null }[];
+  media: { id: string; mimeType: string; hasAudio: boolean | null; audioTrackId: string | null }[];
   publishes: { platform: string; status: string }[];
 }
 
@@ -600,12 +602,20 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
                 {post.share.url ? "Shared link" : "Quoted FB post"}
               </span>
             )}
-            {post.isSilent && (
+            {post.audioState === "silent" && (
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600"
-                title="Silent video"
+                className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700"
+                title="Silent video — no audio track"
               >
                 <VolumeX className="h-3 w-3" /> Silent
+              </span>
+            )}
+            {post.audioState === "music-added" && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700"
+                title="Silent video with custom audio attached — will be muxed at publish time."
+              >
+                <Music className="h-3 w-3" /> Music added
               </span>
             )}
           </div>

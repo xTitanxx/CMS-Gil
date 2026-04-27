@@ -20,7 +20,13 @@ export async function GET(req: NextRequest) {
     },
     include: {
       post: {
-        include: { media: true },
+        include: {
+          media: {
+            // Need audioTrack here so publishNow can mux silent videos that
+            // have music attached, before handing the URL to the platform.
+            include: { audioTrack: { select: { storageKey: true } } },
+          },
+        },
       },
     },
     take: 20, // process max 20 per cron tick

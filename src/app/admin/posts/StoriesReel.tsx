@@ -10,6 +10,8 @@ import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
 import { posterUrlFor } from "@/components/LazyVideo";
+import { AudioStateBadge } from "@/components/AudioStateBadge";
+import { postAudioState } from "@/lib/post-audio-state";
 
 interface ReelStory {
   id: string;
@@ -17,7 +19,7 @@ interface ReelStory {
   thumbUrl: string | null;
   videoUrl: string | null;
   isVideo: boolean;
-  media: { id: string; mimeType: string; hasAudio: boolean | null }[];
+  media: { id: string; mimeType: string; hasAudio: boolean | null; audioTrackId: string | null }[];
 }
 
 export function StoriesReel() {
@@ -215,9 +217,7 @@ function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
   }, [visible, muted, mounted]);
 
   const isVideo = story.isVideo && story.videoUrl;
-  const videoMedia = story.media.filter((m) => m.mimeType.startsWith("video/"));
-  const isSilent =
-    videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
+  const audioState = postAudioState(story.media);
   const dateLabel = useMemo(
     () => format(new Date(story.originalDate), "MMM d, yyyy"),
     [story.originalDate],
@@ -264,15 +264,7 @@ function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
         <span className="text-sm drop-shadow">{dateLabel}</span>
       </div>
 
-      {isSilent && (
-        <div
-          className="absolute left-4 top-14 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur"
-          title="Silent video — no audio track"
-        >
-          <VolumeX className="h-3.5 w-3.5" />
-          <span>Silent</span>
-        </div>
-      )}
+      <AudioStateBadge state={audioState} className="absolute left-4 top-14 z-10" />
 
       <Link
         href={`/admin/posts/${story.id}`}

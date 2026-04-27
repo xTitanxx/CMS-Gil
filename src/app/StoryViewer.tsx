@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Volume2, VolumeX } from "lucide-react";
 import type { Story } from "./StoriesRow";
+import { AudioStateBadge } from "@/components/AudioStateBadge";
+import { postAudioState } from "@/lib/post-audio-state";
 
 const IMAGE_DURATION_MS = 5000;
 
@@ -37,7 +39,9 @@ export function StoryViewer({
   const story = stories[index];
   const firstMedia = story?.media[0];
   const isVideo = firstMedia?.mimeType.startsWith("video/") ?? false;
-  const isSilent = isVideo && firstMedia?.hasAudio === false;
+  const audioState = postAudioState(story?.media ?? []);
+  const isSilent = audioState === "silent";
+  const hasAudibleAudio = audioState === "has-audio";
 
   const next = useCallback(() => {
     if (index < stories.length - 1) {
@@ -139,8 +143,8 @@ export function StoryViewer({
         <X className="h-5 w-5" />
       </button>
 
-      {/* Mute toggle (only for videos with audio) */}
-      {isVideo && !isSilent && (
+      {/* Mute toggle (only for videos that have a playable audio track) */}
+      {isVideo && hasAudibleAudio && (
         <button
           onClick={() => setMuted((m) => !m)}
           className="absolute top-4 right-16 z-20 text-white p-2 hover:bg-white/10 rounded-full"
@@ -150,15 +154,9 @@ export function StoryViewer({
         </button>
       )}
 
-      {/* Silent-video indicator (non-interactive) */}
-      {isSilent && (
-        <div
-          className="absolute top-4 right-16 z-20 flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur"
-          title="Silent video — no audio track"
-        >
-          <VolumeX className="h-4 w-4" />
-          <span>Silent</span>
-        </div>
+      {/* Silent / Music-added indicator (non-interactive) */}
+      {isVideo && (
+        <AudioStateBadge state={audioState} className="absolute top-4 right-16 z-20" />
       )}
 
       {/* Date */}

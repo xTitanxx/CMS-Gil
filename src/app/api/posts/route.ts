@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getThumbnailUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
+import { postAudioState } from "@/lib/post-audio-state";
 import { refreshReadiness } from "@/lib/readiness-service";
 import {
   buildCursorClause,
@@ -15,7 +16,13 @@ import {
 
 const POST_INCLUDE = {
   media: {
-    select: { id: true, storageKey: true, mimeType: true, hasAudio: true },
+    select: {
+      id: true,
+      storageKey: true,
+      mimeType: true,
+      hasAudio: true,
+      audioTrackId: true,
+    },
   },
   publishes: {
     select: {
@@ -74,10 +81,13 @@ async function decoratePosts(posts: PostWithIncludes[]) {
       );
       const isSilent =
         videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
+      // Tri-state for the UI badge: distinguishes silent-with-music-attached
+      // (will be muxed at publish time) from silent-bare (will publish muted).
+      const audioState = postAudioState(post.media);
       const videoUrl = isVideo && firstMedia
         ? await getSignedDownloadUrl(firstMedia.storageKey).catch(() => null)
         : null;
-      return { ...post, thumbUrl, videoUrl, isVideo, isSilent };
+      return { ...post, thumbUrl, videoUrl, isVideo, isSilent, audioState };
     }),
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { VolumeX } from "lucide-react";
+import { AudioStateBadge } from "@/components/AudioStateBadge";
+import { postAudioState } from "@/lib/post-audio-state";
 
 export interface PreviewPost {
   id: string;
@@ -14,6 +15,8 @@ export interface PreviewPost {
   mediaHeight: number | null;
   mediaAltText: string | null;
   hasAudio: boolean | null;
+  /** Surfaced from the public chat API when an AudioTrack is attached. */
+  audioTrackId?: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -45,12 +48,12 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
                 preload="metadata"
                 className="h-full w-full object-cover"
               />
-              {post.hasAudio === false && (
-                <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
-                  <VolumeX className="h-3 w-3" />
-                  Silent
-                </div>
-              )}
+              <AudioStateBadge
+                state={postAudioState([
+                  { mimeType: post.mediaMimeType, hasAudio: post.hasAudio, audioTrackId: post.audioTrackId },
+                ])}
+                className="absolute left-2 top-2"
+              />
             </>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element

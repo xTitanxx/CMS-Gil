@@ -15,11 +15,26 @@ export default async function DashboardPage() {
 
   const weekStart = getMondayUTC();
 
-  const [totalPosts, published, scheduled, plan] = await Promise.all([
-    prisma.post.count({ where: { userId } }),
-    prisma.publishRecord.count({ where: { post: { userId }, status: "PUBLISHED" } }),
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const [postedThisWeek, scheduled, plan] = await Promise.all([
+    // "Posted this week" = real PublishRecord PUBLISHED in the last 7 days.
+    // More actionable on the planner than a lifetime total.
     prisma.publishRecord.count({
-      where: { post: { userId }, status: "PENDING", scheduledAt: { not: null } },
+      where: {
+        post: { userId },
+        status: "PUBLISHED",
+        publishedAt: { gte: sevenDaysAgo },
+      },
+    }),
+    // "Currently scheduled" = PENDING with a future scheduledAt. Past-due
+    // PENDING records (cron not yet run) shouldn't inflate this.
+    prisma.publishRecord.count({
+      where: {
+        post: { userId },
+        status: "PENDING",
+        scheduledAt: { gte: now },
+      },
     }),
     prisma.weeklyPlan.findUnique({
       where: { userId_weekStart: { userId, weekStart } },
@@ -121,7 +136,7 @@ export default async function DashboardPage() {
   return (
     <PlannerDashboard
       initialPlan={initialPlan}
-      stats={{ totalPosts, published, scheduled }}
+      stats={{ scheduled, postedThisWeek }}
     />
   );
 }

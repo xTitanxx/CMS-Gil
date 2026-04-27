@@ -7,9 +7,10 @@ import { WeeklyPlanView } from "./WeeklyPlanView";
 import type { WeeklyPlanData } from "@/lib/planner/types";
 
 interface Stats {
-  totalPosts: number;
-  published: number;
+  /** PENDING records with a future scheduledAt. */
   scheduled: number;
+  /** PUBLISHED records in the last 7 days. */
+  postedThisWeek: number;
 }
 
 interface PlannerDashboardProps {
@@ -101,18 +102,20 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col md:-m-8">
-      {/* Stats bar — compact on mobile so all three numbers stay visible */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-200 bg-white px-3 py-2 md:gap-6 md:px-8 md:py-3">
+      {/* Stats bar — sits below the iOS status bar via safe-area padding, and
+          reserves left room (pl-14) on mobile so the floating burger button
+          doesn't overlap the numbers. */}
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-200 bg-white pl-14 pr-3 md:gap-6 md:pl-8 md:pr-8 md:py-3"
+        style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.5rem)", paddingBottom: "0.5rem" }}
+      >
         <h1 className="hidden text-base font-bold text-gray-900 md:block">Content Hub</h1>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-600 md:gap-5 md:text-sm">
           <span className="whitespace-nowrap">
-            <span className="font-semibold text-gray-900">{stats.totalPosts}</span> posts
-          </span>
-          <span className="whitespace-nowrap">
-            <span className="font-semibold text-green-700">{stats.published}</span> published
-          </span>
-          <span className="whitespace-nowrap">
             <span className="font-semibold text-blue-700">{stats.scheduled}</span> scheduled
+          </span>
+          <span className="whitespace-nowrap">
+            <span className="font-semibold text-green-700">{stats.postedThisWeek}</span> posted this week
           </span>
         </div>
       </div>

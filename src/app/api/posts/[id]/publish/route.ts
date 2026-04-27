@@ -8,6 +8,7 @@ import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
 import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
+import { preparePublishKeys } from "@/lib/publish-prep";
 
 export async function POST(
   req: NextRequest,
@@ -72,7 +73,17 @@ export async function POST(
 export async function publishNow(
   recordId: string,
   userId: string,
-  post: { id: string; body: string; postType: string; media: { storageKey: string; mimeType: string; audioTrack?: { storageKey: string } | null }[] },
+  post: {
+    id: string;
+    body: string;
+    postType: string;
+    media: {
+      storageKey: string;
+      mimeType: string;
+      hasAudio?: boolean | null;
+      audioTrack?: { storageKey: string } | null;
+    }[];
+  },
   platform: Platform
 ) {
   await prisma.publishRecord.update({
@@ -106,7 +117,17 @@ export async function publishNow(
       platformUserId = token.platformUserId ?? undefined;
     }
 
-    const mediaKeys = post.media.map((m) => m.storageKey);
+    // Mux any silent video that has an attached AudioTrack before handing off
+    // to the platform module. Keys come back unchanged for everything else.
+    const mediaKeys = await preparePublishKeys(
+      userId,
+      post.media.map((m) => ({
+        storageKey: m.storageKey,
+        mimeType: m.mimeType,
+        hasAudio: m.hasAudio ?? null,
+        audioTrack: m.audioTrack ?? null,
+      })),
+    );
 
     let result: { platformPostId: string; platformUrl?: string };
 

@@ -8,6 +8,8 @@ interface StoryMedia {
   id: string;
   mimeType: string;
   hasAudio: boolean | null;
+  /** Optional — public feed/stories endpoints surface this; older SSR paths may not. */
+  audioTrackId?: string | null;
   url: string | null;
 }
 

@@ -121,6 +121,29 @@ describe("handleTool recommend_posts / search_archive", () => {
     expect(call.dateRange.from).toBeInstanceOf(Date);
     expect(call.dateRange.to).toBeUndefined();
   });
+
+  it("expands a date-only `to` to end-of-day so single-day queries match", async () => {
+    (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "search_archive",
+      { query: "hi", from: "2023-10-15", to: "2023-10-15" },
+      { userId: "u1" },
+    );
+    const call = (retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.dateRange.from.toISOString()).toBe("2023-10-15T00:00:00.000Z");
+    expect(call.dateRange.to.toISOString()).toBe("2023-10-15T23:59:59.999Z");
+  });
+
+  it("respects an explicit ISO `to` time without expansion", async () => {
+    (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "search_archive",
+      { query: "hi", to: "2023-10-15T12:00:00Z" },
+      { userId: "u1" },
+    );
+    const call = (retrieve as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.dateRange.to.toISOString()).toBe("2023-10-15T12:00:00.000Z");
+  });
 });
 
 describe("handleTool unknown tool", () => {

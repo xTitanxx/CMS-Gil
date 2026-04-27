@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { deleteObject, getMediaUrl } from "@/lib/storage";
+import { deleteObject, getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
 
 export async function DELETE(
   _req: NextRequest,
@@ -70,14 +70,23 @@ export async function PATCH(
     include: { audioTrack: { select: { id: true, title: true, storageKey: true } } },
   });
 
-  const url = await getMediaUrl(updated).catch(() => null);
+  const [url, audioUrl] = await Promise.all([
+    getMediaUrl(updated).catch(() => null),
+    updated.audioTrack
+      ? getSignedDownloadUrl(updated.audioTrack.storageKey).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   return NextResponse.json({
     id: updated.id,
     mimeType: updated.mimeType,
     hasAudio: updated.hasAudio,
     audioTrack: updated.audioTrack
-      ? { id: updated.audioTrack.id, title: updated.audioTrack.title }
+      ? {
+          id: updated.audioTrack.id,
+          title: updated.audioTrack.title,
+          url: audioUrl,
+        }
       : null,
     url,
   });

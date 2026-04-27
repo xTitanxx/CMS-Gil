@@ -52,7 +52,7 @@ export async function GET(
       day: { gte: todayMidnightUTC },
     },
     orderBy: { day: "asc" },
-    select: { id: true, planId: true, day: true, platforms: true },
+    select: { id: true, planId: true, day: true, hour: true, status: true, platforms: true },
   });
 
   const nextPending = post.publishes
@@ -62,17 +62,21 @@ export async function GET(
   let nextScheduledAt: Date | null = nextPending?.scheduledAt ?? null;
   let nextSlotId: string | null = null;
   let nextPlanId: string | null = null;
+  let nextSlotStatus: string | null = null;
   let nextSlotPlatforms: string[] = [];
 
   if (upcomingSlot) {
     nextSlotId = upcomingSlot.id;
     nextPlanId = upcomingSlot.planId;
+    nextSlotStatus = upcomingSlot.status;
     nextSlotPlatforms = upcomingSlot.platforms;
     if (!nextScheduledAt) {
       // No PublishRecord yet — synthesize a UTC instant for the slot day at the
-      // first fixed slot hour (Asia/Jerusalem). This gives the chat card a
-      // sensible "Mon Apr 27 12pm" without inventing fake records.
-      nextScheduledAt = buildSlotDate(upcomingSlot.day, FIXED_SLOT_HOURS[0]);
+      // hour the assistant chose (or the first fixed slot hour as a default).
+      nextScheduledAt = buildSlotDate(
+        upcomingSlot.day,
+        upcomingSlot.hour ?? FIXED_SLOT_HOURS[0],
+      );
     }
   }
 
@@ -82,6 +86,7 @@ export async function GET(
     nextScheduledAt: nextScheduledAt?.toISOString() ?? null,
     nextSlotId,
     nextPlanId,
+    nextSlotStatus,
     nextSlotPlatforms,
   });
 }

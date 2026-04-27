@@ -86,9 +86,25 @@ interface CachedPost {
   /** Slot id + plan id for the next planner placement (if known). */
   nextSlotId?: string | null;
   nextPlanId?: string | null;
+  /** Slot status — "PROPOSED" / "APPROVED" / "SCHEDULED" — distinguishes a planner-only
+   *  slot (yellow) from a fully scheduled PublishRecord (green). */
+  nextSlotStatus?: string | null;
   /** Platforms set on the matching planner slot (preferred over user defaults). */
   nextSlotPlatforms?: string[];
   loaded?: boolean;
+}
+
+// Per-content-kind publishing platforms. The full publishable set is filtered
+// down to the ones that make sense for this kind of post, so e.g. an image
+// post never suggests YouTube.
+function platformsForContentKind(
+  all: string[],
+  kind: "video" | "image" | "text",
+): string[] {
+  if (kind === "video") return all; // every connected platform takes video.
+  // Image / text: drop video-only platforms.
+  const VIDEO_ONLY = new Set(["YOUTUBE", "TIKTOK"]);
+  return all.filter((p) => !VIDEO_ONLY.has(p));
 }
 
 function timeSinceShort(dateStr: string): string {
@@ -185,21 +201,27 @@ function InlinePostRef({
     if (initialPost) setPost(initialPost);
   }, [initialPost]);
 
-  // Hydrate the schedule state from the post's known next pending publish, but
-  // only when we're still in the idle state (don't override an in-progress or
-  // user-initiated state from this session).
+  // Sync local schedule state with the API:
+  //   - idle → scheduled when a planner placement appears
+  //   - scheduled → idle when the planner placement disappears (e.g. user
+  //     cancelled the slot from /admin/dashboard while the chat tab was open)
+  // Don't touch in-progress states (sending / error) — those are user-initiated
+  // and should resolve via their own callback.
   useEffect(() => {
-    if (!post?.nextScheduledAt) return;
-    setSchedule((prev) =>
-      prev.status === "idle"
-        ? {
-            status: "scheduled",
-            scheduledAt: post.nextScheduledAt!,
-            slotId: post.nextSlotId ?? "",
-            planId: post.nextPlanId ?? "",
-          }
-        : prev,
-    );
+    setSchedule((prev) => {
+      if (prev.status === "sending" || prev.status === "error") return prev;
+      if (post?.nextScheduledAt) {
+        return {
+          status: "scheduled",
+          scheduledAt: post.nextScheduledAt,
+          slotId: post.nextSlotId ?? "",
+          planId: post.nextPlanId ?? "",
+        };
+      }
+      // No planner placement on the post any more — drop back to idle.
+      if (prev.status === "scheduled") return { status: "idle" };
+      return prev;
+    });
   }, [post?.nextScheduledAt, post?.nextSlotId, post?.nextPlanId]);
 
   // Re-fetch when fields added by recent versions of the API are missing on a
@@ -239,6 +261,7 @@ function InlinePostRef({
           nextScheduledAt: data.nextScheduledAt ?? null,
           nextSlotId: data.nextSlotId ?? null,
           nextPlanId: data.nextPlanId ?? null,
+          nextSlotStatus: data.nextSlotStatus ?? null,
           nextSlotPlatforms: Array.isArray(data.nextSlotPlatforms) ? data.nextSlotPlatforms : [],
           loaded: true,
         };
@@ -268,19 +291,45 @@ function InlinePostRef({
   const ContentIcon = isVideo ? Film : post.thumbUrl ? ImageIcon : Type;
   const contentLabel = isVideo ? "Video" : post.thumbUrl ? "Image" : "Text";
   const stars = post.stars ?? null;
-  // Hide reason chips that just restate the star rating (e.g. "5★") since the
-  // visual stars row already conveys that.
-  const visibleReasons = post.reasons?.filter((r) => !/^\s*\d+\s*★\s*$/.test(r));
+  // Hide reason chips that just restate visible badges:
+  //   - "5★" duplicates the stars chip
+  //   - "evergreen" duplicates the green leaf
+  //   - "never posted" / "rarely reposted" duplicate the "Never reposted" /
+  //     "Reposted N×" chip on the top row
+  const isEvergreen = post.lifecycle === "EVERGREEN";
+  const visibleReasons = post.reasons?.filter((r) => {
+    if (/^\s*\d+\s*★\s*$/.test(r)) return false;
+    if (isEvergreen && /^\s*evergreen\s*$/i.test(r)) return false;
+    if (typeof post.publishCount === "number") {
+      if (post.publishCount === 0 && /^\s*never posted\s*$/i.test(r)) return false;
+      if (/^\s*rarely reposted\s*$/i.test(r)) return false;
+    }
+    return true;
+  });
   const showReasons = visibleReasons && visibleReasons.length > 0;
   const showTags = !showReasons && post.tags && post.tags.length > 0;
   // Prefer the platforms recorded on the matching planner slot (so chat mirrors
   // what the planner shows). Fall back to the user's connected publishable
-  // platforms when the post has no slot yet.
+  // platforms — filtered to the ones that fit this post's content kind so an
+  // image post never suggests YouTube.
+  const contentKindForPlatforms: "video" | "image" | "text" = isVideo
+    ? "video"
+    : post.thumbUrl
+      ? "image"
+      : "text";
   const platformsToShow = post.nextSlotPlatforms && post.nextSlotPlatforms.length > 0
     ? post.nextSlotPlatforms
-    : (userPlatforms ?? []);
+    : platformsForContentKind(userPlatforms ?? [], contentKindForPlatforms);
 
-  const isScheduled = schedule.status === "scheduled";
+  // Determine card state from BOTH the local schedule state and the slot
+  // status returned by the API. A slot in PROPOSED/APPROVED is yellow
+  // ("Proposed"); SCHEDULED + an actual PublishRecord is green ("Scheduled").
+  const slotIsScheduled = post.nextSlotStatus === "SCHEDULED";
+  const slotIsProposed =
+    post.nextSlotStatus === "PROPOSED" || post.nextSlotStatus === "APPROVED";
+  const isScheduled =
+    schedule.status === "scheduled" && (slotIsScheduled || !post.nextSlotStatus);
+  const isProposedSlot = schedule.status === "scheduled" && slotIsProposed;
   const cardBg = isScheduled
     ? "border-[#d6e4d3] bg-[#f0f6ef]"
     : "border-[#ebe3cc] bg-[#fbf7ee]";
@@ -446,13 +495,22 @@ function InlinePostRef({
 
       {/* Status footer — parallel to PlanSlotCard: dot · label · date · spacer · platforms · V/X */}
       {onSchedule && (
-        <div className={`flex items-center gap-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
+        <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
           <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
-          <span className="font-semibold text-[#3a3832]">
-            {isScheduled ? "Scheduled" : schedule.status === "error" ? "Schedule failed" : "Proposed"}
+          <span className="shrink-0 font-semibold text-[#3a3832]">
+            {isScheduled
+              ? "Scheduled"
+              : isProposedSlot
+                ? "Proposed"
+                : schedule.status === "error"
+                  ? "Schedule failed"
+                  : "Recommended"}
           </span>
-          {isScheduled && (
-            <span className="whitespace-nowrap text-[#7a7870]">
+          {/* Show day+time whenever we have a planner placement (proposed OR
+              scheduled). Recommended state has no time — nothing's been
+              committed yet. */}
+          {schedule.status === "scheduled" && (
+            <span className="shrink-0 whitespace-nowrap text-[#7a7870]">
               · <span className="font-semibold text-[#161513]">{formatScheduledShort(schedule.scheduledAt)}</span>
             </span>
           )}
@@ -462,14 +520,14 @@ function InlinePostRef({
             if (!meta) return null;
             return <meta.Icon key={p} className={`h-4 w-4 shrink-0 ${meta.color}`} />;
           })}
-          {isScheduled ? (
+          {(isScheduled || isProposedSlot) ? (
             schedule.slotId && schedule.planId ? (
               <button
                 type="button"
                 onClick={handleUnscheduleClick}
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#d6e4d3] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]"
-                title="Cancel scheduled post"
-                aria-label="Cancel scheduled post"
+                title={isScheduled ? "Cancel scheduled post" : "Remove from planner"}
+                aria-label={isScheduled ? "Cancel scheduled post" : "Remove from planner"}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -548,6 +606,55 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   // User's connected publishing platforms — used as the suggested platforms on
   // inline post cards. Fetched once on mount.
   const [userPlatforms, setUserPlatforms] = useState<string[]>([]);
+
+  // Re-fetch cached posts when the tab regains focus / visibility, so that
+  // cancelling a slot from /admin/dashboard (or any other route) flips the
+  // corresponding chat card back to its real state instead of staying green
+  // until the conversation is reloaded.
+  useEffect(() => {
+    function refreshCachedPosts() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      setPostCache((prev) => {
+        const ids = Array.from(prev.keys());
+        if (ids.length === 0) return prev;
+        Promise.all(
+          ids.map((id) =>
+            fetch(`/api/posts/${id}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((data) => (data ? { id, data } : null))
+              .catch(() => null),
+          ),
+        ).then((results) => {
+          setPostCache((current) => {
+            const next = new Map(current);
+            for (const r of results) {
+              if (!r) continue;
+              const existing = next.get(r.id);
+              if (!existing) continue;
+              next.set(r.id, {
+                ...existing,
+                nextScheduledAt: r.data.nextScheduledAt ?? null,
+                nextSlotId: r.data.nextSlotId ?? null,
+                nextPlanId: r.data.nextPlanId ?? null,
+                nextSlotStatus: r.data.nextSlotStatus ?? null,
+                nextSlotPlatforms: Array.isArray(r.data.nextSlotPlatforms)
+                  ? r.data.nextSlotPlatforms
+                  : [],
+              });
+            }
+            return next;
+          });
+        });
+        return prev;
+      });
+    }
+    window.addEventListener("focus", refreshCachedPosts);
+    document.addEventListener("visibilitychange", refreshCachedPosts);
+    return () => {
+      window.removeEventListener("focus", refreshCachedPosts);
+      document.removeEventListener("visibilitychange", refreshCachedPosts);
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/connections")

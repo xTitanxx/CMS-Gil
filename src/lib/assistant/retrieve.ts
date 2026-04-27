@@ -5,12 +5,14 @@ import { prisma } from "@/lib/prisma";
 import type { ContentKind, RetrieveHit, RetrieveOptions } from "./types";
 import { classifyContent } from "./classify";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
+import { normalizeForSearch } from "@/lib/search-normalize";
 
 const anthropic = new Anthropic();
 
 interface PostSlim {
   id: string;
   body: string;
+  bodyNormalized: string;
   tags: string[];
   stars: number | null;
   lifecycle: Lifecycle;
@@ -58,18 +60,30 @@ Return only JSON: {"tags": string[], "keywords": string[]}. Tags must come from 
   }
 }
 
-export function rankHits(posts: PostSlim[], q: MappedQuery): RetrieveHit[] {
+export function rankHits(
+  posts: PostSlim[],
+  q: MappedQuery,
+  normalizedPhrase?: string,
+): RetrieveHit[] {
   const denom = Math.max(1, q.tags.length + q.keywords.length);
+  const phrase = normalizedPhrase && normalizedPhrase.length >= 4 ? normalizedPhrase : null;
   return posts
     .map((p) => {
+      // Fall back to a runtime normalize when callers (e.g. tests) don't supply
+      // bodyNormalized — keeps unit tests simple while production hits the DB
+      // column directly.
+      const normBody = p.bodyNormalized || normalizeForSearch(p.body);
       const tagMatches = p.tags.filter((t) => q.tags.includes(t)).length;
       const kwHits = q.keywords.reduce(
-        (s, k) => s + (p.body.toLowerCase().includes(k.toLowerCase()) ? 1 : 0),
+        (s, k) => s + (normBody.includes(normalizeForSearch(k)) ? 1 : 0),
         0,
       );
+      const phraseHit = phrase ? normBody.includes(phrase) : false;
       const ratingBoost = p.stars ? (p.stars - 3) * 0.1 : 0;
-      const score = (tagMatches * 2 + kwHits) / denom + ratingBoost;
+      const phraseBoost = phraseHit ? 5 : 0;
+      const score = (tagMatches * 2 + kwHits) / denom + ratingBoost + phraseBoost;
       const reasons: string[] = [];
+      if (phraseHit) reasons.push("exact phrase match");
       if (tagMatches) reasons.push(`${tagMatches} tag match${tagMatches === 1 ? "" : "es"}`);
       if (kwHits) reasons.push(`${kwHits} keyword hit${kwHits === 1 ? "" : "s"}`);
       if (p.stars) reasons.push(`${p.stars}★`);
@@ -108,6 +122,8 @@ export function extractSnippet(body: string, keywords: string[]): string {
 
 export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
   const limit = opts.limit ?? 20;
+  const normalizedPhrase = normalizeForSearch(opts.query);
+  const hasPhrase = normalizedPhrase.length >= 4;
   const mapped = await mapQuery(opts.userId, opts.query);
   // Always include the raw query words as keyword fallbacks so we never miss a body match
   const rawWords = opts.query.split(/\s+/).filter((w) => w.length >= 3);
@@ -116,7 +132,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       mapped.keywords.push(w);
     }
   }
-  if (!mapped.tags.length && !mapped.keywords.length) return [];
+  if (!mapped.tags.length && !mapped.keywords.length && !hasPhrase) return [];
 
   const where: Prisma.PostWhereInput = {
     userId: opts.userId,
@@ -134,7 +150,10 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       : {}),
     OR: [
       ...(mapped.tags.length ? [{ tags: { hasSome: mapped.tags } }] : []),
-      ...mapped.keywords.map((k) => ({ body: { contains: k, mode: "insensitive" as const } })),
+      ...mapped.keywords.map((k) => ({
+        bodyNormalized: { contains: normalizeForSearch(k) },
+      })),
+      ...(hasPhrase ? [{ bodyNormalized: { contains: normalizedPhrase } }] : []),
     ],
   };
 
@@ -143,6 +162,7 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
     select: {
       id: true,
       body: true,
+      bodyNormalized: true,
       tags: true,
       lifecycle: true,
       postType: true,
@@ -156,12 +176,13 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
     take: 200,
   });
 
-  const slim: PostSlim[] = posts.map((p: { id: string; body: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; platformUrl: string | null; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
+  const slim: PostSlim[] = posts.map((p: { id: string; body: string; bodyNormalized: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; platformUrl: string | null; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
     const mimes = p.media.map((m) => m.mimeType);
     const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
     return {
       id: p.id,
       body: p.body,
+      bodyNormalized: p.bodyNormalized,
       tags: p.tags,
       stars: p.rating?.stars ?? null,
       lifecycle: p.lifecycle,
@@ -172,5 +193,5 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
   });
 
   const filtered = opts.contentKind ? slim.filter((p) => p.contentKind === opts.contentKind) : slim;
-  return rankHits(filtered, mapped).slice(0, limit);
+  return rankHits(filtered, mapped, hasPhrase ? normalizedPhrase : undefined).slice(0, limit);
 }

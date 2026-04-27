@@ -200,7 +200,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "propose_to_planner",
     description:
-      "Propose scheduling a specific post on a specific day. Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?').",
+      "Propose scheduling a specific post on a specific day (and optionally a time). Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?').",
     input_schema: {
       type: "object",
       properties: {
@@ -208,6 +208,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
         day: {
           type: "string",
           description: "ISO date (YYYY-MM-DD) within the current or upcoming week.",
+        },
+        hour: {
+          type: "integer",
+          enum: [12, 15, 18, 21],
+          description:
+            "Optional time slot (24h, Asia/Jerusalem). Defaults to 12 (noon). Choose 15/18/21 when the user asks for afternoon/evening, or to spread multiple posts across a day.",
         },
         platforms: {
           type: "array",
@@ -556,6 +562,11 @@ export async function handleTool(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
         return { ok: false, error: "day must be YYYY-MM-DD" };
       }
+      const ALLOWED_HOURS = [12, 15, 18, 21];
+      const hour =
+        typeof input.hour === "number" && ALLOWED_HOURS.includes(input.hour)
+          ? input.hour
+          : null;
       const rawPlatforms = Array.isArray(input.platforms)
         ? (input.platforms as unknown[]).filter((p): p is string => typeof p === "string")
         : [];
@@ -585,11 +596,23 @@ export async function handleTool(
           lifecycle: true,
           postType: true,
           platformUrl: true,
-          media: { select: { storageKey: true, mimeType: true } },
+          media: { select: { storageKey: true, mimeType: true, hasAudio: true } },
           rating: { select: { stars: true } },
         },
       });
       if (!post) return { ok: false, error: "post not found" };
+
+      // Refuse to propose posts whose video has been stripped of audio — those
+      // need a music attachment before they're shippable.
+      const hasSilentVideo = post.media.some(
+        (m) => m.mimeType.startsWith("video/") && m.hasAudio === false,
+      );
+      if (hasSilentVideo) {
+        return {
+          ok: false,
+          error: "post has a silent video — attach music before scheduling",
+        };
+      }
 
       const { buildThumbUrl } = await import("@/lib/planner/thumbnail");
       const firstMedia = post.media[0];
@@ -602,6 +625,7 @@ export async function handleTool(
           kind: "proposal",
           postId: post.id,
           day,
+          hour,
           platforms,
           reasoning: typeof input.reasoning === "string" ? input.reasoning : null,
           post: {

@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
     postId?: unknown;
     day?: unknown;
+    hour?: unknown;
     platforms?: unknown;
     reasoning?: unknown;
   };
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     return NextResponse.json({ error: "day must be YYYY-MM-DD" }, { status: 400 });
   }
+
+  const ALLOWED_HOURS = [12, 15, 18, 21];
+  const hour =
+    typeof body.hour === "number" && ALLOWED_HOURS.includes(body.hour) ? body.hour : null;
 
   const platforms = Array.isArray(body.platforms)
     ? (body.platforms as unknown[]).filter(
@@ -69,6 +74,7 @@ export async function POST(req: NextRequest) {
       planId: plan.id,
       postId,
       day: dayDate,
+      hour,
       status: "PROPOSED",
       reasoning,
       platforms,

@@ -59,6 +59,7 @@ export async function POST(
       id: true,
       postId: true,
       day: true,
+      hour: true,
       platforms: true,
     },
   });
@@ -90,7 +91,9 @@ export async function POST(
     const dayKey = slot.day.toISOString().slice(0, 10);
     const daySlots = slotsByDay.get(dayKey) ?? [slot];
     const idx = daySlots.indexOf(slot);
-    const hour = FIXED_SLOT_HOURS[idx];
+    // Prefer the slot's stored hour (set by the assistant via propose_to_planner);
+    // fall back to the fixed-slot index for legacy slots without one.
+    const hour = slot.hour ?? FIXED_SLOT_HOURS[idx];
     const scheduledAt = buildSlotDate(slot.day, hour);
 
     // For each platform (excluding personal FACEBOOK)

@@ -204,7 +204,7 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
         },
         media: {
           orderBy: { id: "asc" },
-          select: { storageKey: true, mimeType: true },
+          select: { storageKey: true, mimeType: true, hasAudio: true },
         },
       },
       orderBy: { publishCount: "asc" },
@@ -238,7 +238,15 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     }),
   ]);
 
-  const rows: CandidateRow[] = posts.map((p) => {
+  // Drop posts whose video media is silent — readiness considers them
+  // unfinished, and proposing them sets the user up to ship a muted reel.
+  const audibleOnly = posts.filter((p) => {
+    const videos = p.media.filter((m) => m.mimeType.startsWith("video/"));
+    if (videos.length === 0) return true;
+    return videos.every((m) => m.hasAudio !== false);
+  });
+
+  const rows: CandidateRow[] = audibleOnly.map((p) => {
     const mimes = p.media.map((m) => m.mimeType);
     const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
     return {

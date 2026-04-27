@@ -11,6 +11,8 @@ export interface ProposalData {
   kind: "proposal";
   postId: string;
   day: string;
+  /** Hour-of-day (12/15/18/21, Asia/Jerusalem) the assistant chose; null = noon default. */
+  hour: number | null;
   platforms: string[];
   reasoning: string | null;
   post: {
@@ -98,17 +100,13 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
           href={`/admin/posts/${post.id}?from=assistant`}
           className="relative block w-full overflow-hidden bg-gray-100"
         >
-          {post.hasVideo ? (
-            <video
-              src={`${post.thumbUrl}#t=0.1`}
-              muted
-              playsInline
-              preload="metadata"
-              className="h-72 w-full object-cover md:h-80"
-            />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
+          {/* thumbUrl is .poster.jpg for videos (see buildThumbUrl), so always render as <img>. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={post.thumbUrl} alt="" className="h-72 w-full object-cover md:h-80" />
+          {post.hasVideo && (
+            <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white">
+              <Film className="h-4 w-4" />
+            </span>
           )}
         </Link>
       ) : null}
@@ -144,14 +142,16 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
         )}
       </div>
 
-      <div className={`flex items-center gap-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
+      <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-1.5 border-t border-black/5 px-3.5 py-2.5 text-[12px] md:px-4 ${footerBg}`}>
         <span className={`h-2 w-2 shrink-0 rounded-full ${dotBg}`} />
-        <span className="font-semibold text-[#3a3832]">
+        <span className="shrink-0 font-semibold text-[#3a3832]">
           {isAdded ? "Scheduled" : state.status === "error" ? "Add failed" : "Proposed"}
         </span>
-        <span className="whitespace-nowrap text-[#7a7870]">
+        <span className="shrink-0 whitespace-nowrap text-[#7a7870]">
           · <span className="font-semibold text-[#161513]">{formatDay(proposal.day)}</span>
-          <span className="ml-1 font-semibold text-[#161513]">{formatSlotHour(FIXED_SLOT_HOURS[0])}</span>
+          <span className="ml-1 font-semibold text-[#161513]">
+            {formatSlotHour(proposal.hour ?? FIXED_SLOT_HOURS[0])}
+          </span>
         </span>
 
         {proposal.reasoning && (

@@ -2,8 +2,37 @@ import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { currentSeason } from "./season";
 
+const PLATFORM_LABEL: Record<string, string> = {
+  INSTAGRAM: "Instagram",
+  FACEBOOK_PAGE: "Facebook page",
+  LINKEDIN: "LinkedIn",
+  TIKTOK: "TikTok",
+  YOUTUBE: "YouTube",
+};
+
+async function getConnectedPlatforms(userId: string): Promise<string[]> {
+  const [tokens, googleAccount] = await Promise.all([
+    prisma.platformToken.findMany({
+      where: { userId },
+      select: { platform: true },
+    }),
+    prisma.account.findFirst({
+      where: { userId, provider: "google" },
+      select: { scope: true },
+    }),
+  ]);
+  const platforms = new Set<string>();
+  for (const t of tokens) {
+    // FACEBOOK personal profile is not publishable; the FB Page connection is.
+    if (t.platform === "FACEBOOK") continue;
+    platforms.add(t.platform);
+  }
+  if (googleAccount?.scope?.includes("youtube")) platforms.add("YOUTUBE");
+  return Array.from(platforms);
+}
+
 export async function buildSystemPrompt(userId: string, now: Date): Promise<string> {
-  const [readyCount, ratedCount, pendingNext7, totalPosts] = await Promise.all([
+  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms] = await Promise.all([
     prisma.post.count({ where: { userId, readiness: "READY" } }),
     prisma.postRating.count({ where: { post: { userId } } }),
     prisma.publishRecord.count({
@@ -17,13 +46,19 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
       },
     }),
     prisma.post.count({ where: { userId } }),
+    getConnectedPlatforms(userId),
   ]);
+
+  const platformsLine = connectedPlatforms.length
+    ? connectedPlatforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")
+    : "(none — user must connect at least one)";
 
   return `You are Gil's post assistant. You help him decide what to post, find things in his archive, edit posts, rate posts, archive, schedule, and publish.
 
 Today: ${format(now, "EEEE, yyyy-MM-dd")} (${currentSeason(now).toLowerCase()})
 Archive: ${totalPosts} total · ${readyCount} READY · ${ratedCount} rated
 Scheduled in next 7 days: ${pendingNext7}
+Connected publishing platforms: ${platformsLine}
 
 Read-only tools (call freely):
 - recommend_posts, search_archive, get_post, list_scheduled, propose_to_planner
@@ -36,6 +71,8 @@ Read-only:
 
 Scheduling proposals — IMPORTANT:
 When you want to suggest scheduling a specific post on a specific day, DO NOT narrate it in prose ("how about Thursday for [post:abc]?"). Instead, call propose_to_planner with the postId, day, and platforms. The UI renders this as an in-chat proposal card with a V button — the user approves with one tap. propose_to_planner does not mutate anything; the V button is what adds the slot to the planner. You can call it multiple times in parallel for several proposals.
+
+When choosing platforms, only use ones from "Connected publishing platforms" above. Match content to platform: video and REEL posts belong on Instagram, TikTok, and YouTube (when connected); image and text posts belong on Instagram, Facebook, and LinkedIn. Always include YouTube in the platforms array for any video-format proposal when YouTube is connected.
 
 Content categories (every post has exactly one):
 - video       — REELs and any post with video media. Target: 2 per day.

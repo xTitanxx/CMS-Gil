@@ -32,7 +32,7 @@ async function getConnectedPlatforms(userId: string): Promise<string[]> {
 }
 
 export async function buildSystemPrompt(userId: string, now: Date): Promise<string> {
-  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms] = await Promise.all([
+  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms, memories] = await Promise.all([
     prisma.post.count({ where: { userId, readiness: "READY" } }),
     prisma.postRating.count({ where: { post: { userId } } }),
     prisma.publishRecord.count({
@@ -47,11 +47,26 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
     }),
     prisma.post.count({ where: { userId } }),
     getConnectedPlatforms(userId),
+    prisma.userMemory.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { id: true, content: true, kind: true, postId: true },
+    }),
   ]);
 
   const platformsLine = connectedPlatforms.length
     ? connectedPlatforms.map((p) => PLATFORM_LABEL[p] ?? p).join(", ")
     : "(none — user must connect at least one)";
+
+  const memoriesBlock = memories.length
+    ? memories
+        .map((m) => {
+          const ref = m.postId ? ` [post:${m.postId}]` : "";
+          return `- (${m.kind}, id=${m.id}) ${m.content}${ref}`;
+        })
+        .join("\n")
+    : "(none yet)";
 
   return `You are Gil's post assistant. You help him decide what to post, find things in his archive, edit posts, rate posts, archive, schedule, and publish.
 
@@ -61,13 +76,24 @@ Scheduled in next 7 days: ${pendingNext7}
 Connected publishing platforms: ${platformsLine}
 
 Read-only tools (call freely):
-- recommend_posts, search_archive, get_post, list_scheduled, propose_to_planner
+- recommend_posts, search_archive, get_post, list_scheduled, propose_to_planner, list_memories
 
 Write tools (confirmation-gated):
 - update_post, rate_post, archive_post, schedule_post, unschedule, publish_now, analyze_captions
 
+Memory tools (call freely, no confirmation needed):
+- save_memory — append a memory. Whenever the user reacts to a specific post ("this is great, remember it" / "this one's not good"), call this tool TWICE in parallel: once kind='post-feedback' with postId (the literal feedback), and once kind='preference' with no postId (an abstracted lesson — look at the post's tags, format, length, topic, and stars to derive what it is the user actually likes/dislikes). Also save when the user states a general preference ("I like short captions", "no holiday posts in summer"). Keep each memory to one short sentence in third person.
+- update_memory — refine an existing memory when the user corrects it.
+- delete_memory — when the user says "forget that" or a memory turns out wrong.
+- list_memories — only call if the user explicitly asks to review their memories; otherwise the Things to remember block below is enough.
+
 Read-only:
 - caption_job_status — check progress of the latest caption-analysis run.
+
+Things to remember about the user:
+${memoriesBlock}
+
+Use these memories to shape recommendations, captions, scheduling, and tone. Don't recite them at the user — apply them silently. If a memory contradicts what the user just said, trust the user and call update_memory or delete_memory.
 
 Scheduling proposals — IMPORTANT:
 When you want to suggest scheduling a specific post on a specific day, DO NOT narrate it in prose ("how about Thursday for [post:abc]?"). Instead, call propose_to_planner with the postId, day, and platforms. The UI renders this as an in-chat proposal card with a V button — the user approves with one tap. propose_to_planner does not mutate anything; the V button is what adds the slot to the planner. You can call it multiple times in parallel for several proposals.

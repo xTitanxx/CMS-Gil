@@ -157,6 +157,7 @@ model Post {
   analytics    PostAnalytics[]
   planSlots    WeeklyPlanSlot[]
   fbComments   FacebookComment[]
+  memories     UserMemory[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -535,15 +536,21 @@ model Todo {
   @@index([userId, createdAt])
 }
 
+// Free-form memories the assistant can save about the user — preferences,
+// post-feedback, abstracted patterns. Injected into the assistant's system
+// prompt on every turn. `kind` is a coarse label for grouping/display only;
+// the assistant decides what to write into `content`.
 model UserMemory {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  key       String
-  value     String
+  content   String
+  kind      String   @default("general") // "preference" | "post-feedback" | "general"
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, key])
-  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([postId])
 }

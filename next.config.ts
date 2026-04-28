@@ -9,6 +9,16 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.s3.amazonaws.com" },
     ],
   },
+  // Keep ffmpeg/ffprobe out of the webpack bundle so __dirname resolves to the
+  // real package directory at runtime instead of a "/ROOT/..." placeholder.
+  serverExternalPackages: ["ffmpeg-static", "ffprobe-static", "fluent-ffmpeg"],
+  // Make sure the platform binaries actually ship inside the function bundle.
+  outputFileTracingIncludes: {
+    "/**/*": [
+      "node_modules/ffmpeg-static/ffmpeg",
+      "node_modules/ffprobe-static/bin/**",
+    ],
+  },
   // Allow large file uploads for Facebook exports
   experimental: {
     serverActions: {

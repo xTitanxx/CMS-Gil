@@ -207,6 +207,59 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "save_memory",
+    description:
+      "Saves a free-form memory about the user — preferences, post-feedback, style notes, anything the user explicitly asks to remember or you've inferred from a clear signal. Memories get injected into the system prompt every turn, so future conversations see them. When the user reacts to a specific post (\"this is great, remember it\" / \"not a fan of this one\"), call this tool TWICE in parallel: once with kind='post-feedback' and postId set (the literal feedback), and once with kind='preference' and no postId (an abstracted lesson derived from the post's tags/topic/format/length). Keep content to one sentence. Never save personal data the user didn't volunteer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        content: {
+          type: "string",
+          description: "The memory itself, in one short sentence. Write in third person about the user (e.g. 'prefers personal-narrative captions over news commentary').",
+        },
+        kind: {
+          type: "string",
+          enum: ["preference", "post-feedback", "general"],
+          description: "Coarse label. Use 'post-feedback' when tied to a specific post, 'preference' for abstracted patterns, 'general' for anything else.",
+        },
+        postId: {
+          type: "string",
+          description: "Optional source post id. Required when kind='post-feedback'.",
+        },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "list_memories",
+    description:
+      "Lists all saved memories for the user. Memories are already injected into your system prompt; only call this if the user explicitly asks to review/list them.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "delete_memory",
+    description:
+      "Deletes a saved memory by id. Call when the user says 'forget that', 'that's not right', or otherwise asks you to drop a specific memory.",
+    input_schema: {
+      type: "object",
+      properties: { memoryId: { type: "string" } },
+      required: ["memoryId"],
+    },
+  },
+  {
+    name: "update_memory",
+    description:
+      "Refines an existing memory's content. Use when the user corrects a memory rather than asking to forget it (e.g. 'actually, I prefer X, not Y').",
+    input_schema: {
+      type: "object",
+      properties: {
+        memoryId: { type: "string" },
+        content: { type: "string" },
+      },
+      required: ["memoryId", "content"],
+    },
+  },
+  {
     name: "propose_to_planner",
     description:
       "Propose scheduling a specific post on a specific day (and optionally a time). Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?').",
@@ -577,6 +630,68 @@ export async function handleTool(
         orderBy: { createdAt: "desc" },
       });
       return { ok: true, data: job };
+    }
+    case "save_memory": {
+      const content = typeof input.content === "string" ? input.content.trim() : "";
+      if (!content) return { ok: false, error: "content required" };
+      if (content.length > 500) return { ok: false, error: "content too long (max 500 chars)" };
+
+      const allowedKinds = new Set(["preference", "post-feedback", "general"]);
+      const rawKind = typeof input.kind === "string" ? input.kind : "general";
+      const kind = allowedKinds.has(rawKind) ? rawKind : "general";
+
+      let postId: string | null = null;
+      if (typeof input.postId === "string" && input.postId.trim()) {
+        const post = await prisma.post.findFirst({
+          where: { id: input.postId, userId: ctx.userId },
+          select: { id: true },
+        });
+        if (!post) return { ok: false, error: "post not found" };
+        postId = post.id;
+      }
+
+      const memory = await prisma.userMemory.create({
+        data: { userId: ctx.userId, content, kind, postId },
+      });
+      console.log("[assistant] save_memory", { userId: ctx.userId, id: memory.id, kind });
+      return { ok: true, data: { id: memory.id, content: memory.content, kind: memory.kind, postId: memory.postId } };
+    }
+    case "list_memories": {
+      const memories = await prisma.userMemory.findMany({
+        where: { userId: ctx.userId },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, content: true, kind: true, postId: true, createdAt: true },
+      });
+      return { ok: true, data: memories };
+    }
+    case "delete_memory": {
+      const memoryId = String(input.memoryId ?? "");
+      const memory = await prisma.userMemory.findFirst({
+        where: { id: memoryId, userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!memory) return { ok: false, error: "memory not found" };
+      await prisma.userMemory.delete({ where: { id: memory.id } });
+      console.log("[assistant] delete_memory", { userId: ctx.userId, id: memory.id });
+      return { ok: true, data: { id: memory.id } };
+    }
+    case "update_memory": {
+      const memoryId = String(input.memoryId ?? "");
+      const content = typeof input.content === "string" ? input.content.trim() : "";
+      if (!content) return { ok: false, error: "content required" };
+      if (content.length > 500) return { ok: false, error: "content too long (max 500 chars)" };
+
+      const memory = await prisma.userMemory.findFirst({
+        where: { id: memoryId, userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!memory) return { ok: false, error: "memory not found" };
+      const updated = await prisma.userMemory.update({
+        where: { id: memory.id },
+        data: { content },
+      });
+      console.log("[assistant] update_memory", { userId: ctx.userId, id: memory.id });
+      return { ok: true, data: { id: updated.id, content: updated.content } };
     }
     case "propose_to_planner": {
       const postId = String(input.postId ?? "");

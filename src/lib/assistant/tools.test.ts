@@ -10,6 +10,13 @@ vi.mock("@/lib/prisma", () => ({
       delete: vi.fn(),
     },
     postRating: { upsert: vi.fn() },
+    userMemory: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
   },
 }));
 vi.mock("./recommend", () => ({ recommend: vi.fn() }));
@@ -230,6 +237,140 @@ describe("handleTool archive_post", () => {
     );
     expect(call).toBeDefined();
     expect(call![0].data.archivedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("handleTool save_memory", () => {
+  it("rejects empty content", async () => {
+    const out = await handleTool("save_memory", { content: "  " }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("rejects content over 500 chars", async () => {
+    const out = await handleTool(
+      "save_memory",
+      { content: "x".repeat(501) },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(false);
+  });
+
+  it("saves with default kind=general when none provided", async () => {
+    (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      content: "likes short captions",
+      kind: "general",
+      postId: null,
+    });
+    const out = await handleTool(
+      "save_memory",
+      { content: "likes short captions" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.userId).toBe("u1");
+    expect(call.data.kind).toBe("general");
+    expect(call.data.postId).toBeNull();
+  });
+
+  it("falls back to 'general' for unknown kinds", async () => {
+    (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      content: "x",
+      kind: "general",
+      postId: null,
+    });
+    await handleTool("save_memory", { content: "x", kind: "weird" }, { userId: "u1" });
+    const call = (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.kind).toBe("general");
+  });
+
+  it("rejects when postId points to another user's post", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const out = await handleTool(
+      "save_memory",
+      { content: "loved it", kind: "post-feedback", postId: "p1" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.error).toContain("post not found");
+  });
+
+  it("ties memory to a valid post when postId is supplied", async () => {
+    (prisma.post.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "p1" });
+    (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      content: "loved it",
+      kind: "post-feedback",
+      postId: "p1",
+    });
+    const out = await handleTool(
+      "save_memory",
+      { content: "loved it", kind: "post-feedback", postId: "p1" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.userMemory.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.postId).toBe("p1");
+    expect(call.data.kind).toBe("post-feedback");
+  });
+});
+
+describe("handleTool list_memories", () => {
+  it("scopes to the calling user", async () => {
+    (prisma.userMemory.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool("list_memories", {}, { userId: "u1" });
+    const call = (prisma.userMemory.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.userId).toBe("u1");
+  });
+});
+
+describe("handleTool delete_memory", () => {
+  it("refuses to delete another user's memory", async () => {
+    (prisma.userMemory.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const out = await handleTool("delete_memory", { memoryId: "m1" }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("deletes when found", async () => {
+    (prisma.userMemory.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "m1" });
+    (prisma.userMemory.delete as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "m1" });
+    const out = await handleTool("delete_memory", { memoryId: "m1" }, { userId: "u1" });
+    expect(out.ok).toBe(true);
+  });
+});
+
+describe("handleTool update_memory", () => {
+  it("rejects empty content", async () => {
+    const out = await handleTool("update_memory", { memoryId: "m1", content: "  " }, { userId: "u1" });
+    expect(out.ok).toBe(false);
+  });
+
+  it("refuses to edit another user's memory", async () => {
+    (prisma.userMemory.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const out = await handleTool(
+      "update_memory",
+      { memoryId: "m1", content: "new" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(false);
+  });
+
+  it("updates when found", async () => {
+    (prisma.userMemory.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "m1" });
+    (prisma.userMemory.update as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      content: "new",
+    });
+    const out = await handleTool(
+      "update_memory",
+      { memoryId: "m1", content: "new" },
+      { userId: "u1" },
+    );
+    expect(out.ok).toBe(true);
+    const call = (prisma.userMemory.update as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.data.content).toBe("new");
   });
 });
 

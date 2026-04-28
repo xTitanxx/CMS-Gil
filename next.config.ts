@@ -1,5 +1,32 @@
 import type { NextConfig } from "next";
 
+// Routes whose serverless function actually loads ffmpeg / ffprobe via the
+// import chain (storage.ts → video-processing.ts → fluent-ffmpeg). Any new
+// route that uploads media, publishes, imports, or analyzes posts needs to
+// be added here, or its bundle will be missing the binaries at runtime.
+//
+// The previous wildcard `"/**/*"` shipped the ~80MB binary set into every
+// serverless function bundle (~80 routes), pushing total upload to multiple
+// gigabytes and stalling Vercel deploys in "Deploying outputs..." for
+// 10+ minutes. Scoping to the actual users keeps the bundle small.
+const FFMPEG_FILES = [
+  "node_modules/ffmpeg-static/ffmpeg",
+  "node_modules/ffprobe-static/bin/**",
+];
+const FFMPEG_ROUTES = [
+  "/api/posts/[id]/media",
+  "/api/posts/[id]/publish",
+  "/api/posts/[id]/analyze",
+  "/api/posts/bulk-analyze",
+  "/api/audio",
+  "/api/media/[id]/replace",
+  "/api/import/upload",
+  "/api/import/process",
+  "/api/drive/sync",
+  "/api/cron/publish",
+  "/api/cron/drive-sync",
+];
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
@@ -12,13 +39,10 @@ const nextConfig: NextConfig = {
   // Keep ffmpeg/ffprobe out of the webpack bundle so __dirname resolves to the
   // real package directory at runtime instead of a "/ROOT/..." placeholder.
   serverExternalPackages: ["ffmpeg-static", "ffprobe-static", "fluent-ffmpeg"],
-  // Make sure the platform binaries actually ship inside the function bundle.
-  outputFileTracingIncludes: {
-    "/**/*": [
-      "node_modules/ffmpeg-static/ffmpeg",
-      "node_modules/ffprobe-static/bin/**",
-    ],
-  },
+  // Force the binaries into only the function bundles that actually need them.
+  outputFileTracingIncludes: Object.fromEntries(
+    FFMPEG_ROUTES.map((route) => [route, FFMPEG_FILES]),
+  ),
   // Allow large file uploads for Facebook exports
   experimental: {
     serverActions: {

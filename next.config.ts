@@ -9,9 +9,12 @@ import type { NextConfig } from "next";
 // serverless function bundle (~80 routes), pushing total upload to multiple
 // gigabytes and stalling Vercel deploys in "Deploying outputs..." for
 // 10+ minutes. Scoping to the actual users keeps the bundle small.
+// ffprobe-static ships every platform's binary (~378MB total: darwin 132MB,
+// linux 99MB, win32 104MB). Vercel Functions run on linux/x64, so include
+// only that one — keeps each function bundle under Vercel's 250MB limit.
 const FFMPEG_FILES = [
   "node_modules/ffmpeg-static/ffmpeg",
-  "node_modules/ffprobe-static/bin/**",
+  "node_modules/ffprobe-static/bin/linux/x64/**",
 ];
 const FFMPEG_ROUTES = [
   "/api/posts/[id]/media",

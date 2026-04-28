@@ -19,12 +19,12 @@ vi.mock("@/lib/prisma", () => ({
     },
   },
 }));
-vi.mock("./recommend", () => ({ recommend: vi.fn() }));
+vi.mock("./recommend", () => ({ recommend: vi.fn(), recommendMix: vi.fn() }));
 vi.mock("./retrieve", () => ({ retrieve: vi.fn() }));
 
 import { handleTool } from "./tools";
 import { prisma } from "@/lib/prisma";
-import { recommend } from "./recommend";
+import { recommend, recommendMix } from "./recommend";
 import { retrieve } from "./retrieve";
 
 beforeEach(() => { vi.clearAllMocks(); });
@@ -84,6 +84,22 @@ describe("handleTool recommend_posts / search_archive", () => {
     (recommend as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await handleTool("recommend_posts", { limit: 3 }, { userId: "u1" });
     expect((recommend as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].userId).toBe("u1");
+  });
+
+  it("calls recommendMix with userId and clamps bucket limits to 5", async () => {
+    (recommendMix as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      video: [], image: [], shortText: [], longText: [],
+    });
+    await handleTool(
+      "recommend_daily_mix",
+      { videoLimit: 99, imageLimit: -3, longTextLimit: 1 },
+      { userId: "u1" },
+    );
+    const call = (recommendMix as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.userId).toBe("u1");
+    expect(call.videoLimit).toBe(5);
+    expect(call.imageLimit).toBe(0);
+    expect(call.longTextLimit).toBe(1);
   });
 
   it("calls retrieve with userId", async () => {

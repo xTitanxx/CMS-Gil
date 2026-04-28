@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Film, ImageIcon, Type, Leaf, Check, X, Loader2, Sparkles } from "lucide-react";
+import { Film, ImageIcon, Type, Leaf, Check, X, Loader2, Sparkles, AlertTriangle } from "lucide-react";
 import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { formatSlotHour } from "@/lib/planner/format-slot";
@@ -15,6 +15,20 @@ export interface ProposalData {
   hour: number | null;
   platforms: string[];
   reasoning: string | null;
+  /** Posts already PENDING-scheduled on the same Asia/Jerusalem day. Surfaced
+   *  so the user can spot stacking before approving. Empty when the day is clear. */
+  existingOnDay?: {
+    recordId: string;
+    postId: string;
+    hour: number;
+    scheduledAt: string;
+    body: string;
+    thumbUrl: string | null;
+    platform: string;
+    postType: "POST" | "REEL" | "STORY";
+  }[];
+  /** True when an existing scheduled post shares the proposed hour. */
+  sameHourClash?: boolean;
   post: {
     id: string;
     body: string;
@@ -207,6 +221,24 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
       {showReason && proposal.reasoning && (
         <div className="border-t border-black/5 bg-white/40 px-3.5 py-2 text-[12px] leading-snug text-[#5a5853]">
           {proposal.reasoning}
+        </div>
+      )}
+
+      {!isAdded && proposal.existingOnDay && proposal.existingOnDay.length > 0 && (
+        <div
+          className={`flex items-start gap-1.5 border-t border-black/5 px-3.5 py-2 text-[11px] leading-snug ${
+            proposal.sameHourClash ? "bg-amber-50 text-amber-800" : "bg-white/40 text-[#5a5853]"
+          }`}
+        >
+          {proposal.sameHourClash ? (
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          ) : null}
+          <span>
+            {proposal.sameHourClash ? "Already scheduled at this hour: " : "Also on this day: "}
+            {proposal.existingOnDay
+              .map((e) => `${formatSlotHour(e.hour)} ${e.postType === "REEL" ? "reel" : "post"}`)
+              .join(", ")}
+          </span>
         </div>
       )}
     </div>

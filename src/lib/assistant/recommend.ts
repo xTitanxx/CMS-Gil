@@ -1,4 +1,10 @@
-import type { CandidateRow, Recommendation, RecommendOptions } from "./types";
+import type {
+  CandidateRow,
+  DailyMix,
+  DailyMixOptions,
+  Recommendation,
+  RecommendOptions,
+} from "./types";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import { classifyContent } from "./classify";
 import { currentSeason, seasonFit } from "./season";
@@ -10,6 +16,9 @@ export const WEIGHTS = {
   topicRecency: 0.7,
   variety: 0.4,
   diversity: 0.3,
+  // Audience-side signal from PostAnalytics. Lower than `rating` so Gil's own
+  // taste outranks raw popularity, but high enough to reorder ties.
+  engagement: 0.5,
 } as const;
 
 const STAR_SCORE: Record<number, number> = {
@@ -104,6 +113,21 @@ export function scorePost(
     ctx.recentKinds.slice(0, 3).every((k) => k === post.postType);
   const kindDiversity = (last3SameKind ? -1 : 0) * WEIGHTS.diversity;
 
+  // Engagement: audience-side signal from scraped/fetched PostAnalytics.
+  // Normalized engagement is in [0, 1] relative to the user's own p90 (so a
+  // post matching their typical "good" engagement scores ~1.0). Posts with
+  // no analytics row are treated as 0 — neutral, neither rewarded nor
+  // punished. Below the user's median we also subtract a small penalty so a
+  // measured-flop doesn't tie a measured-hit.
+  let engagementRaw = 0;
+  if (post.engagementNormalized != null) {
+    engagementRaw =
+      post.engagementNormalized < 0.2
+        ? -0.3
+        : post.engagementNormalized;
+  }
+  const engagement = engagementRaw * WEIGHTS.engagement;
+
   // Negative-reason penalty: 0.15 per reason that appears on ≥3 peers
   const penaltyReasons = post.ratingReasons.reduce(
     (s, r) => ((ctx.negativeReasonFrequency.get(r) ?? 0) >= 3 ? s + 0.15 : s),
@@ -111,7 +135,14 @@ export function scorePost(
   );
 
   const total =
-    ratingScore + lifecycleFit + freshness + topicRecency + tagVariety + kindDiversity - penaltyReasons;
+    ratingScore +
+    lifecycleFit +
+    freshness +
+    topicRecency +
+    tagVariety +
+    kindDiversity +
+    engagement -
+    penaltyReasons;
 
   // Human-readable reasons
   const reasons: string[] = [];
@@ -128,6 +159,10 @@ export function scorePost(
   else if (freshnessRaw > 0.8) reasons.push("rarely reposted");
   if (topicStaleness > 0.85) reasons.push("stale topic");
   if (last3SameKind) reasons.push("same kind × 3 recent");
+  if (post.engagementNormalized != null && post.engagementNormalized >= 0.85)
+    reasons.push("popular");
+  else if (post.engagementNormalized != null && post.engagementNormalized < 0.2)
+    reasons.push("flopped previously");
 
   return {
     postId: post.id,
@@ -139,6 +174,7 @@ export function scorePost(
       tagVariety,
       topicRecency,
       kindDiversity,
+      engagement,
       penaltyReasons,
       total,
     },
@@ -161,13 +197,43 @@ const RECENCY_DAYS = 90;
 const RECENT_HISTORY_N = 10;
 const TOPIC_RECENCY_LOOKBACK_DAYS = 365;
 
-export async function recommend(opts: RecommendOptions): Promise<Recommendation[]> {
-  const when = opts.when ?? new Date();
+interface LoadCandidatesOptions {
+  userId: string;
+  when: Date;
+  kind?: RecommendOptions["kind"];
+  excludePostIds?: string[];
+}
+
+interface LoadedCandidates {
+  scored: Recommendation[];
+  rows: CandidateRow[];
+}
+
+/** Compute the user's p90 engagement total across all their analyzed posts. */
+function computeP90(perPostTotals: number[]): number | null {
+  if (perPostTotals.length === 0) return null;
+  const sorted = [...perPostTotals].sort((a, b) => a - b);
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.floor(sorted.length * 0.9),
+  );
+  const p90 = sorted[idx];
+  return p90 > 0 ? p90 : null;
+}
+
+/**
+ * Single shared candidate-loading pass — used by both `recommend` (single
+ * contentKind) and `recommendMix` (balanced multi-bucket). Returns scored
+ * candidates without any contentKind filtering or limit slicing applied.
+ */
+async function loadAndScoreCandidates(
+  opts: LoadCandidatesOptions,
+): Promise<LoadedCandidates> {
+  const when = opts.when;
   const cutoff = subDays(when, RECENCY_DAYS);
   const topicCutoff = subDays(when, TOPIC_RECENCY_LOOKBACK_DAYS);
-  const limit = opts.limit ?? 10;
 
-  const [posts, recentPublishes, negativeReasonRows, topicHistory] = await Promise.all([
+  const [posts, recentPublishes, negativeReasonRows, topicHistory, allAnalytics] = await Promise.all([
     prisma.post.findMany({
       where: {
         userId: opts.userId,
@@ -206,6 +272,9 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
           orderBy: { id: "asc" },
           select: { storageKey: true, mimeType: true, hasAudio: true },
         },
+        analytics: {
+          select: { reactions: true, comments: true, shares: true },
+        },
       },
       orderBy: { publishCount: "asc" },
     }),
@@ -236,7 +305,27 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
         post: { select: { tags: true } },
       },
     }),
+    // Population baseline for engagement normalization — every analytics row
+    // the user has, so we can compute their personal p90.
+    prisma.postAnalytics.findMany({
+      where: { post: { userId: opts.userId } },
+      select: {
+        postId: true,
+        reactions: true,
+        comments: true,
+        shares: true,
+      },
+    }),
   ]);
+
+  // Per-post engagement totals across all platforms, for the user's whole
+  // history. Used as the baseline for normalizing each candidate's engagement.
+  const perPostTotals = new Map<string, number>();
+  for (const a of allAnalytics) {
+    const total = (a.reactions ?? 0) + (a.comments ?? 0) + (a.shares ?? 0);
+    perPostTotals.set(a.postId, (perPostTotals.get(a.postId) ?? 0) + total);
+  }
+  const p90 = computeP90(Array.from(perPostTotals.values()));
 
   // Drop posts whose video media is silent — readiness considers them
   // unfinished, and proposing them sets the user up to ship a muted reel.
@@ -249,6 +338,23 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
   const rows: CandidateRow[] = audibleOnly.map((p) => {
     const mimes = p.media.map((m) => m.mimeType);
     const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
+
+    const analyticsRows = p.analytics ?? [];
+    const engagementTotal = analyticsRows.length
+      ? analyticsRows.reduce(
+          (s, a) =>
+            s +
+            (a.reactions ?? 0) +
+            (a.comments ?? 0) +
+            (a.shares ?? 0),
+          0,
+        )
+      : null;
+    const engagementNormalized =
+      engagementTotal != null && p90 != null
+        ? Math.min(1, engagementTotal / p90)
+        : null;
+
     return {
       id: p.id,
       body: p.body,
@@ -264,6 +370,8 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
       thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
       contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
       platformUrl: p.platformUrl,
+      engagementTotal,
+      engagementNormalized,
     };
   });
 
@@ -286,10 +394,125 @@ export async function recommend(opts: RecommendOptions): Promise<Recommendation[
     }
   }
 
-  const filtered = opts.contentKind ? rows.filter((r) => r.contentKind === opts.contentKind) : rows;
-  const scored = filtered.map((r) =>
+  const scored = rows.map((r) =>
     scorePost(r, when, { recentTags, recentKinds, negativeReasonFrequency, tagLastSeen }),
   );
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
+  return { scored, rows };
+}
+
+export async function recommend(opts: RecommendOptions): Promise<Recommendation[]> {
+  const when = opts.when ?? new Date();
+  const limit = opts.limit ?? 10;
+  const { scored } = await loadAndScoreCandidates({
+    userId: opts.userId,
+    when,
+    kind: opts.kind,
+    excludePostIds: opts.excludePostIds,
+  });
+  const filtered = opts.contentKind ? scored.filter((r) => r.contentKind === opts.contentKind) : scored;
+  return filtered.slice(0, limit);
+}
+
+/**
+ * Picks `limit` recommendations from a candidate pool, penalizing tag overlap
+ * with already-picked posts. This is the cross-bucket diversification step
+ * for recommendMix — each pick re-weights the remainder so we don't end up
+ * with two reels and an image all about the same topic.
+ *
+ * The penalty is `WEIGHTS.variety * jaccard(candidate, alreadyPicked)`, so
+ * full overlap can wipe out the entire variety-bonus a candidate already
+ * earned during initial scoring. Already-picked posts in `seenIds` are
+ * skipped entirely.
+ */
+function diversifyMMR(
+  pool: Recommendation[],
+  limit: number,
+  seenIds: Set<string>,
+  pickedTags: string[][],
+): Recommendation[] {
+  const picked: Recommendation[] = [];
+  const available = pool.filter((r) => !seenIds.has(r.postId));
+  const localPickedTags = [...pickedTags];
+
+  while (picked.length < limit && available.length > 0) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+    for (let i = 0; i < available.length; i++) {
+      const cand = available[i];
+      let penalty = 0;
+      for (const t of localPickedTags) {
+        penalty += jaccard(cand.tags, t);
+      }
+      const adjusted = cand.score - penalty * WEIGHTS.variety;
+      if (adjusted > bestScore) {
+        bestScore = adjusted;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx === -1) break;
+    const [winner] = available.splice(bestIdx, 1);
+    picked.push(winner);
+    localPickedTags.push(winner.tags);
+    seenIds.add(winner.postId);
+  }
+  return picked;
+}
+
+/**
+ * Returns a balanced daily mix of recommendations (default 2 video + 2 image
+ * + 2 short-text + 0 long-text). One DB pass; cross-bucket diversification
+ * so the picks don't share a dominant tag across kinds.
+ */
+export async function recommendMix(opts: DailyMixOptions): Promise<DailyMix> {
+  const when = opts.when ?? new Date();
+  const videoLimit = opts.videoLimit ?? 2;
+  const imageLimit = opts.imageLimit ?? 2;
+  const shortTextLimit = opts.shortTextLimit ?? 2;
+  const longTextLimit = opts.longTextLimit ?? 0;
+
+  const { scored } = await loadAndScoreCandidates({
+    userId: opts.userId,
+    when,
+    excludePostIds: opts.excludePostIds,
+  });
+
+  const seenIds = new Set<string>();
+  const pickedTags: string[][] = [];
+
+  const video = diversifyMMR(
+    scored.filter((r) => r.contentKind === "video"),
+    videoLimit,
+    seenIds,
+    pickedTags,
+  );
+  pickedTags.push(...video.map((r) => r.tags));
+
+  const image = diversifyMMR(
+    scored.filter((r) => r.contentKind === "image"),
+    imageLimit,
+    seenIds,
+    pickedTags,
+  );
+  pickedTags.push(...image.map((r) => r.tags));
+
+  const shortText = diversifyMMR(
+    scored.filter((r) => r.contentKind === "short-text"),
+    shortTextLimit,
+    seenIds,
+    pickedTags,
+  );
+  pickedTags.push(...shortText.map((r) => r.tags));
+
+  const longText =
+    longTextLimit > 0
+      ? diversifyMMR(
+          scored.filter((r) => r.contentKind === "long-text"),
+          longTextLimit,
+          seenIds,
+          pickedTags,
+        )
+      : [];
+
+  return { video, image, shortText, longText };
 }

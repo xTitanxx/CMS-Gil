@@ -12,6 +12,7 @@ export interface ScoreBreakdown {
   tagVariety: number;
   topicRecency: number;
   kindDiversity: number;
+  engagement: number;
   penaltyReasons: number;
   total: number;
 }
@@ -80,4 +81,28 @@ export interface CandidateRow {
   thumbUrl: string | null;
   contentKind: ContentKind;
   platformUrl: string | null;
+  // Aggregate engagement (reactions + comments + shares) summed across all
+  // PostAnalytics rows for this post. null when no analytics row exists.
+  engagementTotal: number | null;
+  // Population-normalized engagement, computed from the user's own analytics
+  // distribution (engagementTotal / user p90, clamped to [0, 1]). null when
+  // the post has no analytics row, or when the user has no analytics at all.
+  engagementNormalized: number | null;
+}
+
+export interface DailyMixOptions {
+  userId: string;
+  when?: Date;
+  excludePostIds?: string[];
+  videoLimit?: number;
+  imageLimit?: number;
+  shortTextLimit?: number;
+  longTextLimit?: number;
+}
+
+export interface DailyMix {
+  video: Recommendation[];
+  image: Recommendation[];
+  shortText: Recommendation[];
+  longText: Recommendation[];
 }

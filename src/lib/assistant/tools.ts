@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import type { Platform as PrismaPlatform } from "@prisma/client";
-import { recommend } from "./recommend";
+import { recommend, recommendMix } from "./recommend";
 import { retrieve } from "./retrieve";
 
 export interface ToolContext {
@@ -41,6 +41,21 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
             "Filter by content type. 'video' = REELs + any post with video media. 'image' = posts with image media, no video. 'short-text' = text-only posts ≤400 chars. 'long-text' = text-only posts >400 chars.",
         },
         limit: { type: "number", description: "Default 10, max 20." },
+      },
+    },
+  },
+  {
+    name: "recommend_daily_mix",
+    description:
+      "Returns a balanced daily mix of recommendations across content kinds in a single call (default: 2 video + 2 image + 2 short-text). Cheaper and better-diversified than calling recommend_posts three times in parallel — one DB pass, and the picks across buckets won't share dominant tags. Use this for 'what should I post today', 'plan my day', or any unspecified-kind ask.",
+    input_schema: {
+      type: "object",
+      properties: {
+        when: { type: "string", description: "ISO date for target publish. Defaults to now." },
+        videoLimit: { type: "number", description: "How many video picks. Default 2." },
+        imageLimit: { type: "number", description: "How many image picks. Default 2." },
+        shortTextLimit: { type: "number", description: "How many short-text picks. Default 2." },
+        longTextLimit: { type: "number", description: "How many long-text picks. Default 0; raise to 1 if a longer piece would round out the mix." },
       },
     },
   },
@@ -309,6 +324,23 @@ export async function handleTool(
         kind: input.kind as never,
         contentKind: input.contentKind as never,
         limit: typeof input.limit === "number" ? Math.min(20, input.limit) : undefined,
+      });
+      return { ok: true, data };
+    }
+    case "recommend_daily_mix": {
+      const data = await recommendMix({
+        userId: ctx.userId,
+        when: typeof input.when === "string" ? new Date(input.when) : undefined,
+        videoLimit: typeof input.videoLimit === "number" ? Math.min(5, Math.max(0, input.videoLimit)) : undefined,
+        imageLimit: typeof input.imageLimit === "number" ? Math.min(5, Math.max(0, input.imageLimit)) : undefined,
+        shortTextLimit:
+          typeof input.shortTextLimit === "number"
+            ? Math.min(5, Math.max(0, input.shortTextLimit))
+            : undefined,
+        longTextLimit:
+          typeof input.longTextLimit === "number"
+            ? Math.min(5, Math.max(0, input.longTextLimit))
+            : undefined,
       });
       return { ok: true, data };
     }
@@ -722,21 +754,55 @@ export async function handleTool(
         return { ok: false, error: "no valid platforms" };
       }
 
-      const post = await prisma.post.findFirst({
-        where: { id: postId, userId: ctx.userId },
-        select: {
-          id: true,
-          body: true,
-          tags: true,
-          originalDate: true,
-          publishCount: true,
-          lifecycle: true,
-          postType: true,
-          platformUrl: true,
-          media: { select: { storageKey: true, mimeType: true, hasAudio: true } },
-          rating: { select: { stars: true } },
-        },
-      });
+      // Compute the Asia/Jerusalem day window so we can surface posts already
+      // scheduled on the proposed day. The assistant can use this to spread
+      // proposals across hours; the UI card uses it to warn before approval.
+      const { buildSlotDate } = await import("@/lib/planner/fixed-slots");
+      const dayStartUTC = buildSlotDate(new Date(`${day}T00:00:00Z`), 0);
+      const dayEndUTC = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+
+      const [post, existingRecords] = await Promise.all([
+        prisma.post.findFirst({
+          where: { id: postId, userId: ctx.userId },
+          select: {
+            id: true,
+            body: true,
+            tags: true,
+            originalDate: true,
+            publishCount: true,
+            lifecycle: true,
+            postType: true,
+            platformUrl: true,
+            media: { select: { storageKey: true, mimeType: true, hasAudio: true } },
+            rating: { select: { stars: true } },
+          },
+        }),
+        prisma.publishRecord.findMany({
+          where: {
+            status: "PENDING",
+            post: { userId: ctx.userId },
+            scheduledAt: { gte: dayStartUTC, lt: dayEndUTC },
+          },
+          orderBy: { scheduledAt: "asc" },
+          select: {
+            id: true,
+            scheduledAt: true,
+            platform: true,
+            post: {
+              select: {
+                id: true,
+                body: true,
+                postType: true,
+                media: {
+                  orderBy: { id: "asc" },
+                  take: 1,
+                  select: { storageKey: true, mimeType: true },
+                },
+              },
+            },
+          },
+        }),
+      ]);
       if (!post) return { ok: false, error: "post not found" };
 
       // Refuse to propose posts whose video has been stripped of audio — those
@@ -752,9 +818,40 @@ export async function handleTool(
       }
 
       const { buildThumbUrl } = await import("@/lib/planner/thumbnail");
+      const { formatInTimeZone } = await import("date-fns-tz");
+      const { SCHEDULE_TZ } = await import("@/lib/planner/slot-constants");
+
       const firstMedia = post.media[0];
       const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
       const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+
+      const PLATFORM_DISPLAY_MAP: Record<string, string> = {
+        FACEBOOK: "FACEBOOK_PAGE",
+        FACEBOOK_PAGE: "FACEBOOK_PAGE",
+        INSTAGRAM: "INSTAGRAM",
+        LINKEDIN: "LINKEDIN",
+        TIKTOK: "TIKTOK",
+        YOUTUBE: "YOUTUBE",
+      };
+
+      const existingOnDay = existingRecords
+        .filter((r) => r.post.id !== post.id)
+        .map((r) => {
+          const sched = r.scheduledAt!;
+          const m = r.post.media[0];
+          return {
+            recordId: r.id,
+            postId: r.post.id,
+            hour: Number(formatInTimeZone(sched, SCHEDULE_TZ, "H")),
+            scheduledAt: sched.toISOString(),
+            body: r.post.body,
+            thumbUrl: buildThumbUrl(m?.storageKey, m?.mimeType),
+            platform: PLATFORM_DISPLAY_MAP[r.platform] ?? r.platform,
+            postType: r.post.postType ?? "POST",
+          };
+        });
+
+      const sameHourClash = hour != null && existingOnDay.some((e) => e.hour === hour);
 
       return {
         ok: true,
@@ -765,6 +862,8 @@ export async function handleTool(
           hour,
           platforms,
           reasoning: typeof input.reasoning === "string" ? input.reasoning : null,
+          existingOnDay,
+          sameHourClash,
           post: {
             id: post.id,
             body: post.body,

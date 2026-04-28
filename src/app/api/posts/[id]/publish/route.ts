@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
@@ -9,6 +9,10 @@ import { postToYouTube } from "@/lib/platforms/youtube";
 import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
 import { preparePublishKeys } from "@/lib/publish-prep";
+
+// Audio muxing + platform upload can take well past the default. Give the
+// background work the full Fluid Compute window.
+export const maxDuration = 300;
 
 export async function POST(
   req: NextRequest,
@@ -43,9 +47,11 @@ export async function POST(
   const records = [];
 
   for (const platform of platforms) {
-    // Cancel any existing pending record for this post+platform
+    // Cancel any existing pending or stuck-processing record for this
+    // post+platform. PROCESSING records get orphaned when the lambda dies
+    // mid-flight; without clearing them here, re-publishing is blocked.
     await prisma.publishRecord.updateMany({
-      where: { postId: id, platform, status: "PENDING" },
+      where: { postId: id, platform, status: { in: ["PENDING", "PROCESSING"] } },
       data: { status: "CANCELLED" },
     });
 
@@ -59,9 +65,20 @@ export async function POST(
     });
     records.push(record);
 
-    // If immediate, publish now
+    // If immediate, publish now in the background. `after()` keeps the
+    // function instance alive past the HTTP response — without it the
+    // lambda terminates, the publishNow promise is killed mid-flight, and
+    // the record is left orphaned in PROCESSING forever.
     if (!scheduled) {
-      publishNow(record.id, session.user.id, post, platform).catch(console.error);
+      const recordId = record.id;
+      const userId = session.user.id;
+      after(async () => {
+        try {
+          await publishNow(recordId, userId, post, platform);
+        } catch (err) {
+          console.error("publishNow failed", { recordId, platform, err });
+        }
+      });
     }
   }
 

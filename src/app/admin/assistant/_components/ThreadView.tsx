@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf, Clock, RotateCcw } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf, Clock, RotateCcw, History } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
+import { HistoryPanel } from "./HistoryPanel";
 import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
 import { formatScheduledTime } from "@/lib/planner/format-slot";
 
@@ -601,6 +602,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
   const [proposalsByToolUseId, setProposalsByToolUseId] = useState<Map<string, ProposalData>>(new Map());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // User's connected publishing platforms — used as the suggested platforms on
   // inline post cards. Fetched once on mount.
   const [userPlatforms, setUserPlatforms] = useState<string[]>([]);
@@ -762,48 +764,71 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
     });
   }
 
+  // Replace state with a fully rehydrated conversation. Used both for the
+  // initial "resume latest" load and when the user picks a past conversation
+  // from the history panel.
+  const applyConversation = useCallback(
+    (conv: { id: string; messages: { role: string; content: unknown[] }[] }) => {
+      toolUseNamesRef.current.clear();
+      setProposalsByToolUseId(new Map());
+      setPostCache(new Map());
+      setConversationId(conv.id);
+      const rehydrated: UiMsg[] = [];
+      for (const m of conv.messages) {
+        for (const block of m.content) {
+          const b = block as { kind: string };
+          if (b.kind === "text") {
+            rehydrated.push({
+              role: m.role as "user" | "assistant",
+              kind: "text",
+              text: (b as unknown as { text: string }).text,
+            });
+          } else if (b.kind === "tool_use") {
+            const tu = b as unknown as { id: string; name: string; input: Record<string, unknown> };
+            toolUseNamesRef.current.set(tu.id, tu.name);
+            rehydrated.push({
+              role: "assistant",
+              kind: "tool_use",
+              ...tu,
+            });
+          } else if (b.kind === "tool_result") {
+            const tr = b as unknown as { toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } };
+            rehydrated.push({
+              role: "assistant",
+              kind: "tool_result",
+              ...tr,
+            });
+            seedCacheFromToolResult(tr.result, tr.toolUseId);
+          }
+        }
+      }
+      setMessages(rehydrated);
+    },
+    [],
+  );
+
+  const loadConversationById = useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/assistant/thread/${id}`);
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d.conversation) applyConversation(d.conversation);
+    },
+    [applyConversation],
+  );
+
   // Resume latest thread on mount
   useEffect(() => {
     fetch("/api/assistant/thread")
       .then((r) => r.json())
       .then((d) => {
         if (!d.conversation) return;
-        setConversationId(d.conversation.id);
-        const rehydrated: UiMsg[] = [];
-        for (const m of d.conversation.messages as { role: string; content: unknown[] }[]) {
-          for (const block of m.content) {
-            const b = block as { kind: string };
-            if (b.kind === "text") {
-              rehydrated.push({
-                role: m.role as "user" | "assistant",
-                kind: "text",
-                text: (b as unknown as { text: string }).text,
-              });
-            } else if (b.kind === "tool_use") {
-              const tu = b as unknown as { id: string; name: string; input: Record<string, unknown> };
-              toolUseNamesRef.current.set(tu.id, tu.name);
-              rehydrated.push({
-                role: "assistant",
-                kind: "tool_use",
-                ...tu,
-              });
-            } else if (b.kind === "tool_result") {
-              const tr = b as unknown as { toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } };
-              rehydrated.push({
-                role: "assistant",
-                kind: "tool_result",
-                ...tr,
-              });
-              seedCacheFromToolResult(tr.result, tr.toolUseId);
-            }
-          }
-        }
-        setMessages(rehydrated);
+        applyConversation(d.conversation);
       })
       .catch(() => {
         /* no saved thread yet */
       });
-  }, []);
+  }, [applyConversation]);
 
   // Smart auto-scroll: only stay pinned to the bottom if the user hasn't
   // scrolled up. Without this guard the unconditional scrollIntoView fires on
@@ -1161,7 +1186,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         </button>
       </div>
 
-      {/* Floating action buttons (top-right): Planner + New chat */}
+      {/* Floating action buttons (top-right): Planner + History + New chat */}
       <div
         className="absolute right-2 z-30 flex items-center gap-1.5"
         style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
@@ -1176,6 +1201,14 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             <CalendarDays className="h-5 w-5" strokeWidth={1.75} />
           </button>
         )}
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 hover:bg-white/70 active:bg-white/80"
+          aria-label="Chat history"
+          title="History"
+        >
+          <History className="h-5 w-5" strokeWidth={1.75} />
+        </button>
         <button
           onClick={async () => {
             if (messages.length === 0) return;
@@ -1193,6 +1226,21 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
           <SquarePen className="h-5 w-5" strokeWidth={1.75} />
         </button>
       </div>
+
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        currentConversationId={conversationId}
+        onSelect={async (id) => {
+          if (streaming) return;
+          if (id === conversationId) {
+            setHistoryOpen(false);
+            return;
+          }
+          await loadConversationById(id);
+          setHistoryOpen(false);
+        }}
+      />
 
       {/* Messages — full-height scroll, padding at top to clear floating buttons,
           padding at bottom to clear floating composer. */}

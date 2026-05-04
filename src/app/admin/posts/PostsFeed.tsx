@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Trash2,
   ExternalLink,
+  Maximize2,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -723,6 +724,14 @@ function FeedCard({
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
+          <Link
+            href={href}
+            aria-label="Open post detail"
+            title="Open post"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </Link>
           <button
             type="button"
             onClick={(e) => {

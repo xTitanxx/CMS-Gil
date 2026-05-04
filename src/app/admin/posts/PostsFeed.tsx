@@ -586,10 +586,10 @@ function FeedDeleteButton({
         e.stopPropagation();
         trigger();
       }}
-      className={`inline-flex items-center gap-1 rounded-full p-1.5 text-xs transition-colors ${
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-colors ${
         confirming
-          ? "text-amber-500 hover:bg-amber-50"
-          : "text-gray-400 hover:bg-red-50 hover:text-red-500"
+          ? "border-amber-300 bg-amber-50 text-amber-600 hover:bg-amber-100"
+          : "border-gray-200 bg-white text-gray-500 hover:bg-red-50 hover:text-red-600"
       }`}
       title={confirming ? "Click again to confirm" : "Delete post"}
       aria-label={confirming ? "Confirm delete post" : "Delete post"}
@@ -681,11 +681,12 @@ function FeedCard({
             {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
           </p>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-0.5">
+        <div className="flex flex-shrink-0 items-center gap-1">
           <Link
             href={href}
-            className="inline-flex items-center gap-1 rounded-full p-1.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Edit post"
             title="Edit post"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200"
           >
             <Pencil className="h-4 w-4" />
           </Link>
@@ -727,6 +728,8 @@ function FeedCard({
           loop
           playsInline
           preload="metadata"
+          mountMargin="25% 0px"
+          unmountMargin="100% 0px"
         />
       ) : post.thumbUrl ? (
         <Link href={href} className="block">
@@ -734,6 +737,8 @@ function FeedCard({
           <img
             src={post.thumbUrl}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="h-auto w-full"
           />
         </Link>

@@ -73,7 +73,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
   const [showSchedule, setShowSchedule] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -104,7 +103,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
     }
     setLoading(true);
     setError("");
-    setSuccess("");
 
     const res = await fetch(`/api/posts/${postId}/publish`, {
       method: "POST",
@@ -123,12 +121,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
       return;
     }
 
-    const isScheduled = !!scheduledAt;
-    setSuccess(
-      isScheduled
-        ? `Scheduled to ${selected.size} platform(s)`
-        : `Publishing to ${selected.size} platform(s)...`
-    );
     setSelected(new Set());
     setScheduledAt("");
     setShowSchedule(false);
@@ -141,7 +133,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
     setTimeout(async () => {
       setLoading(true);
       setError("");
-      setSuccess("");
       const res = await fetch(`/api/posts/${postId}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -156,11 +147,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
         setError(data.error ?? "Failed to publish");
         return;
       }
-      setSuccess(
-        scheduledAt
-          ? `Scheduled to ${enabledPlatforms.length} platform(s)`
-          : `Publishing to ${enabledPlatforms.length} platform(s)...`
-      );
       setSelected(new Set());
       setScheduledAt("");
       setShowSchedule(false);
@@ -268,7 +254,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
         )}
 
         {error && <p className="text-xs text-red-600">{error}</p>}
-        {success && <p className="text-xs text-green-600">{success}</p>}
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">

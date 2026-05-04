@@ -73,40 +73,43 @@ export function SubKindTabs({
   );
 
   return (
-    <div className="flex flex-wrap gap-1.5 border-b border-gray-100 pb-2 pt-2">
-      {tabs.map((t) => {
-        const isActive = active === t.value;
-        const count = counts?.[t.countKey];
-        const total = totals?.[t.countKey];
-        const showTotal = typeof total === "number" && typeof count === "number" && total !== count;
-        const Icon = t.icon;
-        return (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setSub(t.value)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              isActive
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            <Icon className="h-3 w-3" />
-            {t.label}
-            {typeof count === "number" && (
-              <span
-                className={
-                  isActive ? "text-blue-100" : "text-gray-400"
-                }
-              >
-                {showTotal
-                  ? `${count.toLocaleString()}/${total.toLocaleString()}`
-                  : count.toLocaleString()}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="-mx-4 overflow-x-auto px-4 scrollbar-hide md:mx-0 md:px-0">
+      <div className="flex w-max items-center gap-1.5 pb-0.5">
+        {tabs.map((t) => {
+          const isActive = active === t.value;
+          const count = counts?.[t.countKey];
+          const total = totals?.[t.countKey];
+          const showTotal =
+            typeof total === "number" && typeof count === "number" && total !== count;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => setSub(t.value)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                isActive
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t.label}
+              {typeof count === "number" && (
+                <span
+                  className={`tabular-nums ${
+                    isActive ? "text-gray-300" : "text-gray-400"
+                  }`}
+                >
+                  {showTotal
+                    ? `${count.toLocaleString()}/${total.toLocaleString()}`
+                    : count.toLocaleString()}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

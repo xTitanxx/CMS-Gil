@@ -12,6 +12,17 @@ interface UserRow {
   loginMethod: string;
 }
 
+type Subscriber = {
+  id: string;
+  name: string;
+  monthlyBudgetUsd: number;
+  cycleStart: string;
+  cycleUsedUsd: number;
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+};
+
 export default function SettingsPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,6 +245,170 @@ export default function SettingsPage() {
           )}
         </div>
       </section>
+
+      <SubscribersSection />
     </div>
+  );
+}
+
+function SubscribersSection() {
+  const [list, setList] = useState<Subscriber[]>([]);
+  const [name, setName] = useState("");
+  const [budget, setBudget] = useState("1.20");
+  const [generated, setGenerated] = useState<{ name: string; code: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function refresh() {
+    const res = await fetch("/api/admin/subscribers");
+    if (res.ok) {
+      const data = await res.json();
+      setList(data.subscribers ?? []);
+    }
+  }
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setBusy(true);
+    const res = await fetch("/api/admin/subscribers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, monthlyBudgetUsd: Number(budget) }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setErr((await res.json()).error ?? "Failed");
+      return;
+    }
+    const { code, subscriber } = await res.json();
+    setGenerated({ name: subscriber.name, code });
+    setName("");
+    setBudget("1.20");
+    void refresh();
+  }
+
+  async function handleRevoke(id: string, revoked: boolean) {
+    await fetch(`/api/admin/subscribers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revoked: !revoked }),
+    });
+    void refresh();
+  }
+
+  async function handleRegenerate(id: string, name: string) {
+    if (!confirm(`Regenerate code for ${name}? The old code will stop working.`)) return;
+    const res = await fetch(`/api/admin/subscribers/${id}/regenerate-code`, { method: "POST" });
+    if (res.ok) {
+      const { code } = await res.json();
+      setGenerated({ name, code });
+      void refresh();
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Delete ${name}? Their chat history will also be deleted.`)) return;
+    await fetch(`/api/admin/subscribers/${id}`, { method: "DELETE" });
+    void refresh();
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="mb-3 text-lg font-bold">Subscribers</h2>
+
+      <form onSubmit={handleAdd} className="mb-4 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-xs text-gray-600">Name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="rounded border px-2 py-1 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600">Monthly budget USD</label>
+          <input
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            inputMode="decimal"
+            className="w-24 rounded border px-2 py-1 text-sm"
+          />
+        </div>
+        <Button type="submit" disabled={busy}>Add subscriber</Button>
+        {err && <span className="text-sm text-red-600">{err}</span>}
+      </form>
+
+      {generated && (
+        <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-semibold">Code generated for {generated.name}</p>
+          <p className="mt-1">
+            Send this on Facebook. You won&apos;t see it again.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="rounded bg-white px-2 py-1 font-mono text-base">{generated.code}</code>
+            <button
+              type="button"
+              className="text-blue-600 hover:underline"
+              onClick={() => navigator.clipboard.writeText(generated.code)}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              className="ml-auto text-gray-500 hover:underline"
+              onClick={() => setGenerated(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <table className="w-full text-sm">
+        <thead className="text-left text-xs text-gray-500">
+          <tr>
+            <th className="py-1">Name</th>
+            <th>Last seen</th>
+            <th>Spent / Budget</th>
+            <th>State</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((s) => {
+            const pct = s.monthlyBudgetUsd > 0
+              ? Math.min(100, Math.round((s.cycleUsedUsd / s.monthlyBudgetUsd) * 100))
+              : 100;
+            return (
+              <tr key={s.id} className="border-t">
+                <td className="py-2">{s.name}</td>
+                <td>{s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : "—"}</td>
+                <td>
+                  ${s.cycleUsedUsd.toFixed(2)} / ${s.monthlyBudgetUsd.toFixed(2)}
+                  <span className="ml-1 text-xs text-gray-500">({pct}%)</span>
+                </td>
+                <td>{s.revokedAt ? "Revoked" : "Active"}</td>
+                <td className="space-x-2 text-right">
+                  <button onClick={() => handleRegenerate(s.id, s.name)} className="text-blue-600 hover:underline">
+                    Regenerate
+                  </button>
+                  <button onClick={() => handleRevoke(s.id, !!s.revokedAt)} className="text-blue-600 hover:underline">
+                    {s.revokedAt ? "Restore" : "Revoke"}
+                  </button>
+                  <button onClick={() => handleDelete(s.id, s.name)} className="text-red-600 hover:underline">
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
   );
 }

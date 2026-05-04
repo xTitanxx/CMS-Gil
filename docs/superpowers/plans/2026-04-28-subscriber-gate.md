@@ -129,10 +129,16 @@ model SubscriberUsage {
 }
 ```
 
-- [ ] **Step 3: Generate migration**
+- [ ] **Step 3: Generate migration SQL (do NOT apply to the shared Supabase DB)**
 
-Run: `npx prisma migrate dev --name add_subscribers`
-Expected: prints `Applying migration ...add_subscribers` and "✔ Generated Prisma Client". Confirms a new file under `prisma/migrations/<timestamp>_add_subscribers/migration.sql`.
+Run: `npx prisma migrate dev --name add_subscribers --create-only`
+Expected: writes `prisma/migrations/<timestamp>_add_subscribers/migration.sql` containing the new `CREATE TABLE` statements, but does **not** apply to the database. (Apply happens at deploy time via `prisma migrate deploy` in production.)
+
+Then regenerate the client locally so TypeScript picks up the new models:
+Run: `npx prisma generate`
+Expected: "✔ Generated Prisma Client".
+
+**Do not** run plain `npx prisma migrate dev` (without `--create-only`) — `DATABASE_URL` points at production and that command would apply the migration immediately. The user will apply this migration during the deploy step.
 
 - [ ] **Step 4: Verify generated client compiles**
 

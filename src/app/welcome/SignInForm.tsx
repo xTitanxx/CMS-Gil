@@ -12,12 +12,26 @@ export default function SignInForm({ next }: { next: string }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("subscriber-credentials", {
+
+    await signIn("subscriber-credentials", {
       code: code.trim(),
       redirect: false,
     });
+
+    // NextAuth v5's signIn return shape doesn't reliably expose failures
+    // for the Credentials provider — invalid codes can come back looking
+    // like a successful redirect. Verify by fetching the actual session.
+    let isSubscriber = false;
+    try {
+      const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = await sessionRes.json();
+      isSubscriber = !!(session?.user && session.user.role === "subscriber");
+    } catch {
+      isSubscriber = false;
+    }
+
     setLoading(false);
-    if (res?.ok) {
+    if (isSubscriber) {
       window.location.assign(next);
     } else {
       setError("Code not recognized. Please double-check, or message Gil on Facebook.");

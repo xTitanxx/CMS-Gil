@@ -16,7 +16,7 @@ npx vercel env pull .env.local     # sync env vars, then manually add:
 #   AUTH_URL=http://localhost:3000
 #   NEXTAUTH_URL=http://localhost:3000
 #   APP_URL=http://localhost:3000
-npx vercel --prod --yes            # deploy to production (ASK FIRST — see Autonomy)
+npm run deploy                     # deploy to production (ASK FIRST — see Autonomy + Deploys)
 npm test                           # vitest unit tests
 ```
 
@@ -211,6 +211,19 @@ Specifically:
 - **Fix adjacent issues** you discover along the way without asking permission
 - **When a script/fix partially works**, iterate until it fully works before reporting back
 - **Exception**: never deploy to Vercel without explicit user approval
+
+## Deploys
+
+**Always use `npm run deploy`. Never use `vercel --prod` or `npx vercel`.**
+
+`npm run deploy` runs `scripts/deploy.ts`, which POSTs to Vercel's REST API with `gitSource: { type: "github", ref: "claude/personal-cms-social-posting-QV57t", sha }`. Vercel pulls the commit straight from GitHub and builds it on Vercel's servers — the local working tree is never uploaded. This rules out a class of bug where a parallel session's WIP on disk leaks into prod.
+
+`vercel --prod` does the opposite — it tars the working directory and uploads it. That's how PR #41's first deploy attempt failed: my filesystem had a half-refactored `AllPostsView.tsx` from another session's branch even though the merged commit on origin was clean.
+
+Mechanics:
+- Token: `VERCEL_TOKEN` is in `.env.local` (gitignored). Created at https://vercel.com/account/tokens. If a deploy ever fails with 401/403, check whether the token is still valid.
+- The script pins a specific SHA (from `git rev-parse origin/claude/personal-cms-social-posting-QV57t`) so the deploy is deterministic — if someone pushes between read-and-build, the SHA we asked for is still what builds.
+- Deploys still need explicit user approval per `Autonomy` above. Approval is per-PR, never standing.
 
 ## Running Commands
 Never ask Eitan to run a command. Running scripts, migrations, backfills, tests, deploys — all of that is **your** job. Eitan's only job is checking the results you produce. If a command fails (network hiccup, missing env, DB cold start), diagnose and retry until it works; don't hand it back. Iterate to completion, then surface concrete results for him to review.

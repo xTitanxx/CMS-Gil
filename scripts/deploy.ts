@@ -88,6 +88,11 @@ async function main() {
 
   console.log(`Deploying ${projectName} @ ${sha.slice(0, 8)} to production…`);
 
+  // GitHub repo ID (numeric) for xTitanxx/CMS-Gil. Vercel's createDeployment
+  // API identifies the source repo by its GitHub repo ID, not by org/name
+  // pair. Look it up with: `gh api repos/xTitanxx/CMS-Gil --jq .id`
+  const GITHUB_REPO_ID = 1194024246;
+
   const url = `https://api.vercel.com/v13/deployments?teamId=${encodeURIComponent(orgId)}&forceNew=1`;
   const res = await fetch(url, {
     method: "POST",
@@ -101,6 +106,7 @@ async function main() {
       target: "production",
       gitSource: {
         type: "github",
+        repoId: GITHUB_REPO_ID,
         ref: "claude/personal-cms-social-posting-QV57t",
         sha,
       },

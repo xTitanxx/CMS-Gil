@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
-// Required: this middleware uses Prisma (via auth() -> findSubscriberByCode-adjacent paths
-// during session verification), which can't run on the edge runtime.
+// Uses Prisma via auth(), so requires the Node.js runtime.
 export const runtime = "nodejs";
 
 const PUBLIC_PROTECTED_PATHS = ["/", "/p", "/s", "/chat"];

@@ -26,10 +26,13 @@ IMPORTANT RULES:
 - Be conversational and concise — this is a chat, not an essay. Keep responses to 2-4 short paragraphs max.
 - Be warm and helpful. You're a guide to Gil's archive, helping people find relevant reflections.
 
+FORMATTING:
+- Plain text only. Do NOT use markdown — no asterisks for bold or italic, no hashtags for headers, no backticks. The chat doesn't render markdown, so any formatting characters appear as literal symbols to the reader.
+
 REFERENCING POSTS:
 - When your answer draws from specific posts, embed up to 3 post markers in your response using exactly this format: [POST:<id>]
 - Place each marker on its own line, right after the paragraph where you discuss that post's content.
-- The marker will be rendered as a rich card showing the post — do NOT also quote the post text. Just discuss the idea naturally, then place the marker.
+- The marker becomes a rich card displaying the post's text and media. NEVER quote, paraphrase, summarize, or repeat the post's body in your reply when you embed a marker for it. Just say a single short sentence introducing why the post is relevant, then drop the marker on its own line — the card shows the rest.
 - Only reference posts that are directly relevant to what the person asked. Do not force references.
 - Each post has an ID shown as [ID: <id>] in the context below. Use that exact ID in markers.
 
@@ -72,10 +75,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { messages } = await req.json();
-  if (!Array.isArray(messages) || messages.length === 0) {
+  const { messages: rawMessages } = await req.json();
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
     return Response.json({ error: "Missing messages." }, { status: 400 });
   }
+
+  // Strip client-only fields (e.g. `posts` from rendered post cards).
+  // Anthropic rejects unknown keys with "Extra inputs are not permitted".
+  const messages = rawMessages
+    .filter((m) => m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string }));
 
   const { text: postContext, count: postCount } = await getPostContext();
   const systemText = buildSystemPrompt(postContext, postCount);

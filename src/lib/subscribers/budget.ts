@@ -65,25 +65,28 @@ export async function recordUsage(params: {
   usage: Usage;
 }): Promise<{ costUsd: number }> {
   const cost = computeHaikuCost(params.usage);
-  await prisma.$transaction([
-    prisma.subscriberUsage.create({
-      data: {
-        subscriberId: params.subscriberId,
-        inputTokens: params.usage.input_tokens,
-        cacheCreationInputTokens: params.usage.cache_creation_input_tokens ?? 0,
-        cacheReadInputTokens: params.usage.cache_read_input_tokens ?? 0,
-        outputTokens: params.usage.output_tokens,
-        costUsd: cost,
-      },
-    }),
-    prisma.subscriber.update({
-      where: { id: params.subscriberId },
-      data: {
-        cycleUsedUsd: { increment: cost },
-        lastSeenAt: new Date(),
-      },
-    }),
-  ]);
+  // Sequential awaits instead of $transaction: pgbouncer transaction-pool
+  // mode (the default Vercel-Supabase wiring) frequently fails to start a
+  // prisma transaction in the default 2s window. The two writes here are
+  // independent enough that worst-case partial failure (audit row inserted
+  // but cycleUsedUsd not incremented) only loses tracking, not correctness.
+  await prisma.subscriberUsage.create({
+    data: {
+      subscriberId: params.subscriberId,
+      inputTokens: params.usage.input_tokens,
+      cacheCreationInputTokens: params.usage.cache_creation_input_tokens ?? 0,
+      cacheReadInputTokens: params.usage.cache_read_input_tokens ?? 0,
+      outputTokens: params.usage.output_tokens,
+      costUsd: cost,
+    },
+  });
+  await prisma.subscriber.update({
+    where: { id: params.subscriberId },
+    data: {
+      cycleUsedUsd: { increment: cost },
+      lastSeenAt: new Date(),
+    },
+  });
   return { costUsd: cost };
 }
 

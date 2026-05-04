@@ -18,6 +18,27 @@ interface FacebookCredentials {
 const GRAPH = "https://graph.facebook.com/v21.0";
 const VIDEO_RE = /\.(mp4|mov|avi|webm|mkv)$/i;
 
+// FB Graph code 1 ("API Unknown" — message: "Please reduce the amount of
+// data you're asking for, then retry your request") and code 2 ("API
+// Service") are documented as transient. Retry the same call a few times
+// before surfacing the error to the user.
+async function graphPost(path: string, body: URLSearchParams): Promise<Response> {
+  const url = `${GRAPH}${path}`;
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, { method: "POST", body });
+    if (res.ok) return res;
+    let code: number | undefined;
+    try {
+      code = (await res.clone().json())?.error?.code;
+    } catch {}
+    if (code !== 1 && code !== 2) return res;
+    last = res;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1) ** 2));
+  }
+  return last!;
+}
+
 export async function postToFacebook(
   creds: FacebookCredentials,
   body: string,
@@ -85,7 +106,7 @@ async function feedPost(
     published: "true",
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH}/${pageId}/feed`, { method: "POST", body: form });
+  const res = await graphPost(`/${pageId}/feed`, form);
   const data = await res.json();
   if (!res.ok || !data.id) {
     throw new Error(`Facebook feed post failed: ${JSON.stringify(data)}`);
@@ -107,7 +128,7 @@ async function photoPost(
     published: "true",
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH}/${pageId}/photos`, { method: "POST", body: form });
+  const res = await graphPost(`/${pageId}/photos`, form);
   const data = await res.json();
   if (!res.ok || !data.post_id) {
     // published=true must return post_id. If it's absent, the photo uploaded
@@ -130,7 +151,7 @@ async function videoPost(
     description: fields.description,
     access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH}/${pageId}/videos`, { method: "POST", body: form });
+  const res = await graphPost(`/${pageId}/videos`, form);
   const data = await res.json();
   if (!res.ok || !data.id) {
     throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
@@ -245,7 +266,7 @@ async function multiPhotoPost(
       published: "false",
       access_token: accessToken,
     });
-    const res = await fetch(`${GRAPH}/${pageId}/photos`, { method: "POST", body: form });
+    const res = await graphPost(`/${pageId}/photos`, form);
     const data = await res.json();
     if (!res.ok || !data.id) {
       throw new Error(`Facebook multi-photo upload failed: ${JSON.stringify(data)}`);
@@ -265,7 +286,7 @@ async function multiPhotoPost(
     form.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id }));
   });
 
-  const res = await fetch(`${GRAPH}/${pageId}/feed`, { method: "POST", body: form });
+  const res = await graphPost(`/${pageId}/feed`, form);
   const data = await res.json();
   if (!res.ok || !data.id) {
     throw new Error(`Facebook multi-photo feed post failed: ${JSON.stringify(data)}`);

@@ -21,6 +21,7 @@ import {
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
+import { PostEditorModal } from "../assistant/_components/PostEditorModal";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs, type PostKind } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
@@ -339,6 +340,28 @@ export function PostsFeed() {
     [],
   );
 
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const handleEdit = useCallback((postId: string) => {
+    setEditingPostId(postId);
+  }, []);
+
+  const handleEditorSaved = useCallback(
+    (postId: string, patch: { body?: string; thumbUrl?: string | null }) => {
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                ...(patch.body !== undefined ? { body: patch.body } : {}),
+                ...(patch.thumbUrl !== undefined ? { thumbUrl: patch.thumbUrl } : {}),
+              }
+            : p,
+        ),
+      );
+    },
+    [],
+  );
+
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -510,6 +533,7 @@ export function PostsFeed() {
             post={post}
             href={`/admin/posts/${post.id}?${detailQueryString}`}
             onDeleted={handleDeleted}
+            onEdit={handleEdit}
           />
         ))}
 
@@ -557,6 +581,14 @@ export function PostsFeed() {
 
         <div ref={sentinelRef} className="h-px" aria-hidden="true" />
       </div>
+
+      {editingPostId && (
+        <PostEditorModal
+          postId={editingPostId}
+          onClose={() => setEditingPostId(null)}
+          onSaved={(patch) => handleEditorSaved(editingPostId, patch)}
+        />
+      )}
     </div>
   );
 }
@@ -603,10 +635,12 @@ function FeedCard({
   post,
   href,
   onDeleted,
+  onEdit,
 }: {
   post: FeedPost;
   href: string;
   onDeleted: (postId: string) => void;
+  onEdit: (postId: string) => void;
 }) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
@@ -682,14 +716,19 @@ function FeedCard({
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
-          <Link
-            href={href}
-            aria-label="Edit post"
-            title="Edit post"
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit(post.id);
+            }}
+            aria-label="Quick edit post"
+            title="Quick edit"
             className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200"
           >
             <Pencil className="h-4 w-4" />
-          </Link>
+          </button>
           <FeedDeleteButton postId={post.id} onDeleted={onDeleted} />
         </div>
       </div>

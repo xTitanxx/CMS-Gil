@@ -15,6 +15,7 @@ import { postAudioState } from "@/lib/post-audio-state";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
+import { PostEditorModal } from "../assistant/_components/PostEditorModal";
 
 interface ReelStory {
   id: string;
@@ -70,6 +71,23 @@ export function StoriesReel() {
   const handleDeleted = useCallback((storyId: string) => {
     setStories((prev) => prev.filter((s) => s.id !== storyId));
   }, []);
+
+  const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
+  const handleEdit = useCallback((storyId: string) => {
+    setEditingStoryId(storyId);
+  }, []);
+  const handleEditorSaved = useCallback(
+    (storyId: string, patch: { thumbUrl?: string | null }) => {
+      setStories((prev) =>
+        prev.map((s) =>
+          s.id === storyId && patch.thumbUrl !== undefined
+            ? { ...s, thumbUrl: patch.thumbUrl }
+            : s,
+        ),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -140,7 +158,13 @@ export function StoriesReel() {
           style={{ scrollSnapStop: "always" }}
         >
           {stories.map((s) => (
-            <ReelSlide key={s.id} story={s} muted={muted} onDeleted={handleDeleted} />
+            <ReelSlide
+              key={s.id}
+              story={s}
+              muted={muted}
+              onDeleted={handleDeleted}
+              onEdit={handleEdit}
+            />
           ))}
           {nextCursor && (
             <div ref={sentinelRef} className="h-px" aria-hidden="true" />
@@ -155,6 +179,14 @@ export function StoriesReel() {
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
         </div>
+      )}
+
+      {editingStoryId && (
+        <PostEditorModal
+          postId={editingStoryId}
+          onClose={() => setEditingStoryId(null)}
+          onSaved={(patch) => handleEditorSaved(editingStoryId, patch)}
+        />
       )}
     </div>
   );
@@ -203,10 +235,12 @@ function ReelSlide({
   story,
   muted,
   onDeleted,
+  onEdit,
 }: {
   story: ReelStory;
   muted: boolean;
   onDeleted: (storyId: string) => void;
+  onEdit: (storyId: string) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -321,13 +355,20 @@ function ReelSlide({
       <AudioStateBadge state={audioState} className="absolute left-4 top-14 z-10" />
 
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-        <Link
-          href={`/admin/posts/${story.id}`}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit(story.id);
+          }}
           className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur hover:bg-white/25"
+          aria-label="Quick edit story"
+          title="Quick edit"
         >
           <Pencil className="h-3.5 w-3.5" />
           Edit
-        </Link>
+        </button>
         <ReelDeleteButton storyId={story.id} onDeleted={onDeleted} />
       </div>
     </section>

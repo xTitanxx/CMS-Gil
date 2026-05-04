@@ -16,7 +16,11 @@ import {
   Sparkles,
   X,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
+import { useAsync } from "@/hooks/useAsync";
+import { useConfirm } from "@/hooks/useConfirm";
+import { Spinner } from "@/components/ui/spinner";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs, type PostKind } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
@@ -328,6 +332,13 @@ export function PostsFeed() {
     window.history.replaceState(null, "", url.toString());
   }, [search, sort, localAiTags, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched, kind, subKind]);
 
+  const handleDeleted = useCallback(
+    (postId: string) => {
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    },
+    [],
+  );
+
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -498,6 +509,7 @@ export function PostsFeed() {
             key={post.id}
             post={post}
             href={`/admin/posts/${post.id}?${detailQueryString}`}
+            onDeleted={handleDeleted}
           />
         ))}
 
@@ -549,7 +561,53 @@ export function PostsFeed() {
   );
 }
 
-function FeedCard({ post, href }: { post: FeedPost; href: string }) {
+function FeedDeleteButton({
+  postId,
+  onDeleted,
+}: {
+  postId: string;
+  onDeleted: (postId: string) => void;
+}) {
+  const { isLoading, run } = useAsync();
+  const handleDelete = useCallback(async () => {
+    await run(async () => {
+      const res = await fetch(`/api/posts/${postId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+    });
+    onDeleted(postId);
+  }, [postId, run, onDeleted]);
+  const { confirming, trigger } = useConfirm(handleDelete);
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        trigger();
+      }}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-colors ${
+        confirming
+          ? "border-amber-300 bg-amber-50 text-amber-600 hover:bg-amber-100"
+          : "border-gray-200 bg-white text-gray-500 hover:bg-red-50 hover:text-red-600"
+      }`}
+      title={confirming ? "Click again to confirm" : "Delete post"}
+      aria-label={confirming ? "Confirm delete post" : "Delete post"}
+    >
+      {isLoading ? <Spinner className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+    </button>
+  );
+}
+
+function FeedCard({
+  post,
+  href,
+  onDeleted,
+}: {
+  post: FeedPost;
+  href: string;
+  onDeleted: (postId: string) => void;
+}) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
 
@@ -623,13 +681,17 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
             {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
           </p>
         </div>
-        <Link
-          href={href}
-          className="inline-flex items-center gap-1 rounded-full p-1.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-          title="Edit post"
-        >
-          <Pencil className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <Link
+            href={href}
+            aria-label="Edit post"
+            title="Edit post"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200"
+          >
+            <Pencil className="h-4 w-4" />
+          </Link>
+          <FeedDeleteButton postId={post.id} onDeleted={onDeleted} />
+        </div>
       </div>
 
       {/* Caption — public-feed styling + See more */}
@@ -666,6 +728,8 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
           loop
           playsInline
           preload="metadata"
+          mountMargin="25% 0px"
+          unmountMargin="100% 0px"
         />
       ) : post.thumbUrl ? (
         <Link href={href} className="block">
@@ -673,6 +737,8 @@ function FeedCard({ post, href }: { post: FeedPost; href: string }) {
           <img
             src={post.thumbUrl}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="h-auto w-full"
           />
         </Link>

@@ -5,13 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Volume2, VolumeX } from "lucide-react";
+import { Plus, Pencil, Trash2, Volume2, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
 import { posterUrlFor } from "@/components/LazyVideo";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
 import { postAudioState } from "@/lib/post-audio-state";
+import { useAsync } from "@/hooks/useAsync";
+import { useConfirm } from "@/hooks/useConfirm";
+import { Spinner } from "@/components/ui/spinner";
 
 interface ReelStory {
   id: string;
@@ -63,6 +66,10 @@ export function StoriesReel() {
     setNextCursor(null);
     fetchPage(null, subKind);
   }, [fetchPage, subKind]);
+
+  const handleDeleted = useCallback((storyId: string) => {
+    setStories((prev) => prev.filter((s) => s.id !== storyId));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,7 +140,7 @@ export function StoriesReel() {
           style={{ scrollSnapStop: "always" }}
         >
           {stories.map((s) => (
-            <ReelSlide key={s.id} story={s} muted={muted} />
+            <ReelSlide key={s.id} story={s} muted={muted} onDeleted={handleDeleted} />
           ))}
           {nextCursor && (
             <div ref={sentinelRef} className="h-px" aria-hidden="true" />
@@ -153,7 +160,54 @@ export function StoriesReel() {
   );
 }
 
-function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
+function ReelDeleteButton({
+  storyId,
+  onDeleted,
+}: {
+  storyId: string;
+  onDeleted: (storyId: string) => void;
+}) {
+  const { isLoading, run } = useAsync();
+  const handleDelete = useCallback(async () => {
+    await run(async () => {
+      const res = await fetch(`/api/posts/${storyId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+    });
+    onDeleted(storyId);
+  }, [storyId, run, onDeleted]);
+  const { confirming, trigger } = useConfirm(handleDelete);
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        trigger();
+      }}
+      aria-label={confirming ? "Confirm delete story" : "Delete story"}
+      title={confirming ? "Click again to confirm" : "Delete story"}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs backdrop-blur transition-colors ${
+        confirming
+          ? "bg-amber-500/80 text-white hover:bg-amber-500/90"
+          : "bg-white/15 text-white hover:bg-white/25"
+      }`}
+    >
+      {isLoading ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+      {confirming ? "Confirm" : "Delete"}
+    </button>
+  );
+}
+
+function ReelSlide({
+  story,
+  muted,
+  onDeleted,
+}: {
+  story: ReelStory;
+  muted: boolean;
+  onDeleted: (storyId: string) => void;
+}) {
   const ref = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [visible, setVisible] = useState(false);
@@ -266,13 +320,16 @@ function ReelSlide({ story, muted }: { story: ReelStory; muted: boolean }) {
 
       <AudioStateBadge state={audioState} className="absolute left-4 top-14 z-10" />
 
-      <Link
-        href={`/admin/posts/${story.id}`}
-        className="absolute right-4 top-4 z-10 inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur hover:bg-white/25"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        Edit
-      </Link>
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+        <Link
+          href={`/admin/posts/${story.id}`}
+          className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur hover:bg-white/25"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Link>
+        <ReelDeleteButton storyId={story.id} onDeleted={onDeleted} />
+      </div>
     </section>
   );
 }

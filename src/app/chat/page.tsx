@@ -203,7 +203,7 @@ export default function GilChatPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-700">Talk to Virtual Gil</p>
-              <p className="text-xs text-gray-400 mt-1">An AI guide to Gil&apos;s archive — ask about MS, breathwork, depression, and more</p>
+              <p className="text-xs text-gray-400 mt-1">Trained on Gil&rsquo;s archive.<br />Ask anything &mdash; if it exists, it will dig it up.</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 mt-2">
               {suggestions.map((s) => (

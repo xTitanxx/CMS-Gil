@@ -54,6 +54,7 @@ function extFromMime(mimeType: string): string {
 }
 
 export interface PublishPanelMedia {
+  id: string;
   url: string | null;
   mimeType: string;
 }
@@ -192,7 +193,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
     try {
       for (let i = 0; i < downloadable.length; i++) {
         const m = downloadable[i];
-        const res = await fetch(m.url);
+        const res = await fetch(`/api/media/${m.id}/download`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);

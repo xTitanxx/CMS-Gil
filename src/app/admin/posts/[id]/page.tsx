@@ -237,7 +237,7 @@ export default async function PostDetailPage({
           postId={id}
           body={post.body}
           hasVideo={hasVideo}
-          media={mediaWithUrls.map((m) => ({ url: m.url, mimeType: m.mimeType }))}
+          media={mediaWithUrls.map((m) => ({ id: m.id, url: m.url, mimeType: m.mimeType }))}
         />
 
         {/* Activity — publishes + scraped analytics combined */}

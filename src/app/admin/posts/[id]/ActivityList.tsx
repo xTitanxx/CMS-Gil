@@ -149,6 +149,20 @@ export function ActivityList({
   const [refreshing, setRefreshing] = useState(false);
   const [expandedError, setExpandedError] = useState<string | null>(null);
 
+  // Sync state when the server tree re-renders with new data — happens after
+  // PublishPanel calls router.refresh() on a successful Post Now. Without
+  // this, useState keeps its initial empty value and the panel stays hidden
+  // for any post that had no prior publishes.
+  useEffect(() => {
+    setPublishes((prev) => (initialPublishes.length > prev.length ? initialPublishes : prev));
+  }, [initialPublishes]);
+  useEffect(() => {
+    setFbAnalytics((prev) => (initialFbAnalytics && !prev ? initialFbAnalytics : prev));
+  }, [initialFbAnalytics]);
+  useEffect(() => {
+    setFbComments((prev) => (initialFbComments.length > prev.length ? initialFbComments : prev));
+  }, [initialFbComments]);
+
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/posts/${postId}/publishes`, { cache: "no-store" });
     if (!res.ok) return;

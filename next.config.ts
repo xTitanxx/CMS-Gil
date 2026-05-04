@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       // Allow signed S3/R2 URLs
       { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },
+      { protocol: "https", hostname: "**.r2.dev" },
       { protocol: "https", hostname: "**.amazonaws.com" },
       { protocol: "https", hostname: "**.s3.amazonaws.com" },
     ],

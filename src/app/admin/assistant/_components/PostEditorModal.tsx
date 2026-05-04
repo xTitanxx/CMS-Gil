@@ -5,6 +5,7 @@ import { X, Trash2, Plus, Loader2, Check, AlertCircle, Music, VolumeX } from "lu
 import { useAutoSavePost } from "@/hooks/useAutoSavePost";
 import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
 import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
+import { SyncedAudioVideo } from "@/app/admin/_shared/SyncedAudioVideo";
 
 interface AudioTrackRef {
   id: string;
@@ -332,13 +333,25 @@ function MediaTile({
     <div className="group relative aspect-square overflow-hidden rounded-xl bg-gray-100">
       {item.url ? (
         isVideo ? (
-          <video
-            src={item.url}
-            muted
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
+          item.audioTrack?.url ? (
+            <SyncedAudioVideo
+              key={item.audioTrack.id}
+              videoSrc={item.url}
+              audioSrc={item.audioTrack.url}
+              className="h-full w-full object-cover"
+              controls
+            />
+          ) : (
+            <video
+              key="no-audio"
+              src={item.url}
+              muted
+              controls
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          )
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.url} alt="" className="h-full w-full object-cover" />

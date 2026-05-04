@@ -24,6 +24,7 @@ import { ReanalyzeButton } from "./PostInteractions";
 import { LifecycleChip } from "./LifecycleChip";
 import { StarRow } from "@/components/StarRow";
 import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
+import { SyncedAudioVideo } from "@/app/admin/_shared/SyncedAudioVideo";
 
 const ACCEPTED_MIME_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
@@ -726,55 +727,6 @@ function MediaGallery({
         />
       ))}
     </div>
-  );
-}
-
-function SyncedAudioVideo({
-  videoSrc,
-  audioSrc,
-  className,
-  controls = true,
-}: {
-  videoSrc: string;
-  audioSrc: string;
-  className?: string;
-  controls?: boolean;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    const audio = audioRef.current;
-    if (!video || !audio) return;
-
-    const syncPlay = () => {
-      audio.currentTime = video.currentTime;
-      audio.play();
-    };
-    const syncPause = () => audio.pause();
-    const syncSeek = () => {
-      audio.currentTime = video.currentTime;
-    };
-
-    video.addEventListener("play", syncPlay);
-    video.addEventListener("pause", syncPause);
-    video.addEventListener("seeked", syncSeek);
-
-    return () => {
-      video.removeEventListener("play", syncPlay);
-      video.removeEventListener("pause", syncPause);
-      video.removeEventListener("seeked", syncSeek);
-    };
-  }, [audioSrc]);
-
-  return (
-    <>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video ref={videoRef} src={videoSrc} muted controls={controls} playsInline className={className} />
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <audio ref={audioRef} src={audioSrc} preload="metadata" />
-    </>
   );
 }
 

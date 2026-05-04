@@ -39,7 +39,7 @@ export function AssistantShell() {
         {/* Floating "back to chat" button — mobile only */}
         <button
           onClick={() => setTab("chat")}
-          className="absolute right-2 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 hover:bg-white/70 active:bg-white/80 md:hidden"
+          className="absolute right-2 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 md:hidden"
           style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
           aria-label="Back to assistant"
           title="Back to assistant"

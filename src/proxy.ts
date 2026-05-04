@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
-// Uses Prisma via auth(), so requires the Node.js runtime.
-export const runtime = "nodejs";
-
 const PUBLIC_PROTECTED_PATHS = ["/", "/p", "/s", "/chat"];
 const ADMIN_PATH_PREFIX = "/admin";
 const ADMIN_API_PREFIX = "/api/admin";

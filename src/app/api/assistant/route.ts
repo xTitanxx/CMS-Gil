@@ -4,9 +4,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ASSISTANT_TOOLS, handleTool } from "@/lib/assistant/tools";
 import { buildSystemPrompt } from "@/lib/assistant/prompt";
+import { priceForUsage } from "@/lib/assistant/cost";
 
 export const maxDuration = 60;
 
+const ASSISTANT_MODEL = "claude-sonnet-4-6";
 const client = new Anthropic();
 const MAX_ITERATIONS = 6;
 
@@ -106,7 +108,7 @@ export async function POST(req: NextRequest) {
       try {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
           const msgStream = client.messages.stream({
-            model: "claude-sonnet-4-6",
+            model: ASSISTANT_MODEL,
             max_tokens: 2048,
             system: systemCached,
             tools: ASSISTANT_TOOLS,
@@ -128,6 +130,33 @@ export async function POST(req: NextRequest) {
           }
 
           const resp = await msgStream.finalMessage();
+
+          // Record API usage + cost for the running counter in the UI.
+          // Best-effort — never block the assistant response if logging fails.
+          {
+            const usage = resp.usage;
+            const costUsd = priceForUsage(ASSISTANT_MODEL, {
+              input_tokens: usage.input_tokens,
+              output_tokens: usage.output_tokens,
+              cache_creation_input_tokens: usage.cache_creation_input_tokens,
+              cache_read_input_tokens: usage.cache_read_input_tokens,
+            });
+            prisma.assistantUsage
+              .create({
+                data: {
+                  userId,
+                  conversationId: conversationIdFinal,
+                  model: ASSISTANT_MODEL,
+                  inputTokens: usage.input_tokens,
+                  outputTokens: usage.output_tokens,
+                  cacheCreateTokens: usage.cache_creation_input_tokens ?? 0,
+                  cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+                  costUsd,
+                },
+              })
+              .catch((err) => console.error("/api/assistant usage log failed", err));
+          }
+
           const assistantBlocks: PersistedBlock[] = [];
 
           for (const block of resp.content) {

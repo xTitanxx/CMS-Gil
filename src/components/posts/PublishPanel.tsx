@@ -27,7 +27,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   LINKEDIN: "LinkedIn",
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
-  FACEBOOK_PAGE: "Facebook",
+  FACEBOOK_PAGE: "Facebook Page",
 };
 
 const PLATFORM_COLORS_SELECTED: Record<Platform, string> = {

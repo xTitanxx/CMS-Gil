@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Send, ArrowLeft } from "lucide-react";
 import { PostPreviewCard, type PreviewPost } from "./PostPreviewCard";
+import { BudgetMeter } from "@/components/BudgetMeter";
 
 interface Message {
   role: "user" | "assistant";
@@ -56,15 +57,38 @@ export default function GilChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [inputDisabled, setInputDisabled] = useState(false);
+  const [, setMessagesLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chat/conversation");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          messages: { role: "user" | "assistant"; content: string }[];
+        };
+        if (!cancelled && data.messages.length > 0) {
+          setMessages(data.messages);
+        }
+      } finally {
+        if (!cancelled) setMessagesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function sendMessage() {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || inputDisabled) return;
 
     const newMessages: Message[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
@@ -84,9 +108,10 @@ export default function GilChatPage() {
         const data = await res.json();
         setMessages((prev) => [
           ...prev.slice(0, -1),
-          { role: "assistant", content: data.error },
+          { role: "assistant", content: data.error ?? "Monthly allowance reached." },
         ]);
         setStreaming(false);
+        setInputDisabled(true);
         return;
       }
 
@@ -267,6 +292,8 @@ export default function GilChatPage() {
         <div ref={bottomRef} />
       </div>
 
+      <BudgetMeter />
+
       {/* Input */}
       <div className="border-t border-gray-200 bg-white px-4 py-3 flex-shrink-0">
         <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
@@ -276,12 +303,13 @@ export default function GilChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Ask Virtual Gil..."
             rows={1}
-            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors"
+            disabled={inputDisabled || streaming}
+            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50"
             style={{ maxHeight: "120px", overflowY: "auto" }}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || streaming}
+            disabled={!input.trim() || streaming || inputDisabled}
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700 transition-colors"
           >
             <Send className="h-4 w-4" />

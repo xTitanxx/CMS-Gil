@@ -3,6 +3,7 @@ import { getPublicFeedPage, getPublicStoriesPage } from "@/lib/public-posts";
 import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
 import { PublicFeed } from "./PublicFeed";
 import { StoriesRow } from "./StoriesRow";
+import { SubscriberHeader } from "@/components/SubscriberHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-gray-100">
+      <SubscriberHeader />
       {/* Full-bleed banner */}
       <div className="h-48 w-full bg-gray-300 sm:h-64 md:h-80 lg:h-96">
         {/* eslint-disable-next-line @next/next/no-img-element */}

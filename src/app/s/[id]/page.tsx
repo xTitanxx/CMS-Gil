@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getPublicStory } from "@/lib/public-posts";
 import { getMediaUrl } from "@/lib/storage";
 import { SingleStoryViewer } from "./SingleStoryViewer";
+import { SubscriberHeader } from "@/components/SubscriberHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -31,5 +32,10 @@ export default async function StoryPage({
     media: mediaWithUrls,
   };
 
-  return <SingleStoryViewer story={storyForClient} />;
+  return (
+    <>
+      <SubscriberHeader />
+      <SingleStoryViewer story={storyForClient} />
+    </>
+  );
 }

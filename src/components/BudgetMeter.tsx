@@ -8,7 +8,7 @@ type Budget = {
   cycleResetsAt: string | null;
 };
 
-export function BudgetMeter() {
+export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
   const [budget, setBudget] = useState<Budget | null>(null);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function BudgetMeter() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (!budget || budget.unlimited) return null;
 

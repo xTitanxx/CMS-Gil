@@ -536,13 +536,17 @@ export function PostsFeed() {
       </div>
 
       <div className="mx-auto w-full max-w-xl space-y-3">
-        {posts.map((post) => (
+        {posts.map((post, idx) => (
           <FeedCard
             key={post.id}
             post={post}
             href={`/admin/posts/${post.id}?${detailQueryString}`}
             onDeleted={handleDeleted}
             onEdit={handleEdit}
+            // First couple of cards are above the fold on most viewports — load
+            // them eagerly so the user sees content instantly on first paint and
+            // doesn't hit a Vercel image-optimizer cold-cache stall.
+            priority={idx < 2}
           />
         ))}
 
@@ -645,11 +649,13 @@ function FeedCard({
   href,
   onDeleted,
   onEdit,
+  priority = false,
 }: {
   post: FeedPost;
   href: string;
   onDeleted: (postId: string) => void;
   onEdit: (postId: string) => void;
+  priority?: boolean;
 }) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
@@ -775,15 +781,17 @@ function FeedCard({
           return (
             <Link href={href} className="block">
               <div
-                className="relative w-full bg-gray-100"
+                className="feed-thumb-skeleton relative w-full"
                 style={{ aspectRatio: `${w} / ${h}` }}
               >
                 <Image
                   src={post.thumbUrl}
                   alt=""
                   fill
-                  sizes="(min-width: 768px) 600px, 100vw"
-                  quality={70}
+                  sizes="(min-width: 768px) 480px, 100vw"
+                  quality={55}
+                  priority={priority}
+                  loading={priority ? "eager" : "lazy"}
                   className="object-cover"
                 />
               </div>

@@ -5,6 +5,7 @@ import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLi
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 import { HistoryPanel } from "./HistoryPanel";
+import { CostPill, type CostPillHandle } from "./CostPill";
 import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
 import { formatScheduledTime } from "@/lib/planner/format-slot";
 
@@ -598,6 +599,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const costPillRef = useRef<CostPillHandle>(null);
   const [input, setInput] = useState("");
   const [postCache, setPostCache] = useState<Map<string, CachedPost>>(new Map());
   const [proposalsByToolUseId, setProposalsByToolUseId] = useState<Map<string, ProposalData>>(new Map());
@@ -940,6 +942,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       }
     }
     setStreaming(false);
+    costPillRef.current?.refresh();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1186,11 +1189,12 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         </button>
       </div>
 
-      {/* Floating action buttons (top-right): Planner + History + New chat */}
+      {/* Floating action buttons (top-right): cost pill + Planner + History + New chat */}
       <div
         className="absolute right-2 z-30 flex items-center gap-1.5"
         style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
       >
+        <CostPill ref={costPillRef} />
         {onOpenPlanner && (
           <button
             onClick={() => onOpenPlanner()}

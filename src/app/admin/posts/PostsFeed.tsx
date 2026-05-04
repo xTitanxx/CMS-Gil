@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Trash2,
   ExternalLink,
+  Maximize2,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -294,7 +295,18 @@ export function PostsFeed() {
       setNextCursor(cached.nextCursor);
       setDone(cached.done);
       if (cached.scrollY) {
-        requestAnimationFrame(() => window.scrollTo(0, cached.scrollY));
+        // Restore scroll across multiple frames — cards (especially videos)
+        // can take a few frames to lay out, so a single rAF often clamps to
+        // the not-yet-tall document and lands at the top.
+        const target = cached.scrollY;
+        let attempts = 0;
+        const tick = () => {
+          attempts++;
+          window.scrollTo(0, target);
+          const reached = Math.abs(window.scrollY - target) < 2;
+          if (!reached && attempts < 30) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
       }
       return;
     }
@@ -536,13 +548,17 @@ export function PostsFeed() {
       </div>
 
       <div className="mx-auto w-full max-w-xl space-y-3">
-        {posts.map((post) => (
+        {posts.map((post, idx) => (
           <FeedCard
             key={post.id}
             post={post}
             href={`/admin/posts/${post.id}?${detailQueryString}`}
             onDeleted={handleDeleted}
             onEdit={handleEdit}
+            // First couple of cards are above the fold on most viewports — load
+            // them eagerly so the user sees content instantly on first paint and
+            // doesn't hit a Vercel image-optimizer cold-cache stall.
+            priority={idx < 2}
           />
         ))}
 
@@ -645,11 +661,13 @@ function FeedCard({
   href,
   onDeleted,
   onEdit,
+  priority = false,
 }: {
   post: FeedPost;
   href: string;
   onDeleted: (postId: string) => void;
   onEdit: (postId: string) => void;
+  priority?: boolean;
 }) {
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
@@ -666,10 +684,12 @@ function FeedCard({
   return (
     <article className="overflow-hidden rounded-lg bg-white shadow-sm">
       {/* Header — compact, FB-style */}
-      <div className="flex items-start gap-2 px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[15px] font-semibold text-gray-900">Gil Alter</span>
+            <span className="text-sm font-medium text-gray-700">
+              {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
+            </span>
             {post.platformUrl && (
               <a
                 href={post.platformUrl}
@@ -677,7 +697,7 @@ function FeedCard({
                 rel="noopener noreferrer"
                 aria-label="Open original on Facebook"
                 title="Open original on Facebook"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
@@ -712,11 +732,16 @@ function FeedCard({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500">
-            {format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
-          </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
+          <Link
+            href={href}
+            aria-label="Open post detail"
+            title="Open post"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </Link>
           <button
             type="button"
             onClick={(e) => {
@@ -754,20 +779,31 @@ function FeedCard({
 
       {/* Media — edge to edge */}
       {isVideo && post.videoUrl ? (
-        <LazyVideo
-          src={post.videoUrl}
-          poster={post.thumbUrl}
-          wrapperClassName="relative w-full bg-black"
-          className="w-full object-contain max-h-[75vh]"
-          controls
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          mountMargin="25% 0px"
-          unmountMargin="100% 0px"
-        />
+        (() => {
+          const w = firstMedia?.width ?? 1080;
+          const h = firstMedia?.height ?? 1350;
+          return (
+            <div
+              className="relative w-full bg-black"
+              style={{ aspectRatio: `${w} / ${h}` }}
+            >
+              <LazyVideo
+                src={post.videoUrl}
+                poster={post.thumbUrl}
+                wrapperClassName="absolute inset-0"
+                className="h-full w-full object-contain"
+                controls
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                mountMargin="25% 0px"
+                unmountMargin="100% 0px"
+              />
+            </div>
+          );
+        })()
       ) : post.thumbUrl ? (
         (() => {
           const w = firstMedia?.width ?? 1080;
@@ -775,15 +811,17 @@ function FeedCard({
           return (
             <Link href={href} className="block">
               <div
-                className="relative w-full bg-gray-100"
+                className="feed-thumb-skeleton relative w-full"
                 style={{ aspectRatio: `${w} / ${h}` }}
               >
                 <Image
                   src={post.thumbUrl}
                   alt=""
                   fill
-                  sizes="(min-width: 768px) 600px, 100vw"
-                  quality={70}
+                  sizes="(min-width: 768px) 480px, 100vw"
+                  quality={55}
+                  priority={priority}
+                  loading={priority ? "eager" : "lazy"}
                   className="object-cover"
                 />
               </div>

@@ -167,8 +167,8 @@ export default async function HomePage() {
               <div className="px-4 py-4">
                 <h2 className="text-base font-bold text-gray-900">Talk to Virtual Gil</h2>
                 <p className="mt-1.5 text-sm text-gray-600">
-                  An AI chatbot trained on Gil&apos;s archive. Ask about breathwork,
-                  living with MS, dealing with depression, and other topics Gil has written about.
+                  Trained on Gil&rsquo;s archive.<br />
+                  Ask anything &mdash; if it exists, it will dig it up.
                 </p>
                 <Link
                   href="/chat"

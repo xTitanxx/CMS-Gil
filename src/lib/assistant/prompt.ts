@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { currentSeason } from "./season";
+import { buildArchiveIndex, ARCHIVE_INDEX_BODY_CHARS } from "./archive-index";
 
 const PLATFORM_LABEL: Record<string, string> = {
   INSTAGRAM: "Instagram",
@@ -32,7 +33,7 @@ async function getConnectedPlatforms(userId: string): Promise<string[]> {
 }
 
 export async function buildSystemPrompt(userId: string, now: Date): Promise<string> {
-  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms, memories] = await Promise.all([
+  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms, memories, understanding, archiveIndex] = await Promise.all([
     prisma.post.count({ where: { userId, readiness: "READY" } }),
     prisma.postRating.count({ where: { post: { userId } } }),
     prisma.publishRecord.count({
@@ -53,6 +54,11 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
       take: 100,
       select: { id: true, content: true, kind: true, postId: true },
     }),
+    prisma.userArchiveUnderstanding.findUnique({
+      where: { userId },
+      select: { voiceProfile: true, thematicMap: true, generatedAt: true, basedOnPostCount: true },
+    }),
+    buildArchiveIndex(userId),
   ]);
 
   const platformsLine = connectedPlatforms.length
@@ -67,6 +73,17 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
         })
         .join("\n")
     : "(none yet)";
+
+  const understandingBlock = understanding
+    ? renderUnderstandingBlock(
+        understanding.voiceProfile,
+        understanding.thematicMap,
+        understanding.basedOnPostCount,
+        understanding.generatedAt,
+      )
+    : "";
+
+  const archiveBlock = renderArchiveBlock(archiveIndex.text, archiveIndex.postCount, archiveIndex.truncatedCount);
 
   return `You are Gil's post assistant. You help him decide what to post, find things in his archive, edit posts, rate posts, archive, schedule, and publish.
 
@@ -129,5 +146,43 @@ Rules:
 - Keep replies short. 1–3 short sentences plus citations is the target. Tool-result cards already show the info — don't restate it.
 - For EVERY write tool (update_post, rate_post, archive_post, schedule_post, unschedule, publish_now), describe the intended change in prose and wait for the user's affirmative confirmation ("yes", "do it", "confirmed"). Do not call the write tool on the same turn as the proposal.
 - Respect readiness: never schedule or publish a non-READY post.
-- Prefer recommend_daily_mix for "what should I post" (without a kind specified); recommend_posts for a single-kind ask; search_archive for "find me".`;
+- Prefer recommend_daily_mix for "what should I post" (without a kind specified); recommend_posts for a single-kind ask; search_archive for "find me".
+${understandingBlock}${archiveBlock}`;
+}
+
+function renderUnderstandingBlock(
+  voiceProfile: string,
+  thematicMap: string,
+  basedOnPostCount: number,
+  generatedAt: Date,
+): string {
+  if (!voiceProfile && !thematicMap) return "";
+  return `
+
+Gil's writing — internalized (distilled from ${basedOnPostCount} posts on ${format(generatedAt, "yyyy-MM-dd")}):
+
+VOICE:
+${voiceProfile}
+
+WHAT HE WRITES ABOUT:
+${thematicMap}`;
+}
+
+function renderArchiveBlock(indexText: string, postCount: number, truncatedCount: number): string {
+  if (postCount === 0) return "";
+  const truncNote = truncatedCount > 0
+    ? ` — ${truncatedCount} long posts are capped at ${ARCHIVE_INDEX_BODY_CHARS} chars and end with …; call get_post for full text`
+    : "";
+  return `
+
+Gil's full archive — every post, newest first (${postCount} posts${truncNote}):
+
+${indexText}
+
+How to use this archive:
+- This is the ground truth for what Gil has written. Treat it as your memory of his work.
+- When the user asks "have I written about X?" / "did I post about Y?", scan this archive directly and answer with citations [post:<id>] — no need for search_archive unless the answer is ambiguous or you need text past the … cutoff.
+- When drafting new posts in his voice, study the rhythm, length, sentence shape, and topic angle of recent posts above. Don't quote any post verbatim or stitch fragments — write something genuinely new that matches the voice.
+- When the user references a post by phrase or date, find it here first. Use search_archive only when the archive doesn't disambiguate.
+- Posts ending in … were truncated; call get_post for the full body before quoting.`;
 }

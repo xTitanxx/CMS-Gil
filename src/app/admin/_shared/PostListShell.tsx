@@ -553,28 +553,28 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
       : `${total.toLocaleString()} ${noun.plural}`;
 
   return (
-    <div className="space-y-4 md:space-y-6" ref={rootRef}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+    <div className="space-y-3 md:space-y-4" ref={rootRef}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="hidden text-xl font-bold text-gray-900 md:block md:text-2xl">{title}</h1>
           <p className="text-sm text-gray-500">{countLabel}</p>
         </div>
-        {headerActions && <div className="flex flex-wrap items-center gap-2">{headerActions}</div>}
+        {headerActions && <div className="flex flex-shrink-0 items-center gap-1.5">{headerActions}</div>}
       </div>
 
       {!hideKindTabs && (
-        <>
+        <div className="flex flex-col gap-2.5">
           <KindTabs current={kind} counts={kindCounts} />
           <SubKindTabs kind={kind} current={subKind} counts={subKindCounts} totals={subKindTotals} />
-        </>
+        </div>
       )}
 
       {beforeList}
 
       {/* Search + filter row */}
       <div className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
             {aiMode ? (
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-purple-500" />
             ) : (
@@ -582,7 +582,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
             )}
             <input
               type="text"
-              placeholder={aiMode ? "AI search — describe what you're looking for..." : `Search ${noun.plural}...`}
+              placeholder={aiMode ? "Describe what you're looking for…" : `Search ${noun.plural}…`}
               value={aiMode ? aiQuery : search}
               onChange={(e) => {
                 if (aiMode) {
@@ -596,10 +596,10 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               onKeyDown={(e) => {
                 if (aiMode && e.key === "Enter") runAiSearch();
               }}
-              className={`h-9 w-full rounded-lg border bg-white pl-10 pr-11 text-sm focus:outline-none ${
+              className={`h-9 w-full rounded-full border bg-white pl-10 pr-11 text-sm placeholder:text-gray-400 focus:outline-none ${
                 aiMode
                   ? "border-purple-300 focus:border-purple-500"
-                  : "border-gray-300 focus:border-blue-500"
+                  : "border-gray-200 focus:border-gray-400"
               }`}
             />
             <button
@@ -607,32 +607,32 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               onClick={toggleAiMode}
               title={aiMode ? "Switch to keyword search" : "Switch to AI search"}
               aria-pressed={aiMode}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 transition-all ${
+              className={`absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 transition-all ${
                 aiMode
-                  ? "bg-purple-100 text-purple-600 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                  ? "bg-purple-100 text-purple-600 shadow-[0_0_10px_rgba(168,85,247,0.45)]"
                   : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"
               }`}
             >
               <Sparkles className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-1.5">
             {aiMode && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={runAiSearch}
                 disabled={aiSearching || !aiQuery.trim()}
-                className="h-9 border-purple-200 text-purple-700 hover:bg-purple-50"
+                className="h-9 border-purple-200 px-3 text-purple-700 hover:bg-purple-50"
               >
                 {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Search
+                <span className="hidden sm:inline">Search</span>
               </Button>
             )}
             {aiResult && (
-              <Button variant="ghost" size="sm" onClick={clearAiSearch} className="h-9">
+              <Button variant="ghost" size="sm" onClick={clearAiSearch} className="h-9 px-2">
                 <X className="h-4 w-4" />
-                Clear
+                <span className="hidden sm:inline">Clear</span>
               </Button>
             )}
             <SortMenu sort={sort} setSort={setSort} />
@@ -668,7 +668,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         </div>
 
         {aiResult && (
-          <div className="rounded-lg border border-purple-100 bg-purple-50 px-4 py-2 text-sm space-y-1">
+          <div className="space-y-1 rounded-lg border border-purple-100 bg-purple-50 px-4 py-2 text-sm">
             {aiResult.explanation && <p className="text-purple-700">{aiResult.explanation}</p>}
             {aiResult.tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
@@ -721,15 +721,15 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
           )}
           <div className="space-y-2">
             {showSelectAll && onSelectAllToggle && (
-              <div className="flex items-center gap-3 px-2 pb-1">
+              <label className="flex cursor-pointer select-none items-center gap-2 px-2 pb-0.5 text-xs text-gray-400 hover:text-gray-600">
                 <input
                   type="checkbox"
                   checked={allSelected ?? false}
                   onChange={(e) => onSelectAllToggle(e.target.checked, posts)}
-                  className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
+                  className="h-3.5 w-3.5 cursor-pointer rounded border-gray-300 text-blue-600"
                 />
-                <span className="text-xs text-gray-500">Select all</span>
-              </div>
+                <span>Select all</span>
+              </label>
             )}
             {posts.map((post, index) => (
               <div key={getPostId(post)}>{renderRow(post, index)}</div>

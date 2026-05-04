@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Trash2, Plus, Loader2, Check, AlertCircle } from "lucide-react";
+import { X, Trash2, Plus, Loader2, Check, AlertCircle, Music, VolumeX } from "lucide-react";
 import { useAutoSavePost } from "@/hooks/useAutoSavePost";
 import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
+import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
+import { SyncedAudioVideo } from "@/app/admin/_shared/SyncedAudioVideo";
+
+interface AudioTrackRef {
+  id: string;
+  title: string;
+  url?: string | null;
+}
 
 interface MediaItem {
   id: string;
   mimeType: string;
   url: string | null;
+  hasAudio?: boolean | null;
+  audioTrack?: AudioTrackRef | null;
 }
 
 interface PostEditorModalProps {
@@ -38,10 +48,18 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
         setBody(fetchedBody);
         initialBodyRef.current = fetchedBody;
         const items: MediaItem[] = (data.media ?? []).map(
-          (m: { id: string; mimeType: string; url: string | null }) => ({
+          (m: {
+            id: string;
+            mimeType: string;
+            url: string | null;
+            hasAudio?: boolean | null;
+            audioTrack?: AudioTrackRef | null;
+          }) => ({
             id: m.id,
             mimeType: m.mimeType,
             url: m.url,
+            hasAudio: m.hasAudio ?? null,
+            audioTrack: m.audioTrack ?? null,
           }),
         );
         setMedia(items);
@@ -94,6 +112,32 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
       setMedia((prev) => prev.filter((m) => m.id !== mediaId));
     } else {
       setUploadError("Failed to delete media. Please try again.");
+    }
+  }
+
+  async function handleSetAudio(mediaId: string, audioTrackId: string | null) {
+    setUploadError("");
+    const res = await fetch(`/api/posts/${postId}/media/${mediaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audioTrackId }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setMedia((prev) =>
+        prev.map((m) =>
+          m.id === mediaId
+            ? {
+                ...m,
+                url: updated.url ?? m.url,
+                hasAudio: updated.hasAudio ?? m.hasAudio,
+                audioTrack: updated.audioTrack ?? null,
+              }
+            : m,
+        ),
+      );
+    } else {
+      setUploadError("Failed to update audio. Please try again.");
     }
   }
 
@@ -195,7 +239,12 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {media.map((m) => (
-                    <MediaTile key={m.id} item={m} onDelete={() => handleDelete(m.id)} />
+                    <MediaTile
+                      key={m.id}
+                      item={m}
+                      onDelete={() => handleDelete(m.id)}
+                      onSetAudio={(tid) => handleSetAudio(m.id, tid)}
+                    />
                   ))}
 
                   <button
@@ -261,9 +310,18 @@ function SaveIndicator({ status }: { status: "idle" | "saving" | "saved" | "erro
   );
 }
 
-function MediaTile({ item, onDelete }: { item: MediaItem; onDelete: () => void }) {
+function MediaTile({
+  item,
+  onDelete,
+  onSetAudio,
+}: {
+  item: MediaItem;
+  onDelete: () => void;
+  onSetAudio: (audioTrackId: string | null) => void;
+}) {
   const [confirming, setConfirming] = useState(false);
   const isVideo = item.mimeType.startsWith("video/");
+  const isSilentVideo = isVideo && item.hasAudio === false;
 
   useEffect(() => {
     if (!confirming) return;
@@ -275,13 +333,25 @@ function MediaTile({ item, onDelete }: { item: MediaItem; onDelete: () => void }
     <div className="group relative aspect-square overflow-hidden rounded-xl bg-gray-100">
       {item.url ? (
         isVideo ? (
-          <video
-            src={item.url}
-            muted
-            playsInline
-            preload="metadata"
-            className="h-full w-full object-cover"
-          />
+          item.audioTrack?.url ? (
+            <SyncedAudioVideo
+              key={item.audioTrack.id}
+              videoSrc={item.url}
+              audioSrc={item.audioTrack.url}
+              className="h-full w-full object-cover"
+              controls
+            />
+          ) : (
+            <video
+              key="no-audio"
+              src={item.url}
+              muted
+              controls
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+          )
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.url} alt="" className="h-full w-full object-cover" />
@@ -289,6 +359,31 @@ function MediaTile({ item, onDelete }: { item: MediaItem; onDelete: () => void }
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-[#8e8ea0]">
           (no preview)
+        </div>
+      )}
+
+      {isSilentVideo && !item.audioTrack && (
+        <div
+          className="absolute bottom-1 left-1 rounded-full bg-gray-900/70 p-0.5 backdrop-blur-sm"
+          title="Silent video — no audio track"
+        >
+          <VolumeX className="h-3 w-3 text-white" />
+        </div>
+      )}
+      {isVideo && item.audioTrack && (
+        <div
+          className="absolute bottom-1 left-1 rounded-full bg-purple-600/70 p-0.5 backdrop-blur-sm"
+          title={`Music: ${item.audioTrack.title}`}
+        >
+          <Music className="h-3 w-3 text-white" />
+        </div>
+      )}
+      {isVideo && (
+        <div className="absolute bottom-1 right-1">
+          <AudioPicker
+            currentTrack={item.audioTrack ?? null}
+            onSetAudio={onSetAudio}
+          />
         </div>
       )}
 

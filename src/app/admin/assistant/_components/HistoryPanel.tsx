@@ -143,7 +143,7 @@ export function HistoryPanel({
           className="flex items-center justify-between border-b border-gray-100 px-4 py-3"
           style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.75rem)" }}
         >
-          <h2 className="text-sm font-semibold text-[#0d0d0d]">Chat history</h2>
+          <h2 className="text-base font-semibold text-[#0d0d0d]">Chat history</h2>
           <button
             onClick={onClose}
             className="flex h-9 w-9 items-center justify-center rounded-full text-[#0d0d0d] hover:bg-gray-100 active:bg-gray-200"
@@ -196,18 +196,18 @@ export function HistoryPanel({
                           onBlur={() => void handleRenameSubmit(r.id)}
                           onClick={(e) => e.stopPropagation()}
                           maxLength={120}
-                          className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-[#0d0d0d] focus:border-[#0d0d0d] focus:outline-none"
+                          className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-[17px] text-[#0d0d0d] focus:border-[#0d0d0d] focus:outline-none"
                         />
                       ) : (
                         <p
-                          className={`truncate text-sm ${
+                          className={`truncate text-[17px] leading-snug ${
                             isActive ? "font-semibold text-[#0d0d0d]" : "font-medium text-[#0d0d0d]"
                           }`}
                         >
                           {r.title?.trim() || "Untitled chat"}
                         </p>
                       )}
-                      <p className="mt-0.5 text-xs text-gray-500">
+                      <p className="mt-1 text-[13px] text-gray-500">
                         {formatRelative(r.updatedAt)} · {r.messageCount}{" "}
                         {r.messageCount === 1 ? "message" : "messages"}
                       </p>

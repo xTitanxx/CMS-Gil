@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import {
   X,
   RefreshCw,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -72,7 +74,14 @@ interface FeedPost {
   tags: string[];
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
-  media: { id: string; mimeType: string; hasAudio: boolean | null; audioTrackId: string | null }[];
+  media: {
+    id: string;
+    mimeType: string;
+    hasAudio: boolean | null;
+    audioTrackId: string | null;
+    width: number | null;
+    height: number | null;
+  }[];
   publishes: { platform: string; status: string }[];
 }
 
@@ -645,11 +654,6 @@ function FeedCard({
   const firstMedia = post.media[0];
   const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
 
-  const typeLabel =
-    post.postType && post.postType !== "POST"
-      ? post.postType.charAt(0) + post.postType.slice(1).toLowerCase()
-      : "Post";
-
   const body = displayBody(post.body) ?? "";
   const [expanded, setExpanded] = useState(false);
   const CAPTION_CHAR_LIMIT = 220;
@@ -666,20 +670,17 @@ function FeedCard({
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[15px] font-semibold text-gray-900">Gil Alter</span>
-            {post.platformUrl ? (
+            {post.platformUrl && (
               <a
                 href={post.platformUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                aria-label="Open original on Facebook"
                 title="Open original on Facebook"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50"
               >
-                {typeLabel}
+                <ExternalLink className="h-3.5 w-3.5" />
               </a>
-            ) : (
-              <Badge variant="outline" className="text-[10px]">
-                {typeLabel}
-              </Badge>
             )}
             {post.share && (
               <span
@@ -738,19 +739,16 @@ function FeedCard({
         <div className="px-3 pb-2">
           <p className="whitespace-pre-wrap text-[15px] leading-[1.35] text-gray-900">
             {shownBody}
-            {isLong && !expanded && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className="font-semibold text-gray-600 hover:underline"
-                >
-                  See more
-                </button>
-              </>
-            )}
           </p>
+          {isLong && !expanded && (
+            <button
+              type="button"
+              onPointerDown={() => setExpanded(true)}
+              className="mt-1 -mx-1 inline-flex min-h-[36px] items-center rounded-md px-2 text-[14px] font-semibold text-gray-700 active:bg-gray-100 touch-manipulation"
+            >
+              See more
+            </button>
+          )}
         </div>
       )}
 
@@ -771,16 +769,27 @@ function FeedCard({
           unmountMargin="100% 0px"
         />
       ) : post.thumbUrl ? (
-        <Link href={href} className="block">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={post.thumbUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-auto w-full"
-          />
-        </Link>
+        (() => {
+          const w = firstMedia?.width ?? 1080;
+          const h = firstMedia?.height ?? 1350;
+          return (
+            <Link href={href} className="block">
+              <div
+                className="relative w-full bg-gray-100"
+                style={{ aspectRatio: `${w} / ${h}` }}
+              >
+                <Image
+                  src={post.thumbUrl}
+                  alt=""
+                  fill
+                  sizes="(min-width: 768px) 600px, 100vw"
+                  quality={70}
+                  className="object-cover"
+                />
+              </div>
+            </Link>
+          );
+        })()
       ) : !body ? (
         <div className="flex items-center justify-center px-5 py-10 text-gray-300">
           <ImageIcon className="h-8 w-8" />

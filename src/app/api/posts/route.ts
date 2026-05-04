@@ -22,6 +22,8 @@ const POST_INCLUDE = {
       mimeType: true,
       hasAudio: true,
       audioTrackId: true,
+      width: true,
+      height: true,
     },
   },
   publishes: {

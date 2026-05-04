@@ -14,8 +14,8 @@ import {
   Images,
   FileText,
   BarChart3,
+  ExternalLink,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -244,30 +244,21 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
                 {post.captionSuggestion ? " · rewrite" : ""}
               </span>
             )}
-            {(() => {
-              const label =
-                post.postType && post.postType !== "POST"
-                  ? post.postType.charAt(0) + post.postType.slice(1).toLowerCase()
-                  : "Post";
-              return post.platformUrl ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.open(post.platformUrl!, "_blank", "noopener,noreferrer");
-                  }}
-                  className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                  title="Open original on Facebook"
-                >
-                  {label}
-                </button>
-              ) : (
-                <Badge variant="outline" className="text-xs">
-                  {label}
-                </Badge>
-              );
-            })()}
+            {post.platformUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(post.platformUrl!, "_blank", "noopener,noreferrer");
+                }}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50"
+                title="Open original on Facebook"
+                aria-label="Open original on Facebook"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </button>
+            )}
             {(() => {
               const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
               const count = post.media.length;

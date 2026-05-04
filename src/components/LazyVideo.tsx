@@ -108,6 +108,11 @@ export function LazyVideo({
           playsInline={playsInline}
           preload={preload}
           className={className}
+          // Tells the browser this element doesn't handle vertical pans, so a
+          // finger swipe over the video scrolls the feed instead of getting
+          // captured by the video controls. Without this, scrolling on mobile
+          // gets "stuck" whenever the user's thumb lands on a video tile.
+          style={{ touchAction: "pan-y" }}
         />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element

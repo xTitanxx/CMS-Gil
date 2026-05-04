@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { currentSeason } from "./season";
+import type { SampleEntry } from "./archive-understanding";
 
 const PLATFORM_LABEL: Record<string, string> = {
   INSTAGRAM: "Instagram",
@@ -32,7 +33,7 @@ async function getConnectedPlatforms(userId: string): Promise<string[]> {
 }
 
 export async function buildSystemPrompt(userId: string, now: Date): Promise<string> {
-  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms, memories] = await Promise.all([
+  const [readyCount, ratedCount, pendingNext7, totalPosts, connectedPlatforms, memories, understanding] = await Promise.all([
     prisma.post.count({ where: { userId, readiness: "READY" } }),
     prisma.postRating.count({ where: { post: { userId } } }),
     prisma.publishRecord.count({
@@ -53,6 +54,10 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
       take: 100,
       select: { id: true, content: true, kind: true, postId: true },
     }),
+    prisma.userArchiveUnderstanding.findUnique({
+      where: { userId },
+      select: { voiceProfile: true, thematicMap: true, sampleBodies: true, generatedAt: true, basedOnPostCount: true },
+    }),
   ]);
 
   const platformsLine = connectedPlatforms.length
@@ -67,6 +72,16 @@ export async function buildSystemPrompt(userId: string, now: Date): Promise<stri
         })
         .join("\n")
     : "(none yet)";
+
+  const understandingBlock = understanding
+    ? renderUnderstandingBlock(
+        understanding.voiceProfile,
+        understanding.thematicMap,
+        understanding.sampleBodies as unknown as SampleEntry[],
+        understanding.basedOnPostCount,
+        understanding.generatedAt,
+      )
+    : "";
 
   return `You are Gil's post assistant. You help him decide what to post, find things in his archive, edit posts, rate posts, archive, schedule, and publish.
 
@@ -129,5 +144,37 @@ Rules:
 - Keep replies short. 1–3 short sentences plus citations is the target. Tool-result cards already show the info — don't restate it.
 - For EVERY write tool (update_post, rate_post, archive_post, schedule_post, unschedule, publish_now), describe the intended change in prose and wait for the user's affirmative confirmation ("yes", "do it", "confirmed"). Do not call the write tool on the same turn as the proposal.
 - Respect readiness: never schedule or publish a non-READY post.
-- Prefer recommend_daily_mix for "what should I post" (without a kind specified); recommend_posts for a single-kind ask; search_archive for "find me".`;
+- Prefer recommend_daily_mix for "what should I post" (without a kind specified); recommend_posts for a single-kind ask; search_archive for "find me".
+${understandingBlock}`;
+}
+
+function renderUnderstandingBlock(
+  voiceProfile: string,
+  thematicMap: string,
+  sampleBodies: SampleEntry[],
+  basedOnPostCount: number,
+  generatedAt: Date,
+): string {
+  if (!voiceProfile && !thematicMap && sampleBodies.length === 0) return "";
+  const samples = sampleBodies
+    .map(
+      (s) =>
+        `[post:${s.id} | ${s.originalDate} | theme: ${s.theme}${s.tags.length ? ` | tags: ${s.tags.slice(0, 5).join(", ")}` : ""}]\n${s.body}`,
+    )
+    .join("\n\n---\n\n");
+
+  return `
+
+Gil's writing — internalized (distilled from ${basedOnPostCount} posts on ${format(generatedAt, "yyyy-MM-dd")}):
+
+VOICE:
+${voiceProfile}
+
+WHAT HE WRITES ABOUT:
+${thematicMap}
+
+REPRESENTATIVE POSTS (full text — examples of how he writes, NOT content to recycle. Never quote them verbatim or rewrite them as "new" posts):
+${samples}
+
+When drafting a new post, lean on the voice profile and the rhythm of these examples. When asked whether he's covered a topic, treat the thematic map as orientation but call search_archive for definitive answers.`;
 }

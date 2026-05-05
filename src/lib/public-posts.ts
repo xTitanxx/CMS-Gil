@@ -19,6 +19,7 @@ export interface PublicPost {
   originalDate: Date;
   tags: string[];
   sourceId: string | null;
+  likeCount: number;
   media: PublicPostMedia[];
 }
 
@@ -85,6 +86,7 @@ export async function getPublicFeedPage(cursor?: {
       originalDate: true,
       tags: true,
       sourceId: true,
+      likeCount: true,
       media: {
         select: {
           id: true,
@@ -126,6 +128,7 @@ export async function getPublicPost(id: string): Promise<PublicPost | null> {
       originalDate: true,
       tags: true,
       sourceId: true,
+      likeCount: true,
       media: {
         select: {
           id: true,
@@ -162,6 +165,7 @@ export async function getRelatedPosts(
         originalDate: true,
         tags: true,
         sourceId: true,
+        likeCount: true,
         media: {
           select: {
             id: true,
@@ -195,6 +199,7 @@ export async function getRelatedPosts(
       originalDate: true,
       tags: true,
       sourceId: true,
+      likeCount: true,
       media: {
         select: {
           id: true,
@@ -250,6 +255,7 @@ export async function getPublicStoriesPage(cursor?: {
       originalDate: true,
       tags: true,
       sourceId: true,
+      likeCount: true,
       media: {
         select: {
           id: true,
@@ -297,6 +303,7 @@ export async function getPublicStory(id: string): Promise<PublicPost | null> {
       originalDate: true,
       tags: true,
       sourceId: true,
+      likeCount: true,
       media: {
         select: {
           id: true,

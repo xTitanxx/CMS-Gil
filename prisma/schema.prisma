@@ -155,12 +155,18 @@ model Post {
   parentPost   Post?   @relation("PostAlbumChildren", fields: [parentPostId], references: [id], onDelete: SetNull)
   childPosts   Post[]  @relation("PostAlbumChildren")
 
+  // Denormalized engagement counts (PR1: likeCount; PR2: commentCount).
+  // Updated in the same sequential-await chain as the underlying mutation.
+  likeCount Int @default(0)
+
   media      Media[]
   publishes  PublishRecord[]
   analytics  PostAnalytics[]
   planSlots  WeeklyPlanSlot[]
   fbComments FacebookComment[]
   memories   UserMemory[]
+  likes      PostLike[]
+  bookmarks  PostBookmark[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -168,6 +174,32 @@ model Post {
   @@index([tags], type: Gin)
   @@index([readiness])
   @@index([lifecycle])
+}
+
+model PostLike {
+  id           String     @id @default(cuid())
+  postId       String
+  subscriberId String
+  createdAt    DateTime   @default(now())
+
+  post         Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  subscriber   Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, subscriberId])
+  @@index([subscriberId])
+}
+
+model PostBookmark {
+  id           String     @id @default(cuid())
+  postId       String
+  subscriberId String
+  createdAt    DateTime   @default(now())
+
+  post         Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  subscriber   Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, subscriberId])
+  @@index([subscriberId, createdAt(sort: Desc)])
 }
 
 enum PostSource {
@@ -578,6 +610,8 @@ model Subscriber {
   createdBy        User                      @relation(fields: [createdById], references: [id])
   conversations    SubscriberConversation[]
   usageEvents      SubscriberUsage[]
+  likes            PostLike[]
+  bookmarks        PostBookmark[]
 
   @@index([revokedAt])
 }

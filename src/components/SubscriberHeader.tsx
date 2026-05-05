@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
 
 export async function SubscriberHeader() {
@@ -6,20 +7,28 @@ export async function SubscriberHeader() {
 
   return (
     <div className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-2 text-sm">
-        <span className="text-gray-700">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2 text-sm">
+        <span className="truncate text-gray-700">
           Hi, <span className="font-semibold">{session.user.name}</span>
         </span>
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/welcome" });
-          }}
-        >
-          <button type="submit" className="text-blue-600 hover:underline">
-            Sign out
-          </button>
-        </form>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/bookmarks"
+            className="text-blue-600 hover:underline"
+          >
+            Bookmarks
+          </Link>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/welcome" });
+            }}
+          >
+            <button type="submit" className="text-blue-600 hover:underline">
+              Sign out
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

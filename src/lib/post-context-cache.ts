@@ -20,7 +20,7 @@ export async function getPostContext(): Promise<{ text: string; count: number }>
     where: { userId: gilUserId },
     select: { id: true, body: true, tags: true, originalDate: true },
     orderBy: { originalDate: "desc" },
-    take: 500,
+    take: 200,
   });
 
   const lines = posts.map((p) => {

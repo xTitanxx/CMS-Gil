@@ -25,8 +25,34 @@ export function computeHaikuCost(usage: Usage): number {
   );
 }
 
-export function startOfCurrentMonthUtc(ref: Date = new Date()): Date {
-  return new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1, 0, 0, 0, 0));
+// Last anniversary on or before `now`, clamping the day to the month length
+// (so e.g. a Jan-31 subscriber resets on Feb 28/29 in February).
+export function startOfCurrentCycle(createdAt: Date, now: Date = new Date()): Date {
+  const day = createdAt.getUTCDate();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const today = now.getUTCDate();
+
+  const daysThis = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const dayThis = Math.min(day, daysThis);
+
+  if (today >= dayThis) return new Date(Date.UTC(y, m, dayThis));
+
+  // anniversary is later this month → cycle started last month
+  // (Date.UTC handles month = -1 by rolling into the prior year)
+  const daysPrev = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const dayPrev = Math.min(day, daysPrev);
+  return new Date(Date.UTC(y, m - 1, dayPrev));
+}
+
+export function startOfNextCycle(createdAt: Date, now: Date = new Date()): Date {
+  const cur = startOfCurrentCycle(createdAt, now);
+  const day = createdAt.getUTCDate();
+  const y = cur.getUTCFullYear();
+  const m = cur.getUTCMonth();
+  const daysNext = new Date(Date.UTC(y, m + 2, 0)).getUTCDate();
+  const dayNext = Math.min(day, daysNext);
+  return new Date(Date.UTC(y, m + 1, dayNext));
 }
 
 export type BudgetCheck =
@@ -36,18 +62,22 @@ export type BudgetCheck =
 export async function checkBudgetAndLazyReset(subscriberId: string): Promise<BudgetCheck> {
   const sub = await prisma.subscriber.findUniqueOrThrow({
     where: { id: subscriberId },
-    select: { cycleStart: true, cycleUsedUsd: true, monthlyBudgetUsd: true },
+    select: {
+      createdAt: true,
+      cycleStart: true,
+      cycleUsedUsd: true,
+      monthlyBudgetUsd: true,
+    },
   });
-  const monthStart = startOfCurrentMonthUtc();
-  const nextMonth = new Date(
-    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1)
-  );
+  const now = new Date();
+  const currentCycleStart = startOfCurrentCycle(sub.createdAt, now);
+  const nextCycle = startOfNextCycle(sub.createdAt, now);
 
   let usedUsd = sub.cycleUsedUsd.toNumber();
-  if (sub.cycleStart < monthStart) {
+  if (sub.cycleStart < currentCycleStart) {
     await prisma.subscriber.update({
       where: { id: subscriberId },
-      data: { cycleStart: monthStart, cycleUsedUsd: 0 },
+      data: { cycleStart: currentCycleStart, cycleUsedUsd: 0 },
     });
     usedUsd = 0;
   }
@@ -56,7 +86,7 @@ export async function checkBudgetAndLazyReset(subscriberId: string): Promise<Bud
     allowed: usedUsd < budgetUsd,
     usedUsd,
     budgetUsd,
-    cycleResetsAt: nextMonth,
+    cycleResetsAt: nextCycle,
   };
 }
 

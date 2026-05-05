@@ -67,7 +67,9 @@ describe("/api/chat budget enforcement", () => {
     );
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.cycleResetsAt).toMatch(/^2026-05-01T/);
+    // Subscriber's createdAt defaults to now() = FIXED_NOW (2026-04-28); cycle
+    // anchors to the day-of-month → next reset is May 28, not the 1st.
+    expect(body.cycleResetsAt).toMatch(/^2026-05-28T/);
 
     await prisma.subscriber.delete({ where: { id: created.id } });
   });

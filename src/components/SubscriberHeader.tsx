@@ -43,14 +43,37 @@ export async function SubscriberHeader() {
     );
   }
 
-  // Admins: keep the public archive uncluttered — they have their own chrome.
-  if (role === "admin") return null;
+  if (role === "admin") {
+    return (
+      <div className="border-b border-gray-200 bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-end gap-3 px-4 py-2 text-sm">
+          <Link
+            href="/admin"
+            className="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700"
+          >
+            Admin
+          </Link>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/" });
+            }}
+          >
+            <button type="submit" className="text-gray-600 hover:text-gray-900 hover:underline">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
-  // Anonymous visitor: sign-in entry point so the chat is reachable from
-  // anywhere on the archive.
   return (
     <div className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-end gap-2 px-4 py-2 text-sm">
+      <div className="mx-auto flex max-w-5xl items-center justify-end gap-3 px-4 py-2 text-sm">
+        <Link href="/welcome?next=/" className="text-gray-600 hover:text-gray-900 hover:underline">
+          Sign in
+        </Link>
         <Link
           href="/welcome"
           className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"

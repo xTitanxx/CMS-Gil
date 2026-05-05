@@ -5,7 +5,7 @@
 - **Auth**: NextAuth v5 beta (`next-auth@5.0.0-beta.30`) — Google OAuth only (sign-in)
 - **Database**: Supabase PostgreSQL via Prisma 7 (`@prisma/adapter-pg`) — migrated from Neon
 - **Storage**: **Cloudflare R2** (via `@aws-sdk/client-s3`) for all media; Vercel Blob for ZIP upload staging. (Cloudinary was the previous media host; all rows have been migrated to R2 and the Cloudinary SDK + fallback have been removed.)
-- **AI**: Anthropic SDK (`@anthropic-ai/sdk@^0.82`) — `claude-sonnet-4-6` for tagging/chat/planner/assistant, `claude-haiku-4-5` (pinned in places as `claude-haiku-4-5-20251001`) for search + retrieval
+- **AI**: Anthropic SDK (`@anthropic-ai/sdk@^0.82`) — `claude-sonnet-4-6` for tagging/planner/assistant, `claude-haiku-4-5` for search + retrieval + the public `/api/chat` (with 1h prompt caching on the 90k-token system prompt). Markdown rendering on `/chat` via `react-markdown`.
 - **Deployment**: Vercel at `cms-gil.vercel.app`
 - **Language**: TypeScript, React 19
 
@@ -26,11 +26,12 @@ Restart the dev server after any `.env.local` change.
 
 The app splits into a **public front** and an **admin content hub**:
 
-- **Public** (unauthenticated, no admin chrome):
+- **Public** (unauthenticated, no admin chrome — but gated behind a subscriber code when `PUBLIC_GATE_ENABLED=true`):
   - `/` — public feed (infinite scroll) + stories row
   - `/p/[id]` — individual post page with related posts
   - `/s/[id]` — standalone story page
-  - `/chat` — public AI chatbot over the archive
+  - `/chat` — AI chatbot over the archive (subscriber-only, budget-tracked)
+  - `/welcome` — subscriber sign-in (paste an admin-issued code; gated routes redirect here when the gate is on)
 - **Admin** (`/admin/*`, auth-gated):
   - `/admin` — redirects to `/admin/assistant` (the real home)
   - `/admin/assistant` — persistent AI assistant chat (primary interaction surface)
@@ -77,6 +78,20 @@ Weekly planner surfaces at `/admin/dashboard`. AI tool-use generates slot recomm
 - Uses `trustHost: true` for Vercel forwarded headers
 - `AUTH_REDIRECT_PROXY_URL` set on Vercel (Production + Preview) for PKCE cookies across preview deployments
 - Do **not** set `NEXTAUTH_URL` on Vercel — it breaks the proxy
+- **Two roles** on the JWT (`session.user.role`): `"admin"` and `"subscriber"`. Admins sign in via Google OAuth at `/login`; subscribers sign in at `/welcome` with a code (the `subscriber-credentials` Credentials provider in `src/lib/auth.ts`). Type augmentation in `src/types/next-auth.d.ts`.
+- Role-aware gating lives in **`src/proxy.ts`** (Next 16's renamed `middleware.ts` — *do not* re-add `export const runtime = "nodejs"`; proxy always runs on Node and the export is rejected at build). Reads `PUBLIC_GATE_ENABLED` env to decide whether to redirect unauthenticated visitors on public routes to `/welcome`.
+
+### Subscriber Gate
+Per-person paid access (~$2/mo on FB Subscriptions) to the public archive + virtual-Gil chat. Admin-issued codes, persistent per-subscriber chat memory, real-USD monthly budget per subscriber tracked from Anthropic `response.usage`.
+
+- **Tables**: `Subscriber` (name + bcrypt code hash + monthly budget + cycle tracking + revoke timestamp), `SubscriberConversation`, `SubscriberMessage`, `SubscriberUsage` (audit log per chat turn).
+- **Admin UI**: section in `/admin/settings` — generate codes, regenerate, revoke, see live $ spent / budget per subscriber. Plaintext code is shown **once** at creation, then only the bcrypt hash is stored.
+- **Subscriber UI**: thin "Hi, {name} · Sign out" header on archive pages, budget meter on `/chat` (refetches after every turn via a `refreshKey` prop on `<BudgetMeter />`).
+- **Budget enforcement** in `src/lib/subscribers/budget.ts`: lazy reset on first chat call of each UTC month, hard 429 when over, sequential awaits (no `$transaction` — pgbouncer transaction-pool mode times out).
+- **Code library** in `src/lib/subscribers/{code,budget,service,signin-rate-limit}.ts`. Format `gil-{8-char alnum}`. 10 sign-in attempts/IP/hour rate-limit.
+- **Pricing constants for Haiku 4.5** are hard-coded in `budget.ts` — update in lockstep if the model is changed.
+- **Feature flag**: `PUBLIC_GATE_ENABLED=true` on the env where you want the gate active. Off by default in production. Flipping false reopens the site immediately.
+- **`/api/chat`** is the rewritten public chat: requires a session (subscriber or admin), enforces the budget for subscribers (admin bypasses), wraps the system prompt in a `cache_control: { type: "ephemeral", ttl: "1h" }` block for prompt caching (~10× cost reduction), persists messages to `SubscriberConversation`, records usage. **Strip non-Anthropic fields from incoming `messages`** (the chat client stores rendered post-card data on each message; Anthropic rejects extra keys with 400).
 
 ### Storage — Cloudflare R2
 `src/lib/storage.ts` is the single storage module. All writes and reads go to R2:
@@ -112,7 +127,7 @@ All redirect URIs use `APP_URL` env var (not `NEXTAUTH_URL`).
 ### AI Features
 - **Post tagging** (`src/lib/analyze-post.ts`): Claude vision analyzes text + image/video frames → `String[]` tags saved to `Post.tags`. Video frames fetched from storage at 0/25/50/75/100% offsets. Runs automatically on import; bulk re-analysis via `/api/posts/bulk-analyze` and `/api/posts/bulk-caption-analyze`.
 - **Caption analysis** (`src/lib/analyze-caption.ts`): per-post caption suggestions — `/api/posts/[id]/caption-suggestion`, `/api/posts/[id]/analyze`.
-- **AI chat** (`/api/chat`): Loads user's last 500 posts (body + tags + date) into the system prompt, streams via `ReadableStream`.
+- **AI chat** (`/api/chat`): Loads user's last 500 posts (body + tags + date) into the system prompt, streams via `ReadableStream`. Uses Haiku 4.5 with 1h ephemeral prompt caching. Requires a NextAuth session; for subscribers, gated by their monthly USD budget. Persists to `SubscriberConversation` for subscribers; admin sessions are ephemeral (no DB writes from `/api/chat`). See "Subscriber Gate" above.
 - **AI search** (`/api/posts/ai-search`): Haiku maps natural-language queries to tag matches + keyword fallbacks.
 - **Assistant** (`src/lib/assistant/`): Persistent agent with tool use over the whole CMS (see Assistant section). Retrieval uses Haiku.
 - **Readiness** (`src/lib/readiness.ts`, `readiness-service.ts`): Per-post readiness scoring, recomputed by the daily cron.
@@ -155,6 +170,8 @@ Notable API namespaces beyond the above: `/api/assistant`, `/api/audio`, `/api/b
 | `TIKTOK_CLIENT_KEY/SECRET` | Vercel + local | TikTok OAuth |
 | `LINKEDIN_CLIENT_ID/SECRET` | Vercel + local | LinkedIn OAuth |
 | `CRON_SECRET` | Vercel + local | Authenticates Vercel cron requests |
+| `PUBLIC_GATE_ENABLED` | Vercel (per env) | When `"true"`, `proxy.ts` redirects unauthenticated visitors on `/`, `/p/*`, `/s/*`, `/chat` to `/welcome`. Off by default. Flipping false reopens the public site immediately. |
+| `OWNER_USER_ID` / `GIL_USER_ID` | Vercel + local | Owner/content-author user IDs used by `/api/chat`'s post loader, `getPostContext`, and the public feed. **Without these, `/` returns 500.** |
 
 ## Feature Branch Workflow
 
@@ -250,3 +267,8 @@ If a file like this turns up uncommitted on a feature branch where it doesn't be
 - Supabase has cold start latency — first DB query after idle is slow
 - `Post.tags` uses a GIN index for array queries; use Prisma raw queries or array operators for tag filtering
 - `Media.storageKey` / `AudioTrack.storageKey` always hold a full R2 URL — never concatenate URLs manually; go through `src/lib/storage.ts` helpers
+- **Prisma + Supabase: do NOT run `prisma migrate dev`.** `DATABASE_URL` points at the production Supabase pooler, and `migrate dev` (even with `--create-only`) needs a writable shadow DB it can't get. Generate offline SQL with `npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script -o migration.sql` and apply with `psql -f`, then mark resolved via `npx prisma migrate resolve --applied <name>`.
+- **Prisma transactions over pgbouncer (P2028 "Unable to start a transaction in the given time")**: `prisma.$transaction([...])` frequently fails on the Vercel/Supabase wiring because of pgbouncer's transaction-pool mode. Replace with sequential awaits when atomicity isn't strictly required. See `src/lib/subscribers/budget.ts`'s `recordUsage` for the pattern.
+- **`.env.local` doesn't define `DATABASE_URL`** — `src/lib/prisma.ts` derives the connection from `POSTGRES_URL_NON_POOLING`. If you need `DATABASE_URL` for one-off Prisma CLI commands, `export DATABASE_URL="$POSTGRES_URL_NON_POOLING"` first.
+- **`messages` field stripping in `/api/chat`**: the client message shape includes a `posts` field (rendered post-card data). Anthropic rejects extra keys with `messages.N.posts: Extra inputs are not permitted`. Server-side filter to `{role, content}` only — see `src/app/api/chat/route.ts`.
+- **Vercel preview env vars are scoped per-branch by default in agent mode.** Pushing env vars without a branch arg fails the agent-mode prompt. To apply to all preview branches, use `vercel env add NAME preview --value VAL --yes` (omit branch); the CLI will prompt and may need clarification. To scope to one branch: `vercel env add NAME preview <branch> --value VAL --yes`. See `feedback_vercel_env_var_pushes.md` in agent memory for the auto-approve scope.

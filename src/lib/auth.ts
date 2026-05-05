@@ -113,8 +113,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Defense in depth: re-validate admin tokens on every refresh so that
       // removing an email from ADMIN_EMAILS revokes existing sessions, and so
       // any pre-fix JWTs (issued before the allowlist existed) lose admin.
+      // Clear identity too — leaving token.sub = OWNER_USER_ID with role=subscriber
+      // would let a demoted ex-admin act as the owner on routes that scope by
+      // session.user.id (most of /api/posts/*, /api/audio, /api/chat).
       if (token.role === "admin" && !isAdminEmail(token.email as string | null | undefined)) {
         token.role = "subscriber";
+        token.sub = undefined;
+        token.subscriberId = undefined;
       }
       return token;
     },

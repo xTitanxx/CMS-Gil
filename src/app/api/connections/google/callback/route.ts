@@ -1,20 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
+import { verifyOAuthState } from "@/lib/oauth-state";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  const state = searchParams.get("state"); // userId
+  const stateParam = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error || !code || !state) {
+  if (error || !code || !stateParam) {
     return NextResponse.redirect(new URL("/import?error=google_denied", req.url));
   }
 
-  const [userId, from = "import"] = state.split("|");
+  const state = verifyOAuthState(stateParam);
+  const session = await auth();
+  if (
+    !state ||
+    !session?.user?.id ||
+    session.user.role !== "admin" ||
+    session.user.id !== state.userId
+  ) {
+    return NextResponse.redirect(new URL("/import?error=google_state", req.url));
+  }
+
+  const userId = state.userId;
+  const from = state.extra ?? "import";
 
   try {
     const oauth2Client = new google.auth.OAuth2(
@@ -48,14 +62,11 @@ export async function GET(req: NextRequest) {
       data: updateData,
     });
 
-    const successUrl = from === "connections"
-      ? "/connections?success=youtube"
-      : "/import?success=google";
+    const successUrl =
+      from === "connections" ? "/connections?success=youtube" : "/import?success=google";
     return NextResponse.redirect(new URL(successUrl, req.url));
   } catch (err) {
     console.error("Google callback error:", err);
-    return NextResponse.redirect(
-      new URL(`/import?error=google_failed`, req.url)
-    );
+    return NextResponse.redirect(new URL(`/import?error=google_failed`, req.url));
   }
 }

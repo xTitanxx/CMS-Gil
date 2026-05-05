@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
+import { auth } from "@/lib/auth";
+import { verifyOAuthState } from "@/lib/oauth-state";
 
 const CLIENT_ID = process.env.LINKEDIN_CLIENT_ID!;
 const CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET!;
@@ -9,14 +11,28 @@ const REDIRECT_URI = `${process.env.APP_URL}/api/connections/linkedin/callback`;
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  const userId = searchParams.get("state");
+  const stateParam = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error || !code || !userId) {
+  if (error || !code || !stateParam) {
     return NextResponse.redirect(
       new URL(`/connections?error=linkedin_denied`, req.url)
     );
   }
+
+  const state = verifyOAuthState(stateParam);
+  const session = await auth();
+  if (
+    !state ||
+    !session?.user?.id ||
+    session.user.role !== "admin" ||
+    session.user.id !== state.userId
+  ) {
+    return NextResponse.redirect(
+      new URL(`/connections?error=linkedin_state`, req.url)
+    );
+  }
+  const userId = state.userId;
 
   try {
     // Exchange code for access token

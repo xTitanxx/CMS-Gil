@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness } from "@/lib/readiness";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 
 async function isBroken(storageKey: string, _mimeType: string): Promise<boolean> {
   if (!storageKey.startsWith("http")) return true;
@@ -13,7 +14,7 @@ async function isBroken(storageKey: string, _mimeType: string): Promise<boolean>
 }
 
 export async function GET(req: NextRequest) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);

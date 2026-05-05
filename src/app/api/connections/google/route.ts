@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { google } from "googleapis";
+import { createOAuthState } from "@/lib/oauth-state";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",
     ],
-    state: `${session.user.id}|${from}`,
+    state: createOAuthState({ userId: session.user.id, extra: from }),
   });
 
   return NextResponse.redirect(authUrl);

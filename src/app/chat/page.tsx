@@ -370,6 +370,15 @@ export default function GilChatPage() {
             placeholder="Ask Virtual Gil..."
             rows={1}
             disabled={inputDisabled || streaming}
+            name="virtual-gil-message"
+            autoComplete="off"
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
+            inputMode="text"
+            data-form-type="other"
+            data-1p-ignore
+            data-lpignore="true"
             className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50"
             style={{ maxHeight: "120px", overflowY: "auto" }}
           />

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { getPublicFeedPage, getPublicStoriesPage } from "@/lib/public-posts";
 import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
 import { PublicFeed } from "./PublicFeed";
@@ -13,10 +14,12 @@ const COVER_SRC = "/banner.jpg";
 const AVATAR_SRC = "/avatar.jpg";
 
 export default async function HomePage() {
-  const [feed, storiesPage] = await Promise.all([
+  const [session, feed, storiesPage] = await Promise.all([
+    auth(),
     getPublicFeedPage(),
     getPublicStoriesPage(),
   ]);
+  const signedIn = session?.user?.role === "subscriber";
 
   const postsWithUrls = await Promise.all(
     feed.posts.map(async (p) => ({
@@ -24,6 +27,7 @@ export default async function HomePage() {
       body: p.body,
       originalDate: p.originalDate.toISOString(),
       tags: p.tags,
+      likeCount: p.likeCount,
       media: await Promise.all(
         p.media.map(async (m) => ({
           id: m.id,
@@ -180,7 +184,7 @@ export default async function HomePage() {
             </section>
 
             <StoriesRow initial={initialStories} />
-            <PublicFeed initial={initialFeed} />
+            <PublicFeed initial={initialFeed} signedIn={signedIn} />
           </div>
         </div>
       </div>

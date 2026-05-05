@@ -10,6 +10,7 @@ function makePost(id: string, bodyNormalized: string, date: string): PublicPost 
     originalDate: new Date(date),
     tags: [],
     sourceId: null,
+    likeCount: 0,
     media: [],
   };
 }

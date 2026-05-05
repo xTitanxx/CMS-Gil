@@ -1,11 +1,11 @@
 // src/app/PublicFeed.tsx
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import Link from "next/link";
-import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, BadgeCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { MoreHorizontal, BadgeCheck } from "lucide-react";
 import { LazyVideo } from "@/components/LazyVideo";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
+import { EngagementBar } from "@/components/EngagementBar";
 import { postAudioState } from "@/lib/post-audio-state";
 
 interface Media {
@@ -25,6 +25,7 @@ interface FeedPost {
   body: string;
   originalDate: string;
   tags: string[];
+  likeCount: number;
   media: Media[];
 }
 
@@ -43,7 +44,17 @@ function formatDate(iso: string): string {
 
 const CAPTION_CHAR_LIMIT = 220;
 
-function PostCard({ post }: { post: FeedPost }) {
+function PostCard({
+  post,
+  liked,
+  bookmarked,
+  signedIn,
+}: {
+  post: FeedPost;
+  liked: boolean;
+  bookmarked: boolean;
+  signedIn: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const body = post.body ?? "";
   const isLong = body.length > CAPTION_CHAR_LIMIT;
@@ -126,53 +137,59 @@ function PostCard({ post }: { post: FeedPost }) {
         </div>
       )}
 
-      {/* Reaction summary row */}
-      <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-500">
-        <div className="flex items-center gap-1">
-          <span className="flex -space-x-1">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] text-white ring-2 ring-white">
-              👍
-            </span>
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white ring-2 ring-white">
-              ❤
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {/* Footer actions */}
-      <div className="flex items-center justify-around border-t border-gray-200 px-1 py-0.5 text-sm font-medium text-gray-600">
-        <button
-          type="button"
-          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
-        >
-          <ThumbsUp className="h-5 w-5" />
-          <span>Like</span>
-        </button>
-        <Link
-          href={`/p/${post.id}`}
-          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
-        >
-          <MessageCircle className="h-5 w-5" />
-          <span>Comment</span>
-        </Link>
-        <button
-          type="button"
-          className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 hover:bg-gray-100"
-        >
-          <Share2 className="h-5 w-5" />
-          <span>Share</span>
-        </button>
-      </div>
+      <EngagementBar
+        postId={post.id}
+        initialLikeCount={post.likeCount}
+        initialLiked={liked}
+        initialBookmarked={bookmarked}
+        signedIn={signedIn}
+      />
     </article>
   );
 }
 
-export function PublicFeed({ initial }: { initial: FeedPage }) {
+export function PublicFeed({
+  initial,
+  signedIn,
+}: {
+  initial: FeedPage;
+  signedIn: boolean;
+}) {
   const [posts, setPosts] = useState<FeedPost[]>(initial.posts);
   const [cursor, setCursor] = useState(initial.nextCursor);
   const [loading, setLoading] = useState(false);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const fetchEngagement = useCallback(
+    async (ids: string[]) => {
+      if (!signedIn || ids.length === 0) return;
+      try {
+        const res = await fetch(`/api/me/engagement?postIds=${ids.join(",")}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { liked: string[]; bookmarked: string[] };
+        setLiked((prev) => {
+          const next = new Set(prev);
+          for (const id of data.liked) next.add(id);
+          return next;
+        });
+        setBookmarked((prev) => {
+          const next = new Set(prev);
+          for (const id of data.bookmarked) next.add(id);
+          return next;
+        });
+      } catch {
+        // best-effort enrichment, no-op on failure
+      }
+    },
+    [signedIn]
+  );
+
+  const initialIds = useMemo(() => initial.posts.map((p) => p.id), [initial.posts]);
+  useEffect(() => {
+    fetchEngagement(initialIds);
+  }, [fetchEngagement, initialIds]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loading) return;
@@ -187,10 +204,11 @@ export function PublicFeed({ initial }: { initial: FeedPage }) {
       const data: FeedPage = await res.json();
       setPosts((prev) => [...prev, ...data.posts]);
       setCursor(data.nextCursor);
+      fetchEngagement(data.posts.map((p) => p.id));
     } finally {
       setLoading(false);
     }
-  }, [cursor, loading]);
+  }, [cursor, loading, fetchEngagement]);
 
   useEffect(() => {
     if (!sentinelRef.current || !cursor) return;
@@ -206,7 +224,13 @@ export function PublicFeed({ initial }: { initial: FeedPage }) {
   return (
     <div className="flex flex-col gap-3">
       {posts.map((p) => (
-        <PostCard key={p.id} post={p} />
+        <PostCard
+          key={p.id}
+          post={p}
+          liked={liked.has(p.id)}
+          bookmarked={bookmarked.has(p.id)}
+          signedIn={signedIn}
+        />
       ))}
       {cursor && (
         <div ref={sentinelRef} className="py-8 text-center text-xs text-gray-400">

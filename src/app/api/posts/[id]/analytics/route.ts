@@ -3,7 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fetchAndStoreForRecord } from "@/lib/analytics/fetch-all";
 
-// GET — return stored analytics for all PublishRecords of this post
+// GET — return stored analytics for all PublishRecords of this post.
+// Scoped to the caller's posts so an authenticated subscriber can't read
+// engagement / platformPostId / platformUrl for arbitrary post ids.
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,6 +16,14 @@ export async function GET(
   }
 
   const { id } = await params;
+  const post = await prisma.post.findFirst({
+    where: { id, userId: session.user.id },
+    select: { id: true },
+  });
+  if (!post) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const records = await prisma.publishRecord.findMany({
     where: { postId: id, status: "PUBLISHED" },
     include: { analytics: true },
@@ -23,7 +33,9 @@ export async function GET(
   return NextResponse.json(records);
 }
 
-// POST — refresh analytics for all published records of this post
+// POST — refresh analytics for all published records of this post.
+// Same scoping as GET — refusing this for non-owners avoids cost-DoS via
+// arbitrary post ids triggering paid platform-side analytics fetches.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,6 +46,14 @@ export async function POST(
   }
 
   const { id } = await params;
+  const post = await prisma.post.findFirst({
+    where: { id, userId: session.user.id },
+    select: { id: true },
+  });
+  if (!post) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const records = await prisma.publishRecord.findMany({
     where: {
       postId: id,

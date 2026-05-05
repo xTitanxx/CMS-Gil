@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
 import { auth } from "@/lib/auth";
 import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const META_APP_ID = process.env.META_APP_ID!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(new URL("/connections?success=instagram", req.url));
   } catch (err) {
-    console.error("Instagram callback error:", err);
+    console.error("Instagram callback error:", redactSecrets(err));
     return NextResponse.redirect(
       new URL(`/connections?error=instagram_failed`, req.url)
     );

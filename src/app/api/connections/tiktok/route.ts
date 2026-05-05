@@ -1,7 +1,7 @@
 // TikTok OAuth 2.0 with PKCE
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { createOAuthState } from "@/lib/oauth-state";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY!;
@@ -14,7 +14,10 @@ export async function GET(req: NextRequest) {
   }
 
   const codeVerifier = randomBytes(32).toString("base64url");
-  const codeChallenge = codeVerifier; // plain method
+  // S256 PKCE: challenge = base64url(SHA-256(verifier)). The verifier itself
+  // never leaves the server (lives in the httpOnly cookie below); only the
+  // challenge goes on the URL.
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
 
   const params = new URLSearchParams({
     client_key: TIKTOK_CLIENT_KEY,
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
     redirect_uri: REDIRECT_URI,
     state: createOAuthState({ userId: session.user.id }),
     code_challenge: codeChallenge,
-    code_challenge_method: "plain",
+    code_challenge_method: "S256",
   });
 
   const response = NextResponse.redirect(

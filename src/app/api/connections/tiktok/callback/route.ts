@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
 import { auth } from "@/lib/auth";
 import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY!;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET!;
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
     response.cookies.delete("tiktok_cv");
     return response;
   } catch (err) {
-    console.error("TikTok callback error:", err);
+    console.error("TikTok callback error:", redactSecrets(err));
     return NextResponse.redirect(
       new URL("/connections?error=tiktok_failed", req.url)
     );

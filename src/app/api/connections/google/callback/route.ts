@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
       from === "connections" ? "/connections?success=youtube" : "/import?success=google";
     return NextResponse.redirect(new URL(successUrl, req.url));
   } catch (err) {
-    console.error("Google callback error:", err);
+    console.error("Google callback error:", redactSecrets(err));
     return NextResponse.redirect(new URL(`/import?error=google_failed`, req.url));
   }
 }

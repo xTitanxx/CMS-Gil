@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
 import { auth } from "@/lib/auth";
 import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const META_APP_ID = process.env.META_APP_ID!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
@@ -188,10 +189,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(new URL("/connections?success=facebook", req.url));
   } catch (err) {
-    console.error("Facebook callback error:", err);
-    const msg = encodeURIComponent(String(err).slice(0, 200));
+    // Redact provider responses before logging — Meta occasionally embeds
+    // access_token / fb_exchange_token in error_description fields.
+    console.error("Facebook callback error:", redactSecrets(err));
     return NextResponse.redirect(
-      new URL(`/connections?error=facebook_failed&detail=${msg}`, req.url)
+      new URL("/connections?error=facebook_failed", req.url)
     );
   }
 }

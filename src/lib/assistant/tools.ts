@@ -20,11 +20,17 @@ const PLATFORM_MAP: Record<string, PrismaPlatform> = {
   tiktok: "TIKTOK",
 };
 
+function parseExcludePostIds(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const ids = raw.filter((x): x is string => typeof x === "string" && x.length > 0);
+  return ids.length ? ids : undefined;
+}
+
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "recommend_posts",
     description:
-      "Returns ranked posts to publish based on ratings, lifecycle, freshness, and variety.",
+      "Returns ranked posts to publish based on ratings, lifecycle, freshness, and variety. Pass excludePostIds with any post ids you've already proposed in this conversation when the user asks for 'different / fresh / other / more' picks — otherwise the engine returns the same top-ranked posts.",
     input_schema: {
       type: "object",
       properties: {
@@ -40,6 +46,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
           description:
             "Filter by content type. 'video' = REELs + any post with video media. 'image' = posts with image media, no video. 'short-text' = text-only posts ≤400 chars. 'long-text' = text-only posts >400 chars.",
         },
+        excludePostIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Post ids to skip — typically the ids you've already shown or proposed earlier in the conversation. Lets the engine return fresh candidates instead of repeating the same top picks.",
+        },
         limit: { type: "number", description: "Default 10, max 20." },
       },
     },
@@ -47,7 +59,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "recommend_daily_mix",
     description:
-      "Returns a balanced daily mix of recommendations across content kinds in a single call (default: 2 video + 2 image + 2 short-text). Cheaper and better-diversified than calling recommend_posts three times in parallel — one DB pass, and the picks across buckets won't share dominant tags. Use this for 'what should I post today', 'plan my day', or any unspecified-kind ask.",
+      "Returns a balanced daily mix of recommendations across content kinds in a single call (default: 2 video + 2 image + 2 short-text). Cheaper and better-diversified than calling recommend_posts three times in parallel — one DB pass, and the picks across buckets won't share dominant tags. Use this for 'what should I post today', 'plan my day', or any unspecified-kind ask. Pass excludePostIds with previously-proposed ids when the user asks for a different / fresh mix.",
     input_schema: {
       type: "object",
       properties: {
@@ -56,6 +68,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
         imageLimit: { type: "number", description: "How many image picks. Default 2." },
         shortTextLimit: { type: "number", description: "How many short-text picks. Default 2." },
         longTextLimit: { type: "number", description: "How many long-text picks. Default 0; raise to 1 if a longer piece would round out the mix." },
+        excludePostIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Post ids to skip — typically the ids you've already shown or proposed earlier in the conversation. Lets the engine return fresh candidates instead of repeating the same top picks.",
+        },
       },
     },
   },
@@ -323,6 +341,7 @@ export async function handleTool(
         platform: input.platform as never,
         kind: input.kind as never,
         contentKind: input.contentKind as never,
+        excludePostIds: parseExcludePostIds(input.excludePostIds),
         limit: typeof input.limit === "number" ? Math.min(20, input.limit) : undefined,
       });
       return { ok: true, data };
@@ -341,6 +360,7 @@ export async function handleTool(
           typeof input.longTextLimit === "number"
             ? Math.min(5, Math.max(0, input.longTextLimit))
             : undefined,
+        excludePostIds: parseExcludePostIds(input.excludePostIds),
       });
       return { ok: true, data };
     }

@@ -91,10 +91,10 @@ export async function POST(req: NextRequest) {
   });
 
   const systemText = await buildSystemPrompt(userId, new Date());
-  // Cache tools + system — identical across all tool-use iterations in a turn,
-  // so every iteration after the first becomes a cache read (~90% cheaper, much faster).
+  // 1h ephemeral cache — long enough that idle pauses between turns still hit
+  // the cache instead of paying the cache-write premium each time.
   const systemCached: Anthropic.TextBlockParam[] = [
-    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } },
   ];
   const encoder = new TextEncoder();
   const conversationIdFinal = conv.id;
@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
               output_tokens: usage.output_tokens,
               cache_creation_input_tokens: usage.cache_creation_input_tokens,
               cache_read_input_tokens: usage.cache_read_input_tokens,
+              cache_creation: usage.cache_creation,
             });
             prisma.assistantUsage
               .create({

@@ -102,6 +102,37 @@ describe("handleTool recommend_posts / search_archive", () => {
     expect(call.longTextLimit).toBe(1);
   });
 
+  it("forwards excludePostIds to recommend", async () => {
+    (recommend as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool(
+      "recommend_posts",
+      { excludePostIds: ["p1", "p2"] },
+      { userId: "u1" },
+    );
+    const call = (recommend as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.excludePostIds).toEqual(["p1", "p2"]);
+  });
+
+  it("forwards excludePostIds to recommendMix and drops non-string entries", async () => {
+    (recommendMix as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      video: [], image: [], shortText: [], longText: [],
+    });
+    await handleTool(
+      "recommend_daily_mix",
+      { excludePostIds: ["p1", 42, "", "p2"] },
+      { userId: "u1" },
+    );
+    const call = (recommendMix as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.excludePostIds).toEqual(["p1", "p2"]);
+  });
+
+  it("treats missing excludePostIds as undefined (not empty array)", async () => {
+    (recommend as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await handleTool("recommend_posts", {}, { userId: "u1" });
+    const call = (recommend as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.excludePostIds).toBeUndefined();
+  });
+
   it("calls retrieve with userId", async () => {
     (retrieve as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await handleTool("search_archive", { query: "hi" }, { userId: "u1" });

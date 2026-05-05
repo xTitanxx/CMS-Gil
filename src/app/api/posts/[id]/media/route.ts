@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { isOurBlobUrl } from "@/lib/url-allowlist";
+import { detectMimeType } from "@/lib/magic-byte";
 import { del } from "@vercel/blob";
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -43,11 +44,6 @@ export async function POST(
     // Large file: client uploaded to Vercel Blob, sends us the URL
     const body = await req.json();
     filename = body.filename as string;
-    mimeType = body.mimeType as string;
-
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
 
     const blobUrl = body.blobUrl as string;
     if (!isOurBlobUrl(blobUrl)) {
@@ -67,14 +63,18 @@ export async function POST(
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
     filename = file.name;
-    mimeType = file.type;
-
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
-
     buffer = Buffer.from(await file.arrayBuffer());
   }
+
+  // Sniff the actual content. Don't trust client-asserted Content-Type or
+  // filename extension — both are trivially spoofable. The detected type is
+  // what we record + what R2 serves back, so a mislabeled file can't be
+  // rendered with a trusted MIME later.
+  const detected = detectMimeType(buffer);
+  if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
+    return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+  }
+  mimeType = detected;
 
   const pathname = mediaKey(session.user.id, filename);
   const { url: storageKey, hasAudio } = await uploadBuffer(pathname, buffer, {

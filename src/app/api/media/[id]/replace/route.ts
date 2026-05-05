@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { refreshReadiness } from "@/lib/readiness-service";
 import { isOurBlobUrl } from "@/lib/url-allowlist";
+import { detectMimeType } from "@/lib/magic-byte";
 import { del } from "@vercel/blob";
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -51,10 +52,6 @@ export async function POST(
   if (contentType.includes("application/json")) {
     const body = await req.json();
     filename = body.filename as string;
-    mimeType = body.mimeType as string;
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
     const blobUrl = body.blobUrl as string;
     if (!isOurBlobUrl(blobUrl)) {
       return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
@@ -70,12 +67,15 @@ export async function POST(
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
     filename = file.name;
-    mimeType = file.type;
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
     buffer = Buffer.from(await file.arrayBuffer());
   }
+
+  // Sniff actual content; ignore client-asserted Content-Type / extension.
+  const detected = detectMimeType(buffer);
+  if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
+    return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+  }
+  mimeType = detected;
 
   const key = mediaKey(session.user.id, filename);
   const { url: storageKey, hasAudio } = await uploadBuffer(key, buffer, { contentType: mimeType });

@@ -12,10 +12,9 @@ interface DayGroupProps {
   slots: PlanSlotData[];
   onApprove: (slotId: string) => void;
   onRemove: (slotId: string) => void;
-  onSwap: (slotId: string) => void;
 }
 
-export function DayGroup({ day, isToday, slots, onApprove, onRemove, onSwap }: DayGroupProps) {
+export function DayGroup({ day, isToday, slots, onApprove, onRemove }: DayGroupProps) {
   const dayKey = utcDateString(day);
 
   const statusOrder: Record<string, number> = { PROPOSED: 0, APPROVED: 1, SCHEDULED: 2, SKIPPED: 3 };
@@ -45,7 +44,6 @@ export function DayGroup({ day, isToday, slots, onApprove, onRemove, onSwap }: D
               slot={slot}
               onApprove={onApprove}
               onRemove={onRemove}
-              onSwap={onSwap}
               isLast={i === sorted.length - 1}
             />
           ))

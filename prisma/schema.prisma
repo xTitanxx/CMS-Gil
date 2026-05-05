@@ -563,6 +563,11 @@ model Subscriber {
   name             String
   email            String?
   codeHash         String                    @unique
+  // HMAC-SHA256(code, SUBSCRIBER_INDEX_PEPPER), base64url. Lets sign-in look
+  // up the row in O(1) instead of bcrypt-comparing every non-revoked row.
+  // Nullable so rows created before this column existed keep working until
+  // the user signs in once and the legacy fallback path backfills the index.
+  codeBlindIndex   String?                   @unique
   monthlyBudgetUsd Decimal                   @default(1.20) @db.Decimal(8, 4)
   cycleStart       DateTime                  @default(now())
   cycleUsedUsd     Decimal                   @default(0) @db.Decimal(8, 4)

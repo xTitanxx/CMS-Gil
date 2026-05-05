@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   appendRandomSuffix,
+  blindIndex,
   deriveCodeFromName,
   generateCode,
   hashCode,
@@ -62,15 +63,21 @@ function toPublic(row: {
   };
 }
 
-// bcrypt is non-deterministic, so the @unique on codeHash does not protect
-// against same-plaintext collisions. We must actively scan candidate hashes
-// at creation time to detect "already in use" and pick a free variant.
+// Detect whether a given plaintext code is in use. Fast path uses the blind
+// index; legacy rows that pre-date the index column fall back to the O(N)
+// bcrypt scan against rows with codeBlindIndex == null.
 async function isCodeAlreadyInUse(code: string): Promise<boolean> {
-  const candidates = await prisma.subscriber.findMany({
-    where: { revokedAt: null },
+  const idx = blindIndex(code);
+  const fast = await prisma.subscriber.findFirst({
+    where: { codeBlindIndex: idx, revokedAt: null },
+    select: { id: true },
+  });
+  if (fast) return true;
+  const legacy = await prisma.subscriber.findMany({
+    where: { revokedAt: null, codeBlindIndex: null },
     select: { codeHash: true },
   });
-  for (const c of candidates) {
+  for (const c of legacy) {
     if (await verifyCode(code, c.codeHash)) return true;
   }
   return false;
@@ -106,11 +113,13 @@ export async function createSubscriber(params: {
   }
   const finalCode = await pickAvailableCode(base);
   const codeHash = await hashCode(finalCode);
+  const codeBlindIndex = blindIndex(finalCode);
   const row = await prisma.subscriber.create({
     data: {
       name: params.name,
       email: params.email?.trim() ? params.email.trim() : null,
       codeHash,
+      codeBlindIndex,
       createdById: params.createdById,
       ...(params.monthlyBudgetUsd !== undefined
         ? { monthlyBudgetUsd: params.monthlyBudgetUsd }
@@ -169,9 +178,10 @@ export async function regenerateCode(
   const base = deriveCodeFromName(existing.name);
   const code = base ? appendRandomSuffix(base) : generateCode();
   const codeHash = await hashCode(code);
+  const codeBlindIndex = blindIndex(code);
   const row = await prisma.subscriber.update({
     where: { id },
-    data: { codeHash },
+    data: { codeHash, codeBlindIndex },
     select: PUBLIC_FIELDS,
   });
   return { code, subscriber: toPublic(row) };
@@ -181,18 +191,39 @@ export async function deleteSubscriber(id: string): Promise<void> {
   await prisma.subscriber.delete({ where: { id } });
 }
 
+// Sign-in lookup. Fast path uses the blind index; if the row pre-dates the
+// index column (codeBlindIndex == null) we fall back to the legacy O(N) scan
+// and backfill the index on first match, so the next sign-in is fast.
 export async function findSubscriberByCode(code: string): Promise<{
   id: string;
   name: string;
 } | null> {
-  // bcrypt hashes are non-deterministic; we must scan candidate rows.
-  // Optimization: only consider non-revoked rows.
-  const candidates = await prisma.subscriber.findMany({
-    where: { revokedAt: null },
+  const idx = blindIndex(code);
+
+  const fast = await prisma.subscriber.findFirst({
+    where: { codeBlindIndex: idx, revokedAt: null },
     select: { id: true, name: true, codeHash: true },
   });
-  for (const c of candidates) {
+  if (fast) {
+    if (await verifyCode(code, fast.codeHash)) {
+      return { id: fast.id, name: fast.name };
+    }
+    // Index hit but bcrypt mismatch: shouldn't happen unless the index column
+    // was tampered with directly. Treat as no match.
+    return null;
+  }
+
+  // Legacy backfill path: scan rows that don't have an index yet.
+  const legacy = await prisma.subscriber.findMany({
+    where: { revokedAt: null, codeBlindIndex: null },
+    select: { id: true, name: true, codeHash: true },
+  });
+  for (const c of legacy) {
     if (await verifyCode(code, c.codeHash)) {
+      // Backfill so the next sign-in for this subscriber is O(1).
+      await prisma.subscriber
+        .update({ where: { id: c.id }, data: { codeBlindIndex: idx } })
+        .catch(() => {});
       return { id: c.id, name: c.name };
     }
   }

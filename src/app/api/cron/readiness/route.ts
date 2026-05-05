@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness } from "@/lib/readiness";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { isOurR2Url } from "@/lib/url-allowlist";
 
 // HEAD-fetch every media URL daily; 200 posts × ~1-3 media each is up to
 // ~600 requests. The per-fetch timeout caps a single hung URL from stalling
@@ -14,7 +15,9 @@ const HEAD_TIMEOUT_MS = 3000;
 const POST_CONCURRENCY = 8;
 
 async function isBroken(storageKey: string): Promise<boolean> {
-  if (!storageKey.startsWith("http")) return true;
+  // SSRF guard: only HEAD-fetch URLs we wrote ourselves. Anything else is
+  // treated as broken (and the post will be flagged) — safer than fetching.
+  if (!isOurR2Url(storageKey)) return true;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), HEAD_TIMEOUT_MS);
   try {

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runImportJob } from "@/lib/import-worker";
 import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
+import { isOurBlobUrl } from "@/lib/url-allowlist";
 import { del } from "@vercel/blob";
 import unzipper from "unzipper";
 import { readdir } from "fs/promises";
@@ -25,9 +26,23 @@ export async function POST(req: NextRequest) {
   if (contentType.includes("application/json")) {
     const body = await req.json();
     if (body.localPath) {
+      // Filesystem-traversal guard: localPath reads ZIPs from disk via readdir,
+      // which on a Vercel lambda would expose /var/task / /etc / /proc. Only
+      // permit it in development where the user actually controls the FS.
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { error: "localPath is only available in development" },
+          { status: 400 }
+        );
+      }
       localPath = body.localPath;
     } else if (Array.isArray(body.blobUrls) && body.blobUrls.length > 0) {
-      blobUrls = body.blobUrls;
+      // SSRF guard: every URL we then fetch must be on the Vercel Blob host.
+      const candidates = body.blobUrls as unknown[];
+      if (!candidates.every((u) => typeof u === "string" && isOurBlobUrl(u))) {
+        return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+      }
+      blobUrls = candidates as string[];
     } else {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }

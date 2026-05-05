@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { refreshReadiness } from "@/lib/readiness-service";
+import { isOurR2Url } from "@/lib/url-allowlist";
 import { z } from "zod";
 
 const body = z.object({
-  storageKey: z.string(),
+  storageKey: z.string().refine(isOurR2Url, "storageKey must be an R2 URL"),
   mimeType: z.string(),
   width: z.number().int().nullable().optional(),
   height: z.number().int().nullable().optional(),

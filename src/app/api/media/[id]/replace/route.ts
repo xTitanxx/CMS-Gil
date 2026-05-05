@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { refreshReadiness } from "@/lib/readiness-service";
+import { isOurBlobUrl } from "@/lib/url-allowlist";
 import { del } from "@vercel/blob";
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -55,6 +56,9 @@ export async function POST(
       return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
     }
     const blobUrl = body.blobUrl as string;
+    if (!isOurBlobUrl(blobUrl)) {
+      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    }
     const response = await fetch(blobUrl);
     if (!response.ok) {
       return NextResponse.json({ error: "Failed to fetch from blob storage" }, { status: 500 });

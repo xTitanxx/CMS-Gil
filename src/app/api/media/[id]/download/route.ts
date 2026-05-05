@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isOurR2Url } from "@/lib/url-allowlist";
 
 export async function GET(
   _req: NextRequest,
@@ -17,6 +18,14 @@ export async function GET(
     include: { post: true },
   });
   if (!media || media.post.userId !== session.user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // SSRF guard: this route streams the upstream body back to the caller, so
+  // we only proxy URLs that we wrote ourselves. Defense in depth — even
+  // though /api/media/[id] PATCH now validates storageKey on write, legacy
+  // rows could in theory hold a non-R2 URL.
+  if (!isOurR2Url(media.storageKey)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

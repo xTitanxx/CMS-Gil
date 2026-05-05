@@ -17,6 +17,7 @@ export async function PATCH(
     name?: string;
     monthlyBudgetUsd?: number;
     revoked?: boolean;
+    commentsDisabled?: boolean;
   };
   const updated = await updateSubscriber(id, body);
   return Response.json({ subscriber: updated });

@@ -268,6 +268,70 @@ describe("deleteComment", () => {
   });
 });
 
+describe("hideComment / restoreComment", () => {
+  it("hideComment marks PUBLISHED → HIDDEN and recomputes count", async () => {
+    const { hideComment } = await import("./comments");
+    mockPrisma.postComment.findUnique.mockResolvedValue({
+      id: "c1",
+      postId: "p1",
+      status: "PUBLISHED",
+    });
+    mockPrisma.postComment.update.mockResolvedValue({});
+    mockPrisma.postComment.count.mockResolvedValue(2);
+    mockPrisma.post.update.mockResolvedValue({});
+
+    const result = await hideComment("c1");
+
+    expect(result).toEqual({ ok: true });
+    expect(mockPrisma.postComment.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: { status: "HIDDEN", deletedAt: expect.any(Date) },
+    });
+    expect(mockPrisma.post.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { commentCount: 2 },
+    });
+  });
+
+  it("hideComment on already-HIDDEN row skips count recompute", async () => {
+    const { hideComment } = await import("./comments");
+    mockPrisma.postComment.findUnique.mockResolvedValue({
+      id: "c1",
+      postId: "p1",
+      status: "HIDDEN",
+    });
+    mockPrisma.postComment.update.mockResolvedValue({});
+
+    await hideComment("c1");
+
+    expect(mockPrisma.postComment.count).not.toHaveBeenCalled();
+    expect(mockPrisma.post.update).not.toHaveBeenCalled();
+  });
+
+  it("restoreComment marks HIDDEN → PUBLISHED and recomputes count", async () => {
+    const { restoreComment } = await import("./comments");
+    mockPrisma.postComment.findUnique.mockResolvedValue({
+      id: "c1",
+      postId: "p1",
+      status: "HIDDEN",
+    });
+    mockPrisma.postComment.update.mockResolvedValue({});
+    mockPrisma.postComment.count.mockResolvedValue(5);
+    mockPrisma.post.update.mockResolvedValue({});
+
+    await restoreComment("c1");
+
+    expect(mockPrisma.postComment.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: { status: "PUBLISHED", deletedAt: null },
+    });
+    expect(mockPrisma.post.update).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { commentCount: 5 },
+    });
+  });
+});
+
 describe("listComments", () => {
   it("flags own comments as authorIsMine when viewerSubscriberId matches", async () => {
     mockPrisma.postComment.findMany.mockResolvedValue([

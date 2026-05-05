@@ -239,3 +239,126 @@ export async function deleteComment(opts: {
 
   return { ok: true };
 }
+
+/**
+ * Admin hide: soft delete. Body retained for audit; thread renders [deleted].
+ * Decrements commentCount only when the comment was previously PUBLISHED.
+ */
+export async function hideComment(commentId: string): Promise<{ ok: true }> {
+  const existing = await prisma.postComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, postId: true, status: true },
+  });
+  if (!existing) throw new CommentNotFoundError();
+
+  await prisma.postComment.update({
+    where: { id: commentId },
+    data: { status: "HIDDEN", deletedAt: new Date() },
+  });
+
+  if (existing.status === "PUBLISHED") {
+    const count = await prisma.postComment.count({
+      where: { postId: existing.postId, status: "PUBLISHED" },
+    });
+    await prisma.post.update({
+      where: { id: existing.postId },
+      data: { commentCount: count },
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Admin restore: reverses hideComment. Increments commentCount.
+ */
+export async function restoreComment(commentId: string): Promise<{ ok: true }> {
+  const existing = await prisma.postComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, postId: true, status: true },
+  });
+  if (!existing) throw new CommentNotFoundError();
+
+  await prisma.postComment.update({
+    where: { id: commentId },
+    data: { status: "PUBLISHED", deletedAt: null },
+  });
+
+  if (existing.status !== "PUBLISHED") {
+    const count = await prisma.postComment.count({
+      where: { postId: existing.postId, status: "PUBLISHED" },
+    });
+    await prisma.post.update({
+      where: { id: existing.postId },
+      data: { commentCount: count },
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Admin moderation list: comments filtered by status, newest first, paginated.
+ * Returns body even for HIDDEN comments (admins need to see what's being moderated).
+ */
+export interface ModerationCommentDTO {
+  id: string;
+  postId: string;
+  body: string;
+  status: CommentStatus;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+  authorName: string;
+  subscriberId: string;
+  postBodyExcerpt: string;
+}
+
+export async function listCommentsForModeration(opts: {
+  status?: CommentStatus;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<{ comments: ModerationCommentDTO[]; nextCursor: string | null }> {
+  const limit = opts.limit ?? 30;
+  const cursorDate = opts.cursor ? new Date(opts.cursor) : null;
+
+  const rows = await prisma.postComment.findMany({
+    where: {
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(cursorDate ? { createdAt: { lt: cursorDate } } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit + 1,
+    select: {
+      id: true,
+      postId: true,
+      body: true,
+      status: true,
+      createdAt: true,
+      editedAt: true,
+      deletedAt: true,
+      subscriberId: true,
+      subscriber: { select: { name: true, displayName: true } },
+      post: { select: { body: true } },
+    },
+  });
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? page[page.length - 1].createdAt.toISOString() : null;
+
+  return {
+    comments: page.map((r) => ({
+      id: r.id,
+      postId: r.postId,
+      body: r.body,
+      status: r.status as CommentStatus,
+      createdAt: r.createdAt.toISOString(),
+      editedAt: r.editedAt?.toISOString() ?? null,
+      deletedAt: r.deletedAt?.toISOString() ?? null,
+      authorName: r.subscriber.displayName ?? r.subscriber.name,
+      subscriberId: r.subscriberId,
+      postBodyExcerpt:
+        r.post.body.length > 120 ? r.post.body.slice(0, 120) + "…" : r.post.body,
+    })),
+    nextCursor,
+  };
+}

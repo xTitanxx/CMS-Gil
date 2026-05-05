@@ -16,12 +16,14 @@ type Subscriber = {
   id: string;
   name: string;
   email: string | null;
+  displayName: string | null;
   monthlyBudgetUsd: number;
   cycleStart: string;
   cycleUsedUsd: number;
   createdAt: string;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  commentsDisabledAt: string | null;
 };
 
 export default function SettingsPage() {
@@ -333,6 +335,40 @@ function SubscribersSection() {
     void refresh();
   }
 
+  async function handleToggleComments(id: string, currentlyDisabled: boolean) {
+    await fetch(`/api/admin/subscribers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commentsDisabled: !currentlyDisabled }),
+    });
+    void refresh();
+  }
+
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
+  async function handleReconcile() {
+    setReconciling(true);
+    setReconcileMsg(null);
+    try {
+      const res = await fetch("/api/admin/engagement/reconcile", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setReconcileMsg("Reconcile failed. Try again.");
+        return;
+      }
+      const data = (await res.json()) as {
+        likesUpdated: number;
+        commentsUpdated: number;
+      };
+      setReconcileMsg(
+        `Reconciled. Posts updated: ${data.likesUpdated} likes, ${data.commentsUpdated} comments.`
+      );
+    } finally {
+      setReconciling(false);
+    }
+  }
+
   async function handleRegenerate(id: string, name: string) {
     if (!confirm(`Regenerate code for ${name}? The old code will stop working.`)) return;
     const res = await fetch(`/api/admin/subscribers/${id}/regenerate-code`, { method: "POST" });
@@ -395,6 +431,21 @@ function SubscribersSection() {
                     <td className="space-x-2 px-6 py-3 text-right whitespace-nowrap">
                       <button onClick={() => handleRegenerate(s.id, s.name)} className="text-blue-600 hover:underline">
                         Regenerate
+                      </button>
+                      <button
+                        onClick={() => handleToggleComments(s.id, !!s.commentsDisabledAt)}
+                        className={
+                          s.commentsDisabledAt
+                            ? "text-amber-600 hover:underline"
+                            : "text-gray-600 hover:underline"
+                        }
+                        title={
+                          s.commentsDisabledAt
+                            ? `Comments disabled since ${new Date(s.commentsDisabledAt).toLocaleString()}`
+                            : "Block this subscriber from posting new comments"
+                        }
+                      >
+                        {s.commentsDisabledAt ? "Allow comments" : "Block comments"}
                       </button>
                       <button onClick={() => handleRevoke(s.id, !!s.revokedAt)} className="text-blue-600 hover:underline">
                         {s.revokedAt ? "Restore" : "Revoke"}
@@ -481,6 +532,30 @@ function SubscribersSection() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="border-t border-gray-200 px-6 py-4">
+        <h3 className="mb-1 text-sm font-medium text-gray-900">
+          Engagement counts
+        </h3>
+        <p className="mb-3 text-xs text-gray-500">
+          Recompute Post.likeCount and Post.commentCount from the join tables.
+          Drift in practice should be tiny — every mutation does an in-mutation
+          recompute. Use this if a count looks wrong on the public archive.
+        </p>
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            onClick={handleReconcile}
+            disabled={reconciling}
+            variant="secondary"
+          >
+            {reconciling ? "Reconciling…" : "Reconcile engagement counts"}
+          </Button>
+          {reconcileMsg && (
+            <p className="text-xs text-gray-700">{reconcileMsg}</p>
+          )}
+        </div>
       </div>
     </section>
   );

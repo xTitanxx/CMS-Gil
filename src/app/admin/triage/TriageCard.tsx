@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useId } from "react";
 import {
   VolumeX,
   CheckCircle,
@@ -143,6 +143,12 @@ export function TriageCard({ post, onDismiss }: Props) {
   const [confirmTrash, setConfirmTrash] = useState(false);
   const [acting, setActing] = useState(false);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const modalHeadingRef = useRef<HTMLHeadingElement>(null);
+  const modalReturnFocusRef = useRef<HTMLElement | null>(null);
+  const dialogTitleId = useId();
+
   const primaryReason = post.notReadyReasons[0] ?? "";
   const firstMedia = post.media[0] ?? null;
   const firstVideo = post.media.find((m) => m.mimeType.startsWith("video")) ?? null;
@@ -217,6 +223,106 @@ export function TriageCard({ post, onDismiss }: Props) {
     handleSwipeLeft,
     handleLongPress
   );
+
+  // ── Keyboard alternatives to swipe ──
+  // Right = mark ready, Left = archive, Delete/Backspace = open trash confirm.
+  // Skip when focus is in an input/textarea/contenteditable so typing the
+  // caption doesn't fire archive/ready.
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if (acting || confirmTrash) return;
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        void act("mark-ready");
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        void act("archive");
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        setConfirmTrash(true);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [acting, confirmTrash, post.id]
+  );
+
+  // ── Modal focus trap + restore ──
+  useEffect(() => {
+    if (!confirmTrash) return;
+
+    // Capture the trigger so we can restore focus on close.
+    modalReturnFocusRef.current =
+      (document.activeElement as HTMLElement | null) ?? null;
+
+    // Move focus into the modal heading on open.
+    requestAnimationFrame(() => {
+      modalHeadingRef.current?.focus();
+    });
+
+    function getFocusable(): HTMLElement[] {
+      const root = modalRef.current;
+      if (!root) return [];
+      const sel =
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      return Array.from(root.querySelectorAll<HTMLElement>(sel)).filter(
+        (el) => !el.hasAttribute("aria-hidden")
+      );
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setConfirmTrash(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) {
+        e.preventDefault();
+        modalHeadingRef.current?.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || active === modalHeadingRef.current || !modalRef.current?.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Restore focus to the trigger when the modal closes.
+      const ret = modalReturnFocusRef.current;
+      if (ret && typeof ret.focus === "function") {
+        // Defer so React commits the unmount first.
+        requestAnimationFrame(() => ret.focus());
+      }
+      modalReturnFocusRef.current = null;
+    };
+  }, [confirmTrash]);
 
   const swipeStyle =
     deltaX !== 0
@@ -312,20 +418,33 @@ export function TriageCard({ post, onDismiss }: Props) {
     <>
       {/* Confirm trash overlay */}
       {confirmTrash && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={dialogTitleId}
+          ref={modalRef}
+        >
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="mb-2 text-base font-semibold text-gray-900">Move to trash?</h3>
+            <h3
+              id={dialogTitleId}
+              ref={modalHeadingRef}
+              tabIndex={-1}
+              className="mb-2 text-base font-semibold text-gray-900 focus:outline-none"
+            >
+              Move to trash?
+            </h3>
             <p className="mb-5 text-sm text-gray-500">This will delete the post permanently.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmTrash(false)}
-                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-medium text-gray-600"
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-medium text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { setConfirmTrash(false); void act("trash"); }}
-                className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white"
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
               >
                 Trash it
               </button>
@@ -335,11 +454,16 @@ export function TriageCard({ post, onDismiss }: Props) {
       )}
 
       <div
+        ref={cardRef}
         style={swipeStyle}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        className={`relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ${acting ? "opacity-50 pointer-events-none" : ""}`}
+        onKeyDown={handleCardKeyDown}
+        tabIndex={0}
+        role="group"
+        aria-label="Triage post — Right arrow marks ready, Left arrow archives, Delete moves to trash"
+        className={`relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${acting ? "opacity-50 pointer-events-none" : ""}`}
       >
         {/* Swipe hint overlays */}
         {deltaX > 20 && (

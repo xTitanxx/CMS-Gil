@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
-const PUBLIC_PROTECTED_PATHS = ["/", "/p", "/s", "/chat"];
 const ADMIN_PATH_PREFIX = "/admin";
 const ADMIN_API_PREFIX = "/api/admin";
+const CHAT_PATH = "/chat";
+const CHAT_API_PATH = "/api/chat";
+
 const ALWAYS_PUBLIC = [
   "/welcome",
   "/login",
@@ -20,9 +22,13 @@ function isAlwaysPublic(pathname: string): boolean {
   return ALWAYS_PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
-function isPublicProtected(pathname: string): boolean {
-  if (pathname === "/") return true;
-  return PUBLIC_PROTECTED_PATHS.some((p) => p !== "/" && (pathname === p || pathname.startsWith(p + "/")));
+function isChatRoute(pathname: string): boolean {
+  return (
+    pathname === CHAT_PATH ||
+    pathname.startsWith(CHAT_PATH + "/") ||
+    pathname === CHAT_API_PATH ||
+    pathname.startsWith(CHAT_API_PATH + "/")
+  );
 }
 
 export default auth((req) => {
@@ -42,9 +48,14 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Public archive routes — gated by feature flag
-  if (process.env.PUBLIC_GATE_ENABLED === "true" && isPublicProtected(pathname)) {
+  // Virtual Gil chat — subscriber-only (admins also pass through).
+  // The /api/chat handler returns 401 JSON for API hits without a session;
+  // the page route gets a redirect so visitors land on the sign-in screen.
+  if (isChatRoute(pathname)) {
     if (!session) {
+      if (pathname.startsWith(CHAT_API_PATH)) {
+        return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+      }
       const url = req.nextUrl.clone();
       url.pathname = "/welcome";
       url.searchParams.set("next", pathname + search);
@@ -52,6 +63,7 @@ export default auth((req) => {
     }
   }
 
+  // Archive (`/`, `/p/*`, `/s/*`) is fully public.
   return NextResponse.next();
 });
 

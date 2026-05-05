@@ -90,7 +90,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Anything else is an admin sign-in (currently only Google OAuth).
       // Hard-allowlist by email to prevent any random Google account from
       // being promoted to admin / impersonating the owner via OWNER_USER_ID.
-      return isAdminEmail(user.email);
+      const ok = isAdminEmail(user.email);
+      if (!ok) {
+        // Diagnostic: surface why an admin sign-in was rejected so a real lockout
+        // (e.g. ADMIN_EMAILS misconfigured) can be diagnosed from Vercel logs
+        // without leaking the full env value. Email itself is already PII the
+        // user just submitted, so logging it here doesn't add exposure.
+        const allowedCount = (process.env.ADMIN_EMAILS ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean).length;
+        console.warn(
+          `[signIn] denied admin: provider=${account?.provider} email=${user.email ?? "<null>"} allowedCount=${allowedCount}`
+        );
+      }
+      return ok;
     },
     jwt({ token, user }) {
       if (user) {

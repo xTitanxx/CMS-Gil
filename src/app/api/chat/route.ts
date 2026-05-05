@@ -4,6 +4,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getPostContext } from "@/lib/post-context-cache";
 import {
+  getRelevantPosts,
+  formatRelevantPostsForPrompt,
+} from "@/lib/chat/relevant-posts";
+import {
   checkBudgetAndLazyReset,
   recordUsage,
 } from "@/lib/subscribers/budget";
@@ -25,7 +29,8 @@ function buildSystemPrompt(postContext: string, postCount: number) {
 IMPORTANT RULES:
 - Always speak about Gil in the THIRD PERSON. Say "Gil has written about…", "Gil shared…", "In Gil's experience…" — NEVER "I" or "my".
 - Only discuss topics covered in Gil's posts below. If someone asks about something Gil hasn't written about, say: "Gil hasn't shared his thoughts on that topic yet, but thanks for asking."
-- Before saying Gil hasn't written about something, carefully search through ALL the posts below. If there are posts on the topic, discuss them — never claim Gil hasn't written about a topic when posts exist about it.
+- Before saying Gil hasn't written about something, search BOTH the main posts list AND the "ADDITIONAL POSTS POSSIBLY RELEVANT" section if it appears as a separate system message below. If any post on the topic exists in either section, discuss it. Only say Gil hasn't written about something after checking both sections.
+- You ARE the way people interact with Gil here. Never tell the user to message, email, contact, or otherwise reach out to the real Gil. Don't suggest his Facebook, his other social profiles, or "you could ask him directly." If you can't help with something, say so and offer to look at related topics in the archive instead.
 - Gil is NOT a medical professional. His posts share personal experience, never medical advice. Make this clear.
 - Be conversational and concise — this is a chat, not an essay. Keep responses to 2-4 short paragraphs max.
 - Be warm and helpful. You're a guide to Gil's archive, helping people find relevant reflections.
@@ -105,8 +110,29 @@ export async function POST(req: NextRequest) {
     .filter((m) => m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string }));
 
-  const { text: postContext, count: postCount } = await getPostContext();
+  const { text: postContext, count: postCount, ids: baselineIds } =
+    await getPostContext();
   const systemText = buildSystemPrompt(postContext, postCount);
+
+  // Per-turn keyword retrieval over the WHOLE archive (not just the cached
+  // baseline). Without this, topics that fall outside the newest-N window
+  // — e.g. older Trekinetic posts — are invisible to the chat.
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const gilUserId = process.env.GIL_USER_ID;
+  let relevantBlock = "";
+  if (lastUser && gilUserId) {
+    try {
+      const relevant = await getRelevantPosts(
+        gilUserId,
+        lastUser.content,
+        baselineIds
+      );
+      relevantBlock = formatRelevantPostsForPrompt(relevant);
+    } catch (e) {
+      // Retrieval is best-effort; the cached baseline still answers.
+      console.error("getRelevantPosts failed:", e);
+    }
+  }
 
   // Persist user message immediately (subscriber path only)
   let conversationId: string | null = null;
@@ -127,16 +153,24 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // Cached baseline FIRST (so prefix is stable for cache hits), then
+        // the per-turn relevant-posts block as an unrelated second system
+        // message that can vary without breaking the cache.
+        const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+          {
+            type: "text",
+            text: systemText,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ];
+        if (relevantBlock) {
+          systemBlocks.push({ type: "text", text: relevantBlock });
+        }
+
         const response = await client.messages.stream({
           model: MODEL,
           max_tokens: 512,
-          system: [
-            {
-              type: "text",
-              text: systemText,
-              cache_control: { type: "ephemeral", ttl: "1h" },
-            },
-          ],
+          system: systemBlocks,
           messages,
         });
 

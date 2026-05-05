@@ -3,12 +3,17 @@ import { prisma } from "@/lib/prisma";
 let cachedContext: string | null = null;
 let cachedAt = 0;
 let cachedCount = 0;
+let cachedIds: Set<string> = new Set();
 const TTL_MS = 60 * 60 * 1000; // 1 hour
 
-export async function getPostContext(): Promise<{ text: string; count: number }> {
+export async function getPostContext(): Promise<{
+  text: string;
+  count: number;
+  ids: Set<string>;
+}> {
   const now = Date.now();
   if (cachedContext && now - cachedAt < TTL_MS) {
-    return { text: cachedContext, count: cachedCount };
+    return { text: cachedContext, count: cachedCount, ids: cachedIds };
   }
 
   const gilUserId = process.env.GIL_USER_ID;
@@ -36,7 +41,8 @@ export async function getPostContext(): Promise<{ text: string; count: number }>
 
   cachedContext = lines.join("\n---\n");
   cachedCount = posts.length;
+  cachedIds = new Set(posts.map((p) => p.id));
   cachedAt = now;
 
-  return { text: cachedContext, count: cachedCount };
+  return { text: cachedContext, count: cachedCount, ids: cachedIds };
 }

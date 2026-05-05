@@ -12,12 +12,14 @@ const PUBLIC_FIELDS = {
   id: true,
   name: true,
   email: true,
+  displayName: true,
   monthlyBudgetUsd: true,
   cycleStart: true,
   cycleUsedUsd: true,
   createdAt: true,
   lastSeenAt: true,
   revokedAt: true,
+  commentsDisabledAt: true,
   createdById: true,
 } as const;
 
@@ -27,12 +29,14 @@ export type PublicSubscriber = {
   id: string;
   name: string;
   email: string | null;
+  displayName: string | null;
   monthlyBudgetUsd: number;
   cycleStart: Date;
   cycleUsedUsd: number;
   createdAt: Date;
   lastSeenAt: Date | null;
   revokedAt: Date | null;
+  commentsDisabledAt: Date | null;
   createdById: string;
 };
 
@@ -40,24 +44,28 @@ function toPublic(row: {
   id: string;
   name: string;
   email: string | null;
+  displayName: string | null;
   monthlyBudgetUsd: { toNumber(): number };
   cycleStart: Date;
   cycleUsedUsd: { toNumber(): number };
   createdAt: Date;
   lastSeenAt: Date | null;
   revokedAt: Date | null;
+  commentsDisabledAt: Date | null;
   createdById: string;
 }): PublicSubscriber {
   return {
     id: row.id,
     name: row.name,
     email: row.email,
+    displayName: row.displayName,
     monthlyBudgetUsd: row.monthlyBudgetUsd.toNumber(),
     cycleStart: row.cycleStart,
     cycleUsedUsd: row.cycleUsedUsd.toNumber(),
     createdAt: row.createdAt,
     lastSeenAt: row.lastSeenAt,
     revokedAt: row.revokedAt,
+    commentsDisabledAt: row.commentsDisabledAt,
     createdById: row.createdById,
   };
 }
@@ -136,6 +144,7 @@ export async function updateSubscriber(
     email?: string | null;
     monthlyBudgetUsd?: number;
     revoked?: boolean;
+    commentsDisabled?: boolean;
   }
 ): Promise<PublicSubscriber> {
   const row = await prisma.subscriber.update({
@@ -150,6 +159,9 @@ export async function updateSubscriber(
         : {}),
       ...(patch.revoked !== undefined
         ? { revokedAt: patch.revoked ? new Date() : null }
+        : {}),
+      ...(patch.commentsDisabled !== undefined
+        ? { commentsDisabledAt: patch.commentsDisabled ? new Date() : null }
         : {}),
     },
     select: PUBLIC_FIELDS,

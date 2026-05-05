@@ -14,7 +14,8 @@ function startOfMonthUtc(d: Date): Date {
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const userId = session.user.id;
   const now = new Date();
 

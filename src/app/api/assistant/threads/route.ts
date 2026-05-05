@@ -6,8 +6,8 @@ import { prisma } from "@/lib/prisma";
 // messages) are filtered out so the abandoned "New chat" stubs don't show up.
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const rows = await prisma.conversation.findMany({
     where: { userId: session.user.id, messages: { some: {} } },

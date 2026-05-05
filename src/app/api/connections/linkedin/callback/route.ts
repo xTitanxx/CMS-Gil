@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
 import { auth } from "@/lib/auth";
 import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const CLIENT_ID = process.env.LINKEDIN_CLIENT_ID!;
 const CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET!;
@@ -84,12 +85,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(new URL("/connections?success=linkedin", req.url));
   } catch (err) {
-    console.error("LinkedIn callback error:", err);
+    console.error("LinkedIn callback error:", redactSecrets(err));
     return NextResponse.redirect(
-      new URL(
-        `/connections?error=linkedin_failed&detail=${encodeURIComponent(String(err))}`,
-        req.url
-      )
+      new URL("/connections?error=linkedin_failed", req.url)
     );
   }
 }

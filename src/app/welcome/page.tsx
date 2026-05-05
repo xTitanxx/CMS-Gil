@@ -10,7 +10,10 @@ export default async function WelcomePage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const session = await auth();
-  const next = (await searchParams).next ?? "/";
+  const rawNext = (await searchParams).next ?? "/";
+  // Open-redirect guard: only allow same-origin paths. `//evil.example` and
+  // `https://evil.example` both fail the second condition.
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   if (session) redirect(next);
 
   return (

@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
@@ -44,8 +44,10 @@ export default async function PostDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
+  // Auth (and redirect to /login) is enforced by `src/app/admin/layout.tsx`.
+  // We still need the session to scope queries to the signed-in user.
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id) notFound();
 
   const [{ id }, sp] = await Promise.all([params, searchParams]);
 

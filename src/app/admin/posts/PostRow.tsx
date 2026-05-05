@@ -72,18 +72,30 @@ function RowDeleteButton({
   const { confirming, trigger } = useConfirm(handleDelete);
 
   return (
-    <button
-      className={`flex-shrink-0 self-center p-1 transition-colors ${
-        confirming ? "text-amber-500" : "text-gray-300 hover:text-red-500"
-      }`}
-      onClick={(e) => {
-        e.preventDefault();
-        trigger();
-      }}
-      title={confirming ? "Click again to confirm" : "Delete post"}
-    >
-      {isLoading ? <Spinner className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-    </button>
+    <div className="flex flex-shrink-0 items-center gap-1.5 self-center">
+      {confirming && (
+        <span
+          aria-live="polite"
+          className="text-[11px] font-medium text-amber-600"
+        >
+          Click again to delete
+        </span>
+      )}
+      <button
+        type="button"
+        className={`p-1 transition-colors ${
+          confirming ? "text-amber-500" : "text-gray-300 hover:text-red-500"
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          trigger();
+        }}
+        aria-label={confirming ? "Confirm delete post" : "Delete post"}
+        title={confirming ? "Click again to confirm" : "Delete post"}
+      >
+        {isLoading ? <Spinner className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+      </button>
+    </div>
   );
 }
 
@@ -208,9 +220,11 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1 md:gap-2">
-            <span
-              className="cursor-pointer rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-400 hover:text-gray-600"
+            <button
+              type="button"
+              className="cursor-pointer rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               title={`#${index + 1} — ID: ${post.id} — click to copy ID`}
+              aria-label={`Copy post ID ${post.id}`}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -218,7 +232,7 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
               }}
             >
               #{index + 1}
-            </span>
+            </button>
             <span className="text-xs text-gray-400">
               {format(new Date(post.originalDate), "MMM d, yyyy")}
               <span className="hidden sm:inline"> · {format(new Date(post.originalDate), "h:mm a")}</span>

@@ -28,8 +28,17 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-dvh flex-col md:h-screen md:flex-row md:overflow-hidden">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-gray-900 focus:shadow focus:ring-2 focus:ring-blue-500"
+      >
+        Skip to content
+      </a>
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8">
+      <main
+        id="main-content"
+        className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8"
+      >
         <MobilePageHeader />
         <div className="px-4 pb-4 md:p-0">{children}</div>
       </main>

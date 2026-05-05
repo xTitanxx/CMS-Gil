@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
+import { isOurBlobUrl } from "@/lib/url-allowlist";
 import { del } from "@vercel/blob";
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -49,6 +50,9 @@ export async function POST(
     }
 
     const blobUrl = body.blobUrl as string;
+    if (!isOurBlobUrl(blobUrl)) {
+      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    }
     const response = await fetch(blobUrl);
     if (!response.ok) {
       return NextResponse.json({ error: "Failed to fetch file from blob storage" }, { status: 500 });

@@ -1,8 +1,17 @@
 import { NextRequest } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
+  // Gated behind any session (admin or subscriber). Otherwise unauthenticated
+  // visitors could enumerate the READY archive even when PUBLIC_GATE_ENABLED
+  // is meant to be airtight.
+  const session = await auth();
+  if (!session?.user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const idsParam = req.nextUrl.searchParams.get("ids");
   if (!idsParam) {
     return Response.json({ error: "ids parameter required" }, { status: 400 });
@@ -71,7 +80,10 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  // Now that this endpoint requires a session, the response can't be a
+  // public-cacheable artifact — Vercel's edge cache would otherwise serve
+  // it to subsequent unauthenticated requests.
   return Response.json(result, {
-    headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+    headers: { "Cache-Control": "private, no-store" },
   });
 }

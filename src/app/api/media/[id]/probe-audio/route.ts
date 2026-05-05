@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fetchVideoAudioStatus } from "@/lib/storage";
 import { refreshReadiness } from "@/lib/readiness-service";
+import { isOurR2Url } from "@/lib/url-allowlist";
 
 export async function POST(
   _req: NextRequest,
@@ -17,6 +18,11 @@ export async function POST(
   if (!media) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (media.post.userId !== session.user.id) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // SSRF guard: fetchVideoAudioStatus issues a fetch against the URL.
+  if (!isOurR2Url(media.storageKey)) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
   const hasAudio = await fetchVideoAudioStatus(media.storageKey);

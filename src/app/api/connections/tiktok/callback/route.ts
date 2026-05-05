@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
+import { auth } from "@/lib/auth";
+import { verifyOAuthState } from "@/lib/oauth-state";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY!;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET!;
@@ -9,16 +11,34 @@ const REDIRECT_URI = `${process.env.APP_URL}/api/connections/tiktok/callback`;
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  const state = searchParams.get("state");
+  const stateParam = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error || !code || !state) {
+  if (error || !code || !stateParam) {
     return NextResponse.redirect(
       new URL("/connections?error=tiktok_denied", req.url)
     );
   }
 
-  const [userId, codeVerifier] = state.split("|");
+  const state = verifyOAuthState(stateParam);
+  const session = await auth();
+  if (
+    !state ||
+    !session?.user?.id ||
+    session.user.role !== "admin" ||
+    session.user.id !== state.userId
+  ) {
+    return NextResponse.redirect(
+      new URL("/connections?error=tiktok_state", req.url)
+    );
+  }
+  const userId = state.userId;
+  const codeVerifier = req.cookies.get("tiktok_cv")?.value;
+  if (!codeVerifier) {
+    return NextResponse.redirect(
+      new URL("/connections?error=tiktok_state", req.url)
+    );
+  }
 
   try {
     const tokenRes = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildUnderstanding, persistUnderstanding } from "@/lib/assistant/archive-understanding";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 
 const MIN_POSTS_TO_BUILD = 50;
 
@@ -9,8 +10,7 @@ const MIN_POSTS_TO_BUILD = 50;
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (secret !== process.env.CRON_SECRET) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

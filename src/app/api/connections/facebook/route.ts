@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { createOAuthState } from "@/lib/oauth-state";
 
 const META_APP_ID = process.env.META_APP_ID!;
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/facebook/callback`;
@@ -24,7 +25,7 @@ const SCOPES = [
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     redirect_uri: REDIRECT_URI,
     scope: SCOPES,
     response_type: "code",
-    state: session.user.id,
+    state: createOAuthState({ userId: session.user.id }),
   });
 
   return NextResponse.redirect(

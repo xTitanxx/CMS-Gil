@@ -7,6 +7,10 @@ import {
   checkBudgetAndLazyReset,
   recordUsage,
 } from "@/lib/subscribers/budget";
+import {
+  tryAcquireSubscriberTurn,
+  releaseSubscriberTurn,
+} from "@/lib/subscribers/serialize-turn";
 
 const client = new Anthropic();
 const MODEL = "claude-haiku-4-5";
@@ -52,19 +56,33 @@ export async function POST(req: NextRequest) {
   }
 
   // Subscriber budget gate (admin bypasses)
+  let acquiredLock = false;
   if (role === "subscriber") {
     if (!subscriberId) {
       return Response.json({ error: "Invalid session." }, { status: 401 });
     }
+    // Reject parallel turns from the same subscriber up front. Without this,
+    // two concurrent calls would both pass the budget check (read-then-write
+    // race) and stream simultaneously, blowing past the cap.
+    if (!tryAcquireSubscriberTurn(subscriberId)) {
+      return Response.json(
+        { error: "Another message is still being answered. Please wait." },
+        { status: 429 }
+      );
+    }
+    acquiredLock = true;
+
     const sub = await prisma.subscriber.findUnique({
       where: { id: subscriberId },
       select: { revokedAt: true },
     });
     if (!sub || sub.revokedAt) {
+      releaseSubscriberTurn(subscriberId);
       return Response.json({ error: "Access revoked." }, { status: 403 });
     }
     const check = await checkBudgetAndLazyReset(subscriberId);
     if (!check.allowed) {
+      releaseSubscriberTurn(subscriberId);
       return Response.json(
         {
           error: RATE_LIMIT_MESSAGE,
@@ -77,6 +95,7 @@ export async function POST(req: NextRequest) {
 
   const { messages: rawMessages } = await req.json();
   if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
+    if (acquiredLock && subscriberId) releaseSubscriberTurn(subscriberId);
     return Response.json({ error: "Missing messages." }, { status: 400 });
   }
 
@@ -161,6 +180,9 @@ export async function POST(req: NextRequest) {
           console.error("persist assistant message failed:", e);
         }
       }
+
+      // Release the per-subscriber in-flight lock so the next turn can run.
+      if (acquiredLock && subscriberId) releaseSubscriberTurn(subscriberId);
     },
   });
 

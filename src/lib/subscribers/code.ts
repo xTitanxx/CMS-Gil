@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -48,4 +48,23 @@ export async function hashCode(code: string): Promise<string> {
 
 export async function verifyCode(code: string, hash: string): Promise<boolean> {
   return bcrypt.compare(code, hash);
+}
+
+// Deterministic blind-index over the code. Stored in `Subscriber.codeBlindIndex`
+// alongside the bcrypt hash so sign-in and collision-check can find the row in
+// O(1) instead of bcrypt-comparing every non-revoked row.
+//
+// HMAC (not plain SHA-256) so an attacker who exfiltrates the index column
+// can't precompute a rainbow table for the 41-bit code space — they need the
+// pepper, which lives only on Vercel (and dev .env.local).
+export function blindIndex(code: string): string {
+  const hex = process.env.SUBSCRIBER_INDEX_PEPPER ?? "";
+  const key = Buffer.from(hex, "hex");
+  if (key.length !== 32) {
+    throw new Error(
+      "SUBSCRIBER_INDEX_PEPPER must be 32 bytes (64 hex chars). " +
+        `Got ${key.length} bytes from a ${hex.length}-char value.`
+    );
+  }
+  return createHmac("sha256", key).update(code).digest("base64url");
 }

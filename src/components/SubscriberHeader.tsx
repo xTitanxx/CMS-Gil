@@ -6,12 +6,12 @@ export async function SubscriberHeader() {
   const session = await auth();
   const role = session?.user?.role;
 
-  if (role === "subscriber") {
+  if (role === "subscriber" && session) {
     return (
       <div className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
-          <span className="text-gray-700">
-            Hi, <span className="font-semibold">{session?.user?.name}</span>
+          <span className="truncate text-gray-700">
+            Hi, <span className="font-semibold">{session.user.name}</span>
           </span>
           <div className="flex items-center gap-3">
             <Link
@@ -21,10 +21,16 @@ export async function SubscriberHeader() {
               <Sparkles className="h-3 w-3" />
               Talk to Virtual Gil
             </Link>
+            <Link
+              href="/bookmarks"
+              className="text-blue-600 hover:underline"
+            >
+              Bookmarks
+            </Link>
             <form
               action={async () => {
                 "use server";
-                await signOut({ redirectTo: "/" });
+                await signOut({ redirectTo: "/welcome" });
               }}
             >
               <button type="submit" className="text-blue-600 hover:underline">

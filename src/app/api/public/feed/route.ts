@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       body: p.body,
       originalDate: p.originalDate,
       tags: p.tags,
+      likeCount: p.likeCount,
       media: await Promise.all(
         p.media.map(async (m) => ({
           id: m.id,

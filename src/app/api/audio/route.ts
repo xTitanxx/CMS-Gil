@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, audioKey, getSignedDownloadUrl } from "@/lib/storage";
+import { isOurBlobUrl } from "@/lib/url-allowlist";
+import { detectMimeType } from "@/lib/magic-byte";
 import { del } from "@vercel/blob";
 
-const ALLOWED_MIME_TYPES = new Set([
+// Detected types (after magic-byte sniff) we'll accept. The client may have
+// asserted "audio/mp3" or "audio/x-wav"; the magic-byte detector normalizes
+// to canonical names so we don't need to enumerate aliases here.
+const ALLOWED_DETECTED = new Set([
   "audio/mpeg",
-  "audio/mp3",
   "audio/mp4",
   "audio/wav",
-  "audio/x-wav",
   "audio/aac",
   "audio/ogg",
   "audio/webm",
@@ -56,12 +59,11 @@ export async function POST(req: NextRequest) {
   if (contentType.includes("application/json")) {
     const body = await req.json();
     filename = body.filename as string;
-    mimeType = (body.mimeType as string) || "audio/mpeg";
     title = (body.title as string) || filename.replace(/\.[^/.]+$/, "");
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
     const blobUrl = body.blobUrl as string;
+    if (!isOurBlobUrl(blobUrl)) {
+      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    }
     const response = await fetch(blobUrl);
     if (!response.ok) {
       return NextResponse.json({ error: "Failed to fetch blob" }, { status: 500 });
@@ -75,13 +77,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
     filename = file.name;
-    mimeType = file.type || "audio/mpeg";
     title = (formData.get("title") as string | null) || filename.replace(/\.[^/.]+$/, "");
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-    }
     buffer = Buffer.from(await file.arrayBuffer());
   }
+
+  // Sniff the actual content; ignore the client-asserted Content-Type and
+  // filename extension (both spoofable). The detected type is what we record
+  // and what R2 will serve back.
+  const detected = detectMimeType(buffer);
+  if (!detected || !ALLOWED_DETECTED.has(detected)) {
+    return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+  }
+  mimeType = detected;
 
   const key = audioKey(session.user.id, filename);
   const { url: storageKey } = await uploadBuffer(key, buffer, { contentType: mimeType });

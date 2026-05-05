@@ -1,22 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
+import { auth } from "@/lib/auth";
+import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
 
 const META_APP_ID = process.env.META_APP_ID!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
-const REDIRECT_URI = `${process.env.NEXTAUTH_URL}/api/connections/instagram/callback`;
+const REDIRECT_URI = `${process.env.APP_URL}/api/connections/instagram/callback`;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  const userId = searchParams.get("state");
+  const stateParam = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error || !code || !userId) {
+  if (error || !code || !stateParam) {
     return NextResponse.redirect(
       new URL(`/connections?error=instagram_denied`, req.url)
     );
   }
+
+  const state = verifyOAuthState(stateParam);
+  const session = await auth();
+  if (
+    !state ||
+    !session?.user?.id ||
+    session.user.role !== "admin" ||
+    session.user.id !== state.userId
+  ) {
+    return NextResponse.redirect(
+      new URL(`/connections?error=instagram_state`, req.url)
+    );
+  }
+  const userId = state.userId;
 
   try {
     // Exchange code for short-lived token
@@ -81,7 +98,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(new URL("/connections?success=instagram", req.url));
   } catch (err) {
-    console.error("Instagram callback error:", err);
+    console.error("Instagram callback error:", redactSecrets(err));
     return NextResponse.redirect(
       new URL(`/connections?error=instagram_failed`, req.url)
     );

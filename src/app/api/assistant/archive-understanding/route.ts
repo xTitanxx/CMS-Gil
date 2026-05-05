@@ -9,8 +9,8 @@ export const maxDuration = 300;
 // "last refreshed" stamp and a rebuild button later).
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const row = await prisma.userArchiveUnderstanding.findUnique({
     where: { userId: session.user.id },
@@ -23,8 +23,8 @@ export async function GET() {
 // understanding") and as the bootstrap path before the first weekly cron.
 export async function POST() {
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const started = Date.now();
   const result = await buildUnderstanding(session.user.id);

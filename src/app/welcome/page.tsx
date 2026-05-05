@@ -13,8 +13,11 @@ export default async function WelcomePage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const session = await auth();
+  // PR #55 intent: default to /chat (push subscribers toward Virtual Gil).
+  // PR #56 security guard: reject `//evil.example` and `https://evil.example`
+  // open-redirects. Combined: default /chat, allow same-origin paths only.
   const rawNext = (await searchParams).next ?? "/chat";
-  const next = rawNext.startsWith("/") ? rawNext : "/chat";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/chat";
   if (session) redirect(next);
 
   return (

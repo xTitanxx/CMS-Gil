@@ -1,20 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
+import { verifyOAuthState } from "@/lib/oauth-state";
+import { redactSecrets } from "@/lib/redact";
+import { encryptGoogleToken } from "@/lib/google-tokens";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
-  const state = searchParams.get("state"); // userId
+  const stateParam = searchParams.get("state");
   const error = searchParams.get("error");
 
-  if (error || !code || !state) {
+  if (error || !code || !stateParam) {
     return NextResponse.redirect(new URL("/import?error=google_denied", req.url));
   }
 
-  const [userId, from = "import"] = state.split("|");
+  const state = verifyOAuthState(stateParam);
+  const session = await auth();
+  if (
+    !state ||
+    !session?.user?.id ||
+    session.user.role !== "admin" ||
+    session.user.id !== state.userId
+  ) {
+    return NextResponse.redirect(new URL("/import?error=google_state", req.url));
+  }
+
+  const userId = state.userId;
+  const from = state.extra ?? "import";
 
   try {
     const oauth2Client = new google.auth.OAuth2(
@@ -33,14 +49,14 @@ export async function GET(req: NextRequest) {
     // Only overwrite refresh_token if Google returned a new one
     // (Google omits it on subsequent authorizations if it's still valid).
     const updateData: Record<string, unknown> = {
-      access_token: tokens.access_token,
+      access_token: encryptGoogleToken(tokens.access_token, userId),
       ...(tokens.expiry_date
         ? { expires_at: Math.floor(tokens.expiry_date / 1000) }
         : {}),
       ...(tokens.scope ? { scope: tokens.scope } : {}),
     };
     if (tokens.refresh_token) {
-      updateData.refresh_token = tokens.refresh_token;
+      updateData.refresh_token = encryptGoogleToken(tokens.refresh_token, userId);
     }
 
     await prisma.account.updateMany({
@@ -48,14 +64,11 @@ export async function GET(req: NextRequest) {
       data: updateData,
     });
 
-    const successUrl = from === "connections"
-      ? "/connections?success=youtube"
-      : "/import?success=google";
+    const successUrl =
+      from === "connections" ? "/connections?success=youtube" : "/import?success=google";
     return NextResponse.redirect(new URL(successUrl, req.url));
   } catch (err) {
-    console.error("Google callback error:", err);
-    return NextResponse.redirect(
-      new URL(`/import?error=google_failed`, req.url)
-    );
+    console.error("Google callback error:", redactSecrets(err));
+    return NextResponse.redirect(new URL(`/import?error=google_failed`, req.url));
   }
 }

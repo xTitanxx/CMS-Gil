@@ -32,7 +32,10 @@ export default function SignInForm({ next }: { next: string }) {
 
     setLoading(false);
     if (isSubscriber) {
-      window.location.assign(next);
+      // Open-redirect guard: only allow same-origin paths even though the
+      // server-side page validates `next` too — defense in depth.
+      const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      window.location.assign(safeNext);
     } else {
       setError("Code not recognized. Please double-check, or message Gil on Facebook.");
     }

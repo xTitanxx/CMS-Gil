@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const conv = await prisma.conversation.findFirst({
     where: { userId: session.user.id },
@@ -17,8 +17,8 @@ export async function GET() {
 
 export async function DELETE() {
   const session = await auth();
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   // Soft-start: client forgets conversationId; a new thread will be created on next POST.
   return NextResponse.json({ ok: true });
 }

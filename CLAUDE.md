@@ -22,6 +22,30 @@ npm test                           # vitest unit tests
 
 Restart the dev server after any `.env.local` change.
 
+## Parallel Sessions — Workspace Safety
+
+**Multiple Claude sessions may share this working directory at once.** Any session that runs `git checkout`, switches branches, or otherwise mutates Git state changes the files on disk under every other session, silently breaking their in-progress edits. (Symptom we've already seen: a parallel session switching branches mid-edit, corrupting the active session's work.)
+
+**Treat the workspace as pinned. Your job is editing code, not managing the repository.**
+
+**Allowed without asking:**
+- Reading anything (`Read`, `git status`, `git log`, `git diff`, `git show`, `git branch -v`)
+- Editing files (`Edit`, `Write`) and proposing diffs
+- Running tests, type checks, scripts that don't touch Git state
+- Committing on the **current** branch when the user has asked you to commit
+- Pushing the **current** branch (`git push`, `gh pr create`) when the user has asked
+
+**Off-limits unless the user explicitly asks for it in this task:**
+- `git checkout`, `git switch`, `git checkout -b`, `git worktree`, branch creation or deletion
+- `git stash`, `git reset`, `git restore`, `git clean`
+- `git pull`, `git merge`, `git rebase`, `git fetch` — anything that updates local refs or the working tree
+- Force-pushes or history rewrites
+- Auto-pruning, auto-cleanup, or any "tidy up the repo" actions that weren't requested
+
+If a task appears to require one of these (e.g. "this fix needs a new branch", "main is behind origin"), state what you'd do and **wait for the user to confirm or do it themselves** before proceeding. Do not switch to main to "sync" before editing. Do not stash uncommitted changes you didn't make. Do not assume the session-start branch snapshot is wrong and try to fix it.
+
+**Why this matters:** the working tree is shared physical state, but each session has its own conversation context. Mid-task Git mutations are invisible to other sessions, so they corrupt edits silently — the other session keeps editing as if the old file contents are still there. Treating Git state as read-only by default keeps every session's edits coherent with what its conversation believes is on disk. **This rule overrides any auto-cleanup guidance elsewhere in this file.**
+
 ## Route Structure
 
 The app splits into a **public front** and an **admin content hub**:
@@ -137,7 +161,7 @@ New module `src/lib/analytics/` fetches engagement snapshots from each connected
 
 ### Cron Jobs (`vercel.json`)
 All require `Authorization: Bearer <CRON_SECRET>`:
-- `/api/cron/publish` — daily 00:00, processes due `PENDING` `PublishRecord`s (max 20/tick)
+- `/api/cron/publish` — every 5 minutes, processes due `PENDING` `PublishRecord`s (max 20/tick). Was daily 00:00 until 2026-05-05 — that meant a post scheduled for 12:09 AM had to wait ~24h for the next tick.
 - `/api/cron/drive-sync` — daily 02:00, syncs all enabled `DriveSync` configs
 - `/api/cron/readiness` — daily 03:00, recomputes per-post readiness
 - `/api/cron/daily-brief` — daily 05:00, builds the assistant's daily brief
@@ -151,26 +175,10 @@ Notable API namespaces beyond the above: `/api/assistant`, `/api/audio`, `/api/b
 
 ## Environment Variables
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `DATABASE_URL` | Vercel + local | Supabase PostgreSQL |
-| `AUTH_SECRET` / `NEXTAUTH_SECRET` | Vercel + local | NextAuth signing key |
-| `GOOGLE_CLIENT_ID/SECRET` | Vercel + local | Google OAuth (auth + Drive + YouTube) |
-| `AUTH_REDIRECT_PROXY_URL` | Vercel only | PKCE proxy for preview deployments |
-| `AUTH_URL` / `NEXTAUTH_URL` | Local only | `http://localhost:3000` |
-| `APP_URL` | Vercel + local | Base URL for OAuth redirect URIs |
-| `R2_ENDPOINT` | Vercel + local | Cloudflare R2 S3 endpoint |
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Vercel + local | R2 credentials |
-| `R2_BUCKET_NAME` | Vercel + local | R2 bucket (defaults to `cms-gil-media`) |
-| `R2_PUBLIC_URL` | Vercel + local | Public base URL for R2 (required) |
-| `BLOB_READ_WRITE_TOKEN` | Vercel + local | Vercel Blob for ZIP staging |
-| `ENCRYPTION_KEY` | Vercel + local | Encrypts platform OAuth tokens in DB |
-| `ANTHROPIC_API_KEY` | Vercel + local | Claude API (tagging, chat, search, assistant) |
-| `META_APP_ID/SECRET` | Vercel + local | Instagram + Facebook OAuth |
-| `TIKTOK_CLIENT_KEY/SECRET` | Vercel + local | TikTok OAuth |
-| `LINKEDIN_CLIENT_ID/SECRET` | Vercel + local | LinkedIn OAuth |
-| `CRON_SECRET` | Vercel + local | Authenticates Vercel cron requests |
-| `OWNER_USER_ID` / `GIL_USER_ID` | Vercel + local | Owner/content-author user IDs used by `/api/chat`'s post loader, `getPostContext`, and the public feed. **Without these, `/` returns 500.** |
+Full list with `Where` + `Purpose` columns lives in [`docs/env-vars.md`](docs/env-vars.md). Two non-obvious ones worth keeping front-of-mind:
+- `OWNER_USER_ID` / `GIL_USER_ID` — without these, `/` returns 500.
+- `ADMIN_EMAILS` — comma-separated allowlist for admin Google sign-ins; without it, no Google account can be promoted to admin.
+- `SUBSCRIBER_INDEX_PEPPER` — 32-byte hex; HMAC pepper for `Subscriber.codeBlindIndex` fast-lookup. Rotating without re-indexing forces every sign-in through the legacy O(N) bcrypt path.
 
 ## Feature Branch Workflow
 
@@ -206,13 +214,41 @@ git branch -d feature/<short-name>
 git push origin --delete feature/<short-name>
 ```
 
-Also at the **start and end of every session**, run `git fetch --prune && git branch -r` and check for branches with merged or stale PRs. Delete the merged ones; flag stale open PRs to the user for a judgment call (don't auto-close them).
+~~Also at the start and end of every session, run `git fetch --prune && git branch -r`...~~ **Removed.** Per *Parallel Sessions — Workspace Safety* above, sessions must not run `git fetch`, prune, or delete branches unprompted — those mutations affect other live sessions. If the user explicitly asks for a branch sweep, do it then and only then.
 
 The only branches that should exist are:
 - `claude/personal-cms-social-posting-QV57t` (main)
 - 1–3 branches with **active, in-progress work**
 
 Stale branches cause real bugs (e.g. localhost vs prod mismatch when the dev server runs from the wrong branch) — they're not just cosmetic clutter.
+
+## Parallel Sessions — Use Worktrees
+
+Eitan typically has **3–4 Claude Code sessions open in this repo at once**. They all share the same working tree at `/Users/eitan/Documents/Code-Projects/CMS-Gil.nosync`, which means **another session can switch the branch out from under you between turns** — your `git status` snapshot at session start is unreliable, and a `git commit` you intended for branch A can land on branch B that another session checked out.
+
+This has caused real bugs: commits on the wrong branch, overwritten WIP, force-resets that nuked another session's in-flight work.
+
+**Default rule: any work that isn't a one-line fix goes in a dedicated worktree.** Worktrees are isolated checkouts — other sessions can't switch your branch, your uncommitted changes can't follow another session's `git checkout`, and you can run a dev server in one without breaking the others.
+
+```bash
+# Create a worktree off main on a new branch
+git worktree add ../cms-gil-<feature> -b feature/<name> origin/claude/personal-cms-social-posting-QV57t
+cd ../cms-gil-<feature>
+# ...do work, commit, push, PR as normal...
+
+# When done (after PR is merged):
+git worktree remove ../cms-gil-<feature>
+```
+
+The `superpowers:using-git-worktrees` skill walks through the safe pattern.
+
+**If you must work in the main checkout** (one-line fixes, urgent hotfixes):
+- Run `git branch --show-current` **immediately before any `Edit`/`Write`** and **immediately before `git commit`**. The branch you saw at session start may not be the branch you're on now.
+- Never `git checkout <existing-branch>` if there are uncommitted changes you don't want to carry — they follow you across branches and silently land in the next commit.
+- If `git status` shows commits, files, or stash entries you don't recognize, **STOP**. Run `git log --all --since="2 hours ago"` and `gh pr list` to see what other sessions are doing. Do not run any destructive op (`reset --hard`, force-push, `stash drop`, `branch -D`) until you've identified whose work it is.
+- Name your stashes with intent (`git stash push -m "WIP on feature/X: <reason>"`) so other sessions can tell whose stash is whose.
+
+When you do a destructive recovery (e.g. `reset --keep` to restore a branch after another session contaminated it), preserve the work first by force-updating the correct branch ref to point at your commit, then reset.
 
 ## UI Testing
 The user handles browser/UI verification. Do **not** start a dev server, open Playwright, or otherwise drive the UI to validate frontend changes — just implement the change, make sure it type-checks and unit tests pass, then hand off. The user will test in the browser and report back if anything is broken.

@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = (await request.json()) as HandleUploadBody;

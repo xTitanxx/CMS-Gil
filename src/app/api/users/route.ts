@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
+
+async function requireAdmin() {
+  const session = await auth();
+  if (!session || session.user.role !== "admin") return null;
+  return session;
+}
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const users = await prisma.user.findMany({
     select: {
@@ -14,7 +19,6 @@ export async function GET() {
       name: true,
       email: true,
       image: true,
-      passwordHash: false,
       accounts: { select: { provider: true } },
     },
     orderBy: { name: "asc" },
@@ -25,41 +29,37 @@ export async function GET() {
     name: u.name,
     email: u.email,
     image: u.image,
-    loginMethod: u.accounts.length > 0 ? u.accounts[0].provider : "credentials",
+    loginMethod: u.accounts.length > 0 ? u.accounts[0].provider : "pending",
   }));
 
   return NextResponse.json(result);
 }
 
+// POST creates a placeholder User row that PrismaAdapter will link to on
+// first Google sign-in (provided the email is also added to ADMIN_EMAILS).
+// Email/password sign-in is no longer supported, so password is not accepted.
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
-  const { email, name, password } = body as {
-    email?: string;
-    name?: string;
-    password?: string;
-  };
+  const { email, name } = body as { email?: string; name?: string };
 
-  if (!email || !password)
-    return NextResponse.json(
-      { error: "Email and password are required" },
-      { status: 400 }
-    );
+  if (!email) {
+    return NextResponse.json({ error: "Email is required" }, { status: 400 });
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing)
+  if (existing) {
     return NextResponse.json(
       { error: "A user with this email already exists" },
       { status: 409 }
     );
-
-  const passwordHash = await bcrypt.hash(password, 12);
+  }
 
   const user = await prisma.user.create({
-    data: { email, name: name || null, passwordHash },
+    data: { email, name: name || null },
   });
 
   return NextResponse.json(

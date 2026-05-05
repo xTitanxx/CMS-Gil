@@ -26,12 +26,12 @@ Restart the dev server after any `.env.local` change.
 
 The app splits into a **public front** and an **admin content hub**:
 
-- **Public** (unauthenticated, no admin chrome — but gated behind a subscriber code when `PUBLIC_GATE_ENABLED=true`):
-  - `/` — public feed (infinite scroll) + stories row
-  - `/p/[id]` — individual post page with related posts
-  - `/s/[id]` — standalone story page
-  - `/chat` — AI chatbot over the archive (subscriber-only, budget-tracked)
-  - `/welcome` — subscriber sign-in (paste an admin-issued code; gated routes redirect here when the gate is on)
+- **Public** (unauthenticated, no admin chrome):
+  - `/` — public feed (infinite scroll) + stories row — always public
+  - `/p/[id]` — individual post page with related posts — always public
+  - `/s/[id]` — standalone story page — always public
+  - `/chat` — AI chatbot over the archive — **subscriber-only** (always gated; admins also pass). Proxy redirects unauthenticated visitors to `/welcome?next=/chat`. Budget-tracked.
+  - `/welcome` — Virtual Gil sign-in screen + subscribe explainer (paste an admin-issued code; default `next=/chat`).
 - **Admin** (`/admin/*`, auth-gated):
   - `/admin` — redirects to `/admin/assistant` (the real home)
   - `/admin/assistant` — persistent AI assistant chat (primary interaction surface)
@@ -79,18 +79,18 @@ Weekly planner surfaces at `/admin/dashboard`. AI tool-use generates slot recomm
 - `AUTH_REDIRECT_PROXY_URL` set on Vercel (Production + Preview) for PKCE cookies across preview deployments
 - Do **not** set `NEXTAUTH_URL` on Vercel — it breaks the proxy
 - **Two roles** on the JWT (`session.user.role`): `"admin"` and `"subscriber"`. Admins sign in via Google OAuth at `/login`; subscribers sign in at `/welcome` with a code (the `subscriber-credentials` Credentials provider in `src/lib/auth.ts`). Type augmentation in `src/types/next-auth.d.ts`.
-- Role-aware gating lives in **`src/proxy.ts`** (Next 16's renamed `middleware.ts` — *do not* re-add `export const runtime = "nodejs"`; proxy always runs on Node and the export is rejected at build). Reads `PUBLIC_GATE_ENABLED` env to decide whether to redirect unauthenticated visitors on public routes to `/welcome`.
+- Role-aware gating lives in **`src/proxy.ts`** (Next 16's renamed `middleware.ts` — *do not* re-add `export const runtime = "nodejs"`; proxy always runs on Node and the export is rejected at build). The archive (`/`, `/p/*`, `/s/*`) is always public. Only `/chat` and `/api/chat` are gated — anonymous page hits redirect to `/welcome?next=/chat`; anonymous API hits get a 401 JSON response. Admin routes (`/admin/*`, `/api/admin/*`) require `role === "admin"`.
 
 ### Subscriber Gate
-Per-person paid access (~$2/mo on FB Subscriptions) to the public archive + virtual-Gil chat. Admin-issued codes, persistent per-subscriber chat memory, real-USD monthly budget per subscriber tracked from Anthropic `response.usage`.
+Per-person paid access (~$2/mo on FB Subscriptions) to the **virtual-Gil chat**. The archive itself is fully public — only `/chat` requires a subscriber session. Admin-issued codes, persistent per-subscriber chat memory, real-USD monthly budget per subscriber tracked from Anthropic `response.usage`.
 
 - **Tables**: `Subscriber` (name + bcrypt code hash + monthly budget + cycle tracking + revoke timestamp), `SubscriberConversation`, `SubscriberMessage`, `SubscriberUsage` (audit log per chat turn).
 - **Admin UI**: section in `/admin/settings` — generate codes, regenerate, revoke, see live $ spent / budget per subscriber. Plaintext code is shown **once** at creation, then only the bcrypt hash is stored.
-- **Subscriber UI**: thin "Hi, {name} · Sign out" header on archive pages, budget meter on `/chat` (refetches after every turn via a `refreshKey` prop on `<BudgetMeter />`).
+- **Subscriber UI**: `<SubscriberHeader />` (in `src/components/`) renders on every archive page (`/`, `/p/*`, `/s/*`). For subscribers it shows "Hi, {name} · Talk to Virtual Gil · Sign out"; for anonymous visitors it shows a single "Talk to Virtual Gil →" CTA pointing at `/welcome`; for admins it returns null. Budget meter on `/chat` refetches after every turn via a `refreshKey` prop on `<BudgetMeter />`.
 - **Budget enforcement** in `src/lib/subscribers/budget.ts`: lazy reset on first chat call of each UTC month, hard 429 when over, sequential awaits (no `$transaction` — pgbouncer transaction-pool mode times out).
 - **Code library** in `src/lib/subscribers/{code,budget,service,signin-rate-limit}.ts`. Format `gil-{8-char alnum}`. 10 sign-in attempts/IP/hour rate-limit.
 - **Pricing constants for Haiku 4.5** are hard-coded in `budget.ts` — update in lockstep if the model is changed.
-- **Feature flag**: `PUBLIC_GATE_ENABLED=true` on the env where you want the gate active. Off by default in production. Flipping false reopens the site immediately.
+- **Welcome / sign-in screen** (`/welcome`) is framed as the Virtual Gil sign-in. It includes a subscribe explainer with a `SUBSCRIBE_URL` constant at the top of `src/app/welcome/page.tsx` (placeholder Facebook supporters URL — swap to the real one when known), a "Browse the archive" escape hatch back to `/`, and the `SignInForm` Credentials sign-in.
 - **`/api/chat`** is the rewritten public chat: requires a session (subscriber or admin), enforces the budget for subscribers (admin bypasses), wraps the system prompt in a `cache_control: { type: "ephemeral", ttl: "1h" }` block for prompt caching (~10× cost reduction), persists messages to `SubscriberConversation`, records usage. **Strip non-Anthropic fields from incoming `messages`** (the chat client stores rendered post-card data on each message; Anthropic rejects extra keys with 400).
 
 ### Storage — Cloudflare R2
@@ -170,7 +170,6 @@ Notable API namespaces beyond the above: `/api/assistant`, `/api/audio`, `/api/b
 | `TIKTOK_CLIENT_KEY/SECRET` | Vercel + local | TikTok OAuth |
 | `LINKEDIN_CLIENT_ID/SECRET` | Vercel + local | LinkedIn OAuth |
 | `CRON_SECRET` | Vercel + local | Authenticates Vercel cron requests |
-| `PUBLIC_GATE_ENABLED` | Vercel (per env) | When `"true"`, `proxy.ts` redirects unauthenticated visitors on `/`, `/p/*`, `/s/*`, `/chat` to `/welcome`. Off by default. Flipping false reopens the public site immediately. |
 | `OWNER_USER_ID` / `GIL_USER_ID` | Vercel + local | Owner/content-author user IDs used by `/api/chat`'s post loader, `getPostContext`, and the public feed. **Without these, `/` returns 500.** |
 
 ## Feature Branch Workflow

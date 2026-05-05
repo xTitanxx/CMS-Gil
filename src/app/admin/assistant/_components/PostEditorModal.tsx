@@ -36,6 +36,8 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialBodyRef = useRef<string>("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const { save, status } = useAutoSavePost(postId, 600);
 
   useEffect(() => {
@@ -88,14 +90,58 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
     };
   }, []);
 
-  // Esc to close
+  // Esc to close + focus trap (Tab cycles within the dialog)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
+      if (e.key === "Escape") {
+        handleClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("aria-hidden") && el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Capture trigger to restore focus on close + move focus into the dialog on mount.
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    // Defer focus until first render paints so the dialog content is in the DOM.
+    const t = window.setTimeout(() => {
+      const root = dialogRef.current;
+      if (!root) return;
+      const firstFocusable = root.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      firstFocusable?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      previouslyFocusedRef.current?.focus?.();
+    };
   }, []);
 
   function handleBodyChange(next: string) {
@@ -189,11 +235,15 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="post-editor-modal-title"
         className="relative flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-[#0d0d0d]">Edit post</h2>
+          <h2 id="post-editor-modal-title" className="text-base font-semibold text-[#0d0d0d]">Edit post</h2>
           <div className="flex items-center gap-2">
             <SaveIndicator status={status} />
             <button

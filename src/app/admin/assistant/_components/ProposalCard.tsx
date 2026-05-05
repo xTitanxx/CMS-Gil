@@ -142,8 +142,9 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
             <span
               className="inline-flex items-center gap-0.5 rounded-[8px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
               title={`${post.rating}/5`}
+              aria-label={`${post.rating} out of 5 stars`}
             >
-              {post.rating}★
+              <span aria-hidden="true">{post.rating}★</span>
             </span>
           )}
           <span className="flex-1" />
@@ -174,10 +175,11 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
           <button
             type="button"
             onClick={() => setShowReason((v) => !v)}
-            className="ml-1 inline-flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[11px] text-[#7a7870] hover:bg-white/50 hover:text-[#3a3832] transition-colors"
+            aria-expanded={showReason}
+            className="ml-1 inline-flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[11px] text-[#7a7870] hover:bg-white/50 hover:text-[#3a3832] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
             title={showReason ? "Hide reasoning" : "Why this?"}
           >
-            <Sparkles className="h-3 w-3" />
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
             why
           </button>
         )}

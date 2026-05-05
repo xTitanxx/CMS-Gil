@@ -125,7 +125,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     session({ session, token }) {
       if (token.sub) session.user.id = token.sub;
-      session.user.role = (token.role ?? "admin") as "admin" | "subscriber";
+      // Fail-closed default: a JWT with no role claim (older token, mid-flight
+      // upgrade, or any future bug that strips it) becomes a subscriber, not
+      // an admin. The jwt callback above only re-validates when role is
+      // ALREADY admin, so this default has to be the safe one.
+      session.user.role = (token.role ?? "subscriber") as "admin" | "subscriber";
       if (token.subscriberId) {
         session.user.subscriberId = token.subscriberId;
       }

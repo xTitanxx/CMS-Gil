@@ -175,13 +175,17 @@ export function HistoryPanel({
                     key={r.id}
                     className={`group relative flex items-start gap-2 px-4 py-3 ${
                       isActive ? "bg-gray-50" : "hover:bg-gray-50"
-                    } ${isEditing ? "" : "cursor-pointer"}`}
-                    onClick={() => {
-                      if (isEditing) return;
-                      onSelect(r.id);
-                    }}
+                    }`}
                   >
-                    <div className="min-w-0 flex-1">
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => onSelect(r.id)}
+                        aria-label={`Open chat: ${r.title?.trim() || "Untitled chat"}`}
+                        className="absolute inset-0 z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500"
+                      />
+                    )}
+                    <div className="pointer-events-none relative z-10 min-w-0 flex-1">
                       {isEditing ? (
                         <input
                           ref={renameInputRef}
@@ -196,7 +200,7 @@ export function HistoryPanel({
                           onBlur={() => void handleRenameSubmit(r.id)}
                           onClick={(e) => e.stopPropagation()}
                           maxLength={120}
-                          className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-[17px] text-[#0d0d0d] focus:border-[#0d0d0d] focus:outline-none"
+                          className="pointer-events-auto w-full rounded border border-gray-300 bg-white px-2 py-1 text-[17px] text-[#0d0d0d] focus:border-[#0d0d0d] focus:outline-none"
                         />
                       ) : (
                         <p
@@ -213,22 +217,24 @@ export function HistoryPanel({
                       </p>
                     </div>
                     {!isEditing && (
-                      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <div className="relative z-10 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditValue(r.title ?? "");
                             setEditingId(r.id);
                           }}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-[#0d0d0d]"
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-[#0d0d0d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                           aria-label="Rename chat"
                           title="Rename"
                         >
                           <Pencil className="h-4 w-4" strokeWidth={1.75} />
                         </button>
                         <button
+                          type="button"
                           onClick={(e) => void handleDelete(r.id, e)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-red-50 hover:text-red-600"
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                           aria-label="Delete chat"
                           title="Delete"
                         >
@@ -238,11 +244,12 @@ export function HistoryPanel({
                     )}
                     {isEditing && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           void handleRenameSubmit(r.id);
                         }}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-[#0d0d0d]"
+                        className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-[#0d0d0d]"
                         aria-label="Save rename"
                         title="Save"
                       >

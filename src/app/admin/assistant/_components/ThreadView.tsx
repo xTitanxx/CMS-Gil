@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, Plus, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf, Clock, RotateCcw, History } from "lucide-react";
+import { Loader2, Sparkles, Check, X, Copy, ArrowUp, SquarePen, ExternalLink, Pencil, CalendarDays, Menu, Film, ImageIcon, Type, Leaf, Clock, RotateCcw, History } from "lucide-react";
 import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 import { HistoryPanel } from "./HistoryPanel";
@@ -436,8 +436,9 @@ function InlinePostRef({
             <span
               className="inline-flex items-center gap-0.5 rounded-[8px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700"
               title={`${stars}/5`}
+              aria-label={`${stars} out of 5 stars`}
             >
-              {stars}★
+              <span aria-hidden="true">{stars}★</span>
             </span>
           )}
           <span className="flex-1" />
@@ -679,7 +680,6 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   // auto-scrolls; when false (user scrolled up to read), we leave them alone.
   const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   // Maps toolUseId → tool name so we can identify planner-related results
   const toolUseNamesRef = useRef<Map<string, string>>(new Map());
 
@@ -1124,16 +1124,29 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       const label = TOOL_LABELS[m.name] ?? m.name;
       const countLabel = count > 1 ? ` (${allDone ? count : `${doneCount}/${count}`})` : "";
 
+      const statusText = allDone
+        ? anyError
+          ? `${label}${countLabel} failed`
+          : `${label}${countLabel} done`
+        : `${label}${countLabel} in progress`;
+
       return (
-        <div key={key} className="pl-9 flex items-center gap-1.5 py-0.5">
+        <div
+          key={key}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={statusText}
+          className="pl-9 flex items-center gap-1.5 py-0.5"
+        >
           {allDone ? (
             anyError ? (
-              <X className="h-3 w-3 text-red-400 flex-shrink-0" />
+              <X className="h-3 w-3 text-red-400 flex-shrink-0" aria-hidden="true" />
             ) : (
-              <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+              <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" aria-hidden="true" />
             )
           ) : (
-            <Loader2 className="h-3 w-3 animate-spin text-[#8e8ea0] flex-shrink-0" />
+            <Loader2 className="h-3 w-3 animate-spin text-[#8e8ea0] flex-shrink-0" aria-hidden="true" />
           )}
           <span
             className={`text-xs ${
@@ -1182,7 +1195,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       >
         <button
           onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 active:bg-white/85 touch-manipulation"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 active:bg-white/85 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" strokeWidth={1.75} />
@@ -1198,7 +1211,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         {onOpenPlanner && (
           <button
             onClick={() => onOpenPlanner()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
             aria-label="Open planner"
             title="Planner"
           >
@@ -1207,7 +1220,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         )}
         <button
           onClick={() => setHistoryOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="Chat history"
           title="History"
         >
@@ -1223,7 +1236,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             setProposalsByToolUseId(new Map());
           }}
           disabled={streaming || messages.length === 0}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 disabled:opacity-30"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="New chat"
           title="New chat"
         >
@@ -1313,14 +1326,6 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       >
         <div className="pointer-events-auto mx-auto w-full max-w-4xl">
           <div className="flex items-center rounded-3xl border border-black/5 bg-white/70 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[#8e8ea0] transition-colors active:bg-black/10"
-              aria-label="Attach"
-            >
-              <Plus className="h-5 w-5" strokeWidth={2} />
-            </button>
             <textarea
               ref={textareaRef}
               value={input}
@@ -1333,40 +1338,29 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
               onKeyDown={handleKeyDown}
               enterKeyHint="send"
               placeholder="Ask Assistant"
+              aria-label="Message"
               rows={1}
               className="flex-1 resize-none self-center bg-transparent px-1.5 py-2 text-lg leading-5 text-[#0d0d0d] placeholder-[#8e8ea0] focus:outline-none"
               style={{ height: "auto", maxHeight: "120px", overflow: "auto" }}
             />
-            {input.trim() ? (
-              <button
-                onClick={() => {
-                  const v = input.trim();
-                  if (v && !streaming) send(v);
-                }}
-                disabled={streaming}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#0d0d0d] text-white disabled:opacity-40 transition-colors"
-                aria-label="Send"
-              >
-                <ArrowUp className="h-5 w-5" />
-              </button>
-            ) : (
-              <div className="h-9 w-9 flex-shrink-0" />
-            )}
+            {(() => {
+              const canSend = input.trim().length > 0 && !streaming;
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = input.trim();
+                    if (v && !streaming) send(v);
+                  }}
+                  disabled={!canSend}
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#0d0d0d] text-white transition-colors disabled:bg-[#e5e5e5] disabled:text-[#8e8ea0] disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                  aria-label="Send"
+                >
+                  <ArrowUp className="h-5 w-5" />
+                </button>
+              );
+            })()}
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              // TODO: handle image attachment
-              const file = e.target.files?.[0];
-              if (file) {
-                console.log("Selected file:", file.name);
-              }
-              e.target.value = "";
-            }}
-          />
         </div>
       </div>
 

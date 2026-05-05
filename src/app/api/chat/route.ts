@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       try {
         const response = await client.messages.stream({
           model: MODEL,
-          max_tokens: 1024,
+          max_tokens: 512,
           system: [
             {
               type: "text",

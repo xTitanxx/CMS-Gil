@@ -5,7 +5,8 @@ import SignInForm from "./SignInForm";
 
 export const dynamic = "force-dynamic";
 
-const SUBSCRIBE_URL = "https://www.facebook.com/becomesupporter/gilalter";
+const SUBSCRIBE_URL =
+  "https://www.facebook.com/gil.alter.7/support/?surface=permalink_become_supporter_url&entrypoint_surface=comet_permalink";
 
 export default async function WelcomePage({
   searchParams,
@@ -35,9 +36,9 @@ export default async function WelcomePage({
             Talk to Virtual Gil
           </h1>
           <p className="mt-2 max-w-sm text-sm text-gray-600 sm:text-base">
-            An AI trained on Gil&rsquo;s archive of Facebook posts. Ask anything
-            about MS, breathwork, depression, or any topic Gil has shared
-            &mdash; if it&rsquo;s in there, Virtual Gil will dig it up.
+            Trained on Gil&rsquo;s archive.
+            <br />
+            Ask anything &mdash; if it exists, it will dig it up.
           </p>
         </div>
 

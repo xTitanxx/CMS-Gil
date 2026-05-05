@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   computeHaikuCost,
-  startOfCurrentMonthUtc,
+  startOfCurrentCycle,
+  startOfNextCycle,
   HAIKU_PRICES,
 } from "./budget";
 
@@ -58,16 +59,78 @@ describe("computeHaikuCost", () => {
   });
 });
 
-describe("startOfCurrentMonthUtc", () => {
-  it("returns midnight on the 1st in UTC for a given reference date", () => {
-    const ref = new Date(Date.UTC(2026, 3, 28, 14, 30, 0)); // 2026-04-28T14:30Z
-    const start = startOfCurrentMonthUtc(ref);
-    expect(start.toISOString()).toBe("2026-04-01T00:00:00.000Z");
+describe("startOfCurrentCycle", () => {
+  it("returns this month's anniversary when today >= anniversary day", () => {
+    const createdAt = new Date(Date.UTC(2026, 0, 15)); // Jan 15
+    const now = new Date(Date.UTC(2026, 4, 20, 9, 30)); // May 20 09:30
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2026-05-15T00:00:00.000Z"
+    );
   });
 
-  it("rolls into the new month on UTC midnight of the 1st", () => {
-    const ref = new Date(Date.UTC(2026, 4, 1, 0, 0, 0)); // 2026-05-01T00:00Z
-    const start = startOfCurrentMonthUtc(ref);
-    expect(start.toISOString()).toBe("2026-05-01T00:00:00.000Z");
+  it("returns last month's anniversary when today < anniversary day", () => {
+    const createdAt = new Date(Date.UTC(2026, 0, 20)); // Jan 20
+    const now = new Date(Date.UTC(2026, 4, 5, 9, 30)); // May 5 09:30
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2026-04-20T00:00:00.000Z"
+    );
+  });
+
+  it("returns today when today is exactly the anniversary", () => {
+    const createdAt = new Date(Date.UTC(2026, 0, 15)); // Jan 15
+    const now = new Date(Date.UTC(2026, 4, 15, 0, 0)); // May 15 00:00
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2026-05-15T00:00:00.000Z"
+    );
+  });
+
+  it("clamps a 31st-of-the-month subscriber to Feb 28 in a non-leap year", () => {
+    const createdAt = new Date(Date.UTC(2025, 0, 31)); // Jan 31, 2025 (non-leap)
+    const now = new Date(Date.UTC(2025, 1, 28, 12, 0)); // Feb 28, 2025
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2025-02-28T00:00:00.000Z"
+    );
+  });
+
+  it("clamps a 31st-of-the-month subscriber to Feb 29 in a leap year", () => {
+    const createdAt = new Date(Date.UTC(2024, 0, 31)); // Jan 31, 2024 (leap)
+    const now = new Date(Date.UTC(2024, 1, 29, 12, 0)); // Feb 29, 2024
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2024-02-29T00:00:00.000Z"
+    );
+  });
+
+  it("rolls back into prior year for January when before anniversary", () => {
+    const createdAt = new Date(Date.UTC(2025, 5, 20)); // Jun 20, 2025
+    const now = new Date(Date.UTC(2026, 0, 5, 12, 0)); // Jan 5, 2026
+    expect(startOfCurrentCycle(createdAt, now).toISOString()).toBe(
+      "2025-12-20T00:00:00.000Z"
+    );
+  });
+});
+
+describe("startOfNextCycle", () => {
+  it("returns next month's anniversary for a mid-month subscriber", () => {
+    const createdAt = new Date(Date.UTC(2026, 0, 15)); // Jan 15
+    const now = new Date(Date.UTC(2026, 4, 20, 9, 30)); // May 20
+    expect(startOfNextCycle(createdAt, now).toISOString()).toBe(
+      "2026-06-15T00:00:00.000Z"
+    );
+  });
+
+  it("clamps a Jan-31 subscriber to Feb 28 when next cycle is February", () => {
+    const createdAt = new Date(Date.UTC(2025, 0, 31)); // Jan 31, 2025
+    const now = new Date(Date.UTC(2025, 0, 31, 12, 0)); // Jan 31
+    expect(startOfNextCycle(createdAt, now).toISOString()).toBe(
+      "2025-02-28T00:00:00.000Z"
+    );
+  });
+
+  it("rolls into next year when current cycle is December", () => {
+    const createdAt = new Date(Date.UTC(2025, 5, 20)); // Jun 20, 2025
+    const now = new Date(Date.UTC(2025, 11, 25, 12, 0)); // Dec 25, 2025
+    expect(startOfNextCycle(createdAt, now).toISOString()).toBe(
+      "2026-01-20T00:00:00.000Z"
+    );
   });
 });

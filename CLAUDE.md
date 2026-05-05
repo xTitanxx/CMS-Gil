@@ -215,6 +215,34 @@ The only branches that should exist are:
 
 Stale branches cause real bugs (e.g. localhost vs prod mismatch when the dev server runs from the wrong branch) — they're not just cosmetic clutter.
 
+## Parallel Sessions — Use Worktrees
+
+Eitan typically has **3–4 Claude Code sessions open in this repo at once**. They all share the same working tree at `/Users/eitan/Documents/Code-Projects/CMS-Gil.nosync`, which means **another session can switch the branch out from under you between turns** — your `git status` snapshot at session start is unreliable, and a `git commit` you intended for branch A can land on branch B that another session checked out.
+
+This has caused real bugs: commits on the wrong branch, overwritten WIP, force-resets that nuked another session's in-flight work.
+
+**Default rule: any work that isn't a one-line fix goes in a dedicated worktree.** Worktrees are isolated checkouts — other sessions can't switch your branch, your uncommitted changes can't follow another session's `git checkout`, and you can run a dev server in one without breaking the others.
+
+```bash
+# Create a worktree off main on a new branch
+git worktree add ../cms-gil-<feature> -b feature/<name> origin/claude/personal-cms-social-posting-QV57t
+cd ../cms-gil-<feature>
+# ...do work, commit, push, PR as normal...
+
+# When done (after PR is merged):
+git worktree remove ../cms-gil-<feature>
+```
+
+The `superpowers:using-git-worktrees` skill walks through the safe pattern.
+
+**If you must work in the main checkout** (one-line fixes, urgent hotfixes):
+- Run `git branch --show-current` **immediately before any `Edit`/`Write`** and **immediately before `git commit`**. The branch you saw at session start may not be the branch you're on now.
+- Never `git checkout <existing-branch>` if there are uncommitted changes you don't want to carry — they follow you across branches and silently land in the next commit.
+- If `git status` shows commits, files, or stash entries you don't recognize, **STOP**. Run `git log --all --since="2 hours ago"` and `gh pr list` to see what other sessions are doing. Do not run any destructive op (`reset --hard`, force-push, `stash drop`, `branch -D`) until you've identified whose work it is.
+- Name your stashes with intent (`git stash push -m "WIP on feature/X: <reason>"`) so other sessions can tell whose stash is whose.
+
+When you do a destructive recovery (e.g. `reset --keep` to restore a branch after another session contaminated it), preserve the work first by force-updating the correct branch ref to point at your commit, then reset.
+
 ## UI Testing
 The user handles browser/UI verification. Do **not** start a dev server, open Playwright, or otherwise drive the UI to validate frontend changes — just implement the change, make sure it type-checks and unit tests pass, then hand off. The user will test in the browser and report back if anything is broken.
 

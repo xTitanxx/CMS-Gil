@@ -17,6 +17,7 @@ import {
   Star,
   X,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -30,6 +31,7 @@ const nav: NavItem[] = [
   { type: "separator" },
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
+  { type: "link", href: "/admin/comments", label: "Comments", icon: MessageSquare },
   { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
   { type: "link", href: "/admin/rate", label: "Review Posts", icon: Star },
   { type: "separator" },

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
+import { decryptGoogleToken } from "@/lib/google-tokens";
 import { postToInstagram } from "@/lib/platforms/instagram";
 import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
@@ -125,8 +126,8 @@ export async function publishNow(
       const account = await prisma.account.findFirst({
         where: { userId, provider: "google" },
       });
-      accessToken = account?.access_token ?? "";
-      refreshToken = account?.refresh_token ?? undefined;
+      accessToken = decryptGoogleToken(account?.access_token, userId) ?? "";
+      refreshToken = decryptGoogleToken(account?.refresh_token, userId) ?? undefined;
     } else {
       if (!token) throw new Error(`No ${platform} token found`);
       accessToken = decrypt(token.accessToken);

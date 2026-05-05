@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encrypt";
+import { decryptGoogleToken } from "@/lib/google-tokens";
 import { fetchAnalytics } from "./index";
 import type { Platform } from "@prisma/client";
 
@@ -122,8 +123,9 @@ async function getAccessToken(
     const account = await prisma.account.findFirst({
       where: { userId, provider: "google" },
     });
-    if (!account?.access_token) throw new Error("No YouTube/Google token");
-    return account.access_token;
+    const decrypted = decryptGoogleToken(account?.access_token, userId);
+    if (!decrypted) throw new Error("No YouTube/Google token");
+    return decrypted;
   }
 
   const token = await prisma.platformToken.findUnique({

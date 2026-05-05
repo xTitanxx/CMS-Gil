@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { redactSecrets } from "@/lib/redact";
+import { encryptGoogleToken } from "@/lib/google-tokens";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
@@ -48,14 +49,14 @@ export async function GET(req: NextRequest) {
     // Only overwrite refresh_token if Google returned a new one
     // (Google omits it on subsequent authorizations if it's still valid).
     const updateData: Record<string, unknown> = {
-      access_token: tokens.access_token,
+      access_token: encryptGoogleToken(tokens.access_token, userId),
       ...(tokens.expiry_date
         ? { expires_at: Math.floor(tokens.expiry_date / 1000) }
         : {}),
       ...(tokens.scope ? { scope: tokens.scope } : {}),
     };
     if (tokens.refresh_token) {
-      updateData.refresh_token = tokens.refresh_token;
+      updateData.refresh_token = encryptGoogleToken(tokens.refresh_token, userId);
     }
 
     await prisma.account.updateMany({

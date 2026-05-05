@@ -19,9 +19,10 @@ interface WeeklyPlanViewProps {
   onGenerate: (preferences?: string) => Promise<void>;
   onApproveSlot: (slotId: string) => Promise<void>;
   onRemoveSlot: (slotId: string) => Promise<void>;
-  onSwapSlot: (slotId: string) => void;
   onClearAll: () => Promise<void>;
   onScheduleAll: () => Promise<void>;
+  /** @deprecated unused — retained for compatibility with assistant PlannerPanel until that's updated. */
+  onSwapSlot?: (slotId: string) => void;
 }
 
 function todayUTC(): Date {
@@ -44,7 +45,6 @@ export function WeeklyPlanView({
   onGenerate,
   onApproveSlot,
   onRemoveSlot,
-  onSwapSlot,
   onClearAll,
   onScheduleAll,
 }: WeeklyPlanViewProps) {
@@ -163,7 +163,6 @@ export function WeeklyPlanView({
                     slots={slotsByDay.get(dayKey) ?? []}
                     onApprove={onApproveSlot}
                     onRemove={onRemoveSlot}
-                    onSwap={onSwapSlot}
                   />
                 </div>
               );

@@ -66,12 +66,6 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);
 
-  const handleSwapSlot = useCallback((_day: string) => {
-    // Placeholder: open a post-picker modal or navigate to posts page
-    // For now just refresh — a future task can wire up a picker
-    refreshPlan();
-  }, [refreshPlan]);
-
   const handleClearAll = useCallback(async () => {
     if (!plan) return;
     setLoading(true);
@@ -130,7 +124,6 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
             onGenerate={handleGenerate}
             onApproveSlot={handleApproveSlot}
             onRemoveSlot={handleRemoveSlot}
-            onSwapSlot={handleSwapSlot}
             onClearAll={handleClearAll}
             onScheduleAll={handleScheduleAll}
           />

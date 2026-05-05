@@ -4,11 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp, Film, CheckCircle, RefreshCw, X, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Film, CheckCircle, X, Sparkles } from "lucide-react";
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { format } from "date-fns";
-import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData } from "@/lib/planner/types";
 
 const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -29,17 +28,15 @@ const STATUS_STYLES: Record<string, string> = {
 interface PlanSlotRowProps {
   day: Date;
   slot: PlanSlotData | null;
-  onSwap: (day: string) => void;
   onRemove: (slotId: string) => void;
   onApprove: (slotId: string) => void;
 }
 
-export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlotRowProps) {
+export function PlanSlotRow({ day, slot, onRemove, onApprove }: PlanSlotRowProps) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const dayName = format(day, "EEE");
   const dayNum = format(day, "d");
   const dayMonth = format(day, "MMM");
-  const dayKey = utcDateString(day);
 
   // Day column (always visible on left) — consistent styling across states
   const dayColumn = (
@@ -55,14 +52,6 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
       <div className="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 md:gap-4 md:px-4 md:py-3">
         {dayColumn}
         <span className="flex-1 text-sm italic text-gray-400">No post planned</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onSwap(dayKey)}
-          className="shrink-0"
-        >
-          Fill slot
-        </Button>
       </div>
     );
   }
@@ -162,15 +151,6 @@ export function PlanSlotRow({ day, slot, onSwap, onRemove, onApprove }: PlanSlot
               >
                 <CheckCircle className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">Approve</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onSwap(dayKey)}
-                className="h-8 gap-1 px-2 text-xs md:gap-1.5 md:px-3"
-              >
-                <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">Swap</span>
               </Button>
               <Button
                 size="sm"

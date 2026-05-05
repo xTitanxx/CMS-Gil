@@ -115,7 +115,6 @@ interface PlanSlotCardProps {
   slot: PlanSlotData;
   onApprove: (slotId: string) => void;
   onRemove: (slotId: string) => void;
-  onSwap: (slotId: string) => void;
   isLast?: boolean;
 }
 
@@ -261,12 +260,36 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
 
             {isProposed && (
               <>
-                <button onClick={() => onRemove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Skip"><X className="h-3.5 w-3.5" /></button>
-                <button onClick={() => onApprove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[#161513] text-white hover:opacity-80" title="Schedule"><Check className="h-3.5 w-3.5" strokeWidth={2.5} /></button>
+                <button
+                  onClick={() => onRemove(slot.id)}
+                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1 rounded-[8px] border border-[#eae7df] bg-white px-2 text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832] sm:px-2.5"
+                  title="Skip"
+                  aria-label="Skip"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden text-xs font-medium sm:inline">Skip</span>
+                </button>
+                <button
+                  onClick={() => onApprove(slot.id)}
+                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1 rounded-[8px] bg-[#161513] px-2 text-white hover:opacity-80 sm:px-2.5"
+                  title="Schedule"
+                  aria-label="Schedule"
+                >
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  <span className="hidden text-xs font-medium sm:inline">Schedule</span>
+                </button>
               </>
             )}
             {isScheduled && (
-              <button onClick={() => onRemove(slot.id)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-[#eae7df] bg-white text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832]" title="Unschedule"><X className="h-3.5 w-3.5" /></button>
+              <button
+                onClick={() => onRemove(slot.id)}
+                className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1 rounded-[8px] border border-[#eae7df] bg-white px-2 text-[#7a7870] hover:bg-gray-50 hover:text-[#3a3832] sm:px-2.5"
+                title="Unschedule"
+                aria-label="Unschedule"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span className="hidden text-xs font-medium sm:inline">Unschedule</span>
+              </button>
             )}
           </div>
 

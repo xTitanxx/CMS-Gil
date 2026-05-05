@@ -58,6 +58,7 @@ model User {
   memories             UserMemory[]
   archiveUnderstanding UserArchiveUnderstanding?
   assistantUsage       AssistantUsage[]
+  subscribersCreated   Subscriber[]
 }
 
 model VerificationToken {
@@ -555,6 +556,61 @@ model UserMemory {
 
   @@index([userId, createdAt])
   @@index([postId])
+}
+
+model Subscriber {
+  id               String                    @id @default(cuid())
+  name             String
+  codeHash         String                    @unique
+  monthlyBudgetUsd Decimal                   @default(1.20) @db.Decimal(8, 4)
+  cycleStart       DateTime                  @default(now())
+  cycleUsedUsd     Decimal                   @default(0) @db.Decimal(8, 4)
+  createdAt        DateTime                  @default(now())
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+  createdById      String
+  createdBy        User                      @relation(fields: [createdById], references: [id])
+  conversations    SubscriberConversation[]
+  usageEvents      SubscriberUsage[]
+
+  @@index([revokedAt])
+}
+
+model SubscriberConversation {
+  id           String              @id @default(cuid())
+  subscriberId String
+  subscriber   Subscriber          @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  title        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  messages     SubscriberMessage[]
+
+  @@index([subscriberId, updatedAt])
+}
+
+model SubscriberMessage {
+  id             String                 @id @default(cuid())
+  conversationId String
+  conversation   SubscriberConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  createdAt      DateTime               @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model SubscriberUsage {
+  id                       String     @id @default(cuid())
+  subscriberId             String
+  subscriber               Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  inputTokens              Int
+  cacheCreationInputTokens Int        @default(0)
+  cacheReadInputTokens     Int        @default(0)
+  outputTokens             Int
+  costUsd                  Decimal    @db.Decimal(8, 6)
+  createdAt                DateTime   @default(now())
+
+  @@index([subscriberId, createdAt])
 }
 
 // Per-API-call usage + cost for the assistant. One row per Anthropic

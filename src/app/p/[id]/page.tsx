@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getPublicPost, getRelatedPosts } from "@/lib/public-posts";
 import { getMediaUrl } from "@/lib/storage";
 import { BackButton } from "./BackButton";
+import { SubscriberHeader } from "@/components/SubscriberHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export default async function PublicPostPage({
 
   return (
     <main className="min-h-screen bg-gray-50">
+      <SubscriberHeader />
       <div className="max-w-xl mx-auto px-4 py-6">
         <div className="mb-4">
           <BackButton />

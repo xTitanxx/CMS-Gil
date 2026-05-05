@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Send, ArrowLeft } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { PostPreviewCard, type PreviewPost } from "./PostPreviewCard";
+import { BudgetMeter } from "@/components/BudgetMeter";
 
 interface Message {
   role: "user" | "assistant";
@@ -17,9 +19,36 @@ function stripMarkers(text: string): string {
   return text.replace(POST_MARKER_RE, "").replace(/\n{3,}/g, "\n\n");
 }
 
+const MARKDOWN_COMPONENTS = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="mb-2 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-2 last:mb-0 list-disc pl-5 space-y-0.5">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-2 last:mb-0 list-decimal pl-5 space-y-0.5">{children}</ol>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold">{children}</strong>
+  ),
+  em: ({ children }: { children?: React.ReactNode }) => (
+    <em className="italic">{children}</em>
+  ),
+  code: ({ children }: { children?: React.ReactNode }) => (
+    <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{children}</code>
+  ),
+};
+
+function Markdown({ text }: { text: string }) {
+  const trimmed = text.replace(/\n{3,}/g, "\n\n");
+  if (!trimmed.trim()) return null;
+  return <ReactMarkdown components={MARKDOWN_COMPONENTS}>{trimmed}</ReactMarkdown>;
+}
+
 function MessageContent({ content, posts }: { content: string; posts?: PreviewPost[] }) {
   if (!posts || posts.length === 0) {
-    return <>{stripMarkers(content)}</>;
+    return <Markdown text={stripMarkers(content)} />;
   }
 
   const postMap = new Map(posts.map((p) => [p.id, p]));
@@ -30,9 +59,9 @@ function MessageContent({ content, posts }: { content: string; posts?: PreviewPo
 
   while ((match = re.exec(content)) !== null) {
     if (match.index > lastIndex) {
-      const textBefore = content.slice(lastIndex, match.index).replace(/\n{3,}/g, "\n\n");
+      const textBefore = content.slice(lastIndex, match.index);
       if (textBefore.trim()) {
-        parts.push(<span key={`t-${lastIndex}`}>{textBefore}</span>);
+        parts.push(<Markdown key={`t-${lastIndex}`} text={textBefore} />);
       }
     }
     const post = postMap.get(match[1]);
@@ -43,9 +72,9 @@ function MessageContent({ content, posts }: { content: string; posts?: PreviewPo
   }
 
   if (lastIndex < content.length) {
-    const remaining = content.slice(lastIndex).replace(/\n{3,}/g, "\n\n");
+    const remaining = content.slice(lastIndex);
     if (remaining.trim()) {
-      parts.push(<span key={`t-${lastIndex}`}>{remaining}</span>);
+      parts.push(<Markdown key={`t-${lastIndex}`} text={remaining} />);
     }
   }
 
@@ -56,15 +85,75 @@ export default function GilChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [inputDisabled, setInputDisabled] = useState(false);
+  const [, setMessagesLoaded] = useState(false);
+  const [budgetRefreshKey, setBudgetRefreshKey] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chat/conversation");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          messages: { role: "user" | "assistant"; content: string }[];
+        };
+        if (cancelled || data.messages.length === 0) return;
+
+        // Re-hydrate post cards: collect every [POST:id] across all messages,
+        // fetch the previews once, then attach to each assistant message.
+        const allIds = new Set<string>();
+        for (const m of data.messages) {
+          if (m.role !== "assistant") continue;
+          const re = new RegExp(POST_MARKER_RE);
+          let mm: RegExpExecArray | null;
+          while ((mm = re.exec(m.content)) !== null) allIds.add(mm[1]);
+        }
+
+        let postMap = new Map<string, PreviewPost>();
+        if (allIds.size > 0) {
+          try {
+            const ids = Array.from(allIds).slice(0, 30).join(",");
+            const previewRes = await fetch(`/api/posts/preview?ids=${ids}`);
+            if (previewRes.ok) {
+              const posts: PreviewPost[] = await previewRes.json();
+              postMap = new Map(posts.map((p) => [p.id, p]));
+            }
+          } catch {
+            // network blip: messages render without cards, text intact
+          }
+        }
+
+        const hydrated: Message[] = data.messages.map((m) => {
+          if (m.role !== "assistant") return m;
+          const re = new RegExp(POST_MARKER_RE);
+          const refs: PreviewPost[] = [];
+          let mm: RegExpExecArray | null;
+          while ((mm = re.exec(m.content)) !== null) {
+            const p = postMap.get(mm[1]);
+            if (p && !refs.find((r) => r.id === p.id)) refs.push(p);
+          }
+          return refs.length > 0 ? { ...m, posts: refs } : m;
+        });
+
+        if (!cancelled) setMessages(hydrated);
+      } finally {
+        if (!cancelled) setMessagesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function sendMessage() {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || inputDisabled) return;
 
     const newMessages: Message[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
@@ -84,9 +173,10 @@ export default function GilChatPage() {
         const data = await res.json();
         setMessages((prev) => [
           ...prev.slice(0, -1),
-          { role: "assistant", content: data.error },
+          { role: "assistant", content: data.error ?? "Monthly allowance reached." },
         ]);
         setStreaming(false);
+        setInputDisabled(true);
         return;
       }
 
@@ -156,6 +246,7 @@ export default function GilChatPage() {
     }
 
     setStreaming(false);
+    setBudgetRefreshKey((k) => k + 1);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -267,6 +358,8 @@ export default function GilChatPage() {
         <div ref={bottomRef} />
       </div>
 
+      <BudgetMeter refreshKey={budgetRefreshKey} />
+
       {/* Input */}
       <div className="border-t border-gray-200 bg-white px-4 py-3 flex-shrink-0">
         <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
@@ -276,12 +369,13 @@ export default function GilChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Ask Virtual Gil..."
             rows={1}
-            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors"
+            disabled={inputDisabled || streaming}
+            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50"
             style={{ maxHeight: "120px", overflowY: "auto" }}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || streaming}
+            disabled={!input.trim() || streaming || inputDisabled}
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700 transition-colors"
           >
             <Send className="h-4 w-4" />

@@ -137,7 +137,7 @@ New module `src/lib/analytics/` fetches engagement snapshots from each connected
 
 ### Cron Jobs (`vercel.json`)
 All require `Authorization: Bearer <CRON_SECRET>`:
-- `/api/cron/publish` — daily 00:00, processes due `PENDING` `PublishRecord`s (max 20/tick)
+- `/api/cron/publish` — every 5 minutes, processes due `PENDING` `PublishRecord`s (max 20/tick). Was daily 00:00 until 2026-05-05 — that meant a post scheduled for 12:09 AM had to wait ~24h for the next tick.
 - `/api/cron/drive-sync` — daily 02:00, syncs all enabled `DriveSync` configs
 - `/api/cron/readiness` — daily 03:00, recomputes per-post readiness
 - `/api/cron/daily-brief` — daily 05:00, builds the assistant's daily brief

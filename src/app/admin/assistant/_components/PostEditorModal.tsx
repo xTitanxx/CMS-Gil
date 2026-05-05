@@ -27,6 +27,8 @@ interface PostEditorModalProps {
   onSaved?: (patch: { body?: string; thumbUrl?: string | null }) => void;
 }
 
+const HEADING_ID = "post-editor-modal-heading";
+
 export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalProps) {
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -35,6 +37,8 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousActiveRef = useRef<HTMLElement | null>(null);
   const initialBodyRef = useRef<string>("");
   const { save, status } = useAutoSavePost(postId, 600);
 
@@ -88,10 +92,61 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
     };
   }, []);
 
-  // Esc to close
+  // Capture trigger, move focus into the dialog, restore on unmount
+  useEffect(() => {
+    previousActiveRef.current =
+      typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    // Defer focus until the dialog content has rendered
+    const t = setTimeout(() => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = getFocusableElements(dialog);
+      const target = focusables[0] ?? dialog;
+      target.focus();
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      const prev = previousActiveRef.current;
+      if (prev && typeof prev.focus === "function") {
+        // Defer focus restore so any element-removal effects settle first
+        setTimeout(() => prev.focus(), 0);
+      }
+    };
+  }, []);
+
+  // Esc to close + Tab focus trap within dialog
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        handleClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = getFocusableElements(dialog);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !dialog.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -189,11 +244,16 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div
-        className="relative flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={HEADING_ID}
+        tabIndex={-1}
+        className="relative flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <h2 className="text-base font-semibold text-[#0d0d0d]">Edit post</h2>
+          <h2 id={HEADING_ID} className="text-base font-semibold text-[#0d0d0d]">Edit post</h2>
           <div className="flex items-center gap-2">
             <SaveIndicator status={status} />
             <button
@@ -221,7 +281,7 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
                 onChange={(e) => handleBodyChange(e.target.value)}
                 placeholder="Caption…"
                 rows={4}
-                className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] leading-snug text-[#0d0d0d] placeholder-[#8e8ea0] focus:border-gray-400 focus:outline-none"
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[15px] leading-snug text-[#0d0d0d] placeholder-[#8e8ea0] hover:border-gray-300 focus:border-transparent focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-blue-500"
               />
 
               <div className="mt-4">
@@ -406,4 +466,27 @@ function MediaTile({
       </button>
     </div>
   );
+}
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  );
+  return nodes.filter((el) => {
+    if (el.hasAttribute("disabled")) return false;
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    // Skip elements that are not visible (e.g. hidden file input)
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+    return true;
+  });
 }

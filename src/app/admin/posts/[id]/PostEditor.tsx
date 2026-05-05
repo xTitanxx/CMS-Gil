@@ -371,15 +371,27 @@ export function PostEditor({
               className="w-full resize-none overflow-hidden border-0 bg-transparent text-sm leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
             />
           </div>
-          {isLong && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-2 rounded-md px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {isLong ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+              >
+                {expanded ? "See less" : "See more"}
+              </button>
+            ) : (
+              <span />
+            )}
+            <span
+              aria-live="polite"
+              className={`text-xs tabular-nums ${
+                isLong ? "font-medium text-red-600" : "text-gray-400"
+              }`}
             >
-              {expanded ? "See less" : "See more"}
-            </button>
-          )}
+              {body.length}/{CAPTION_CHAR_LIMIT}
+            </span>
+          </div>
         </div>
 
         {/* Quoted post card */}

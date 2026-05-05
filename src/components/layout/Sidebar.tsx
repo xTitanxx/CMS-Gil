@@ -156,6 +156,7 @@ export function Sidebar() {
       {mobileOpen && (
         <>
           <div
+            aria-hidden="true"
             className="fixed inset-0 z-40 bg-black/40 md:hidden touch-manipulation"
             onClick={() => setMobileOpen(false)}
           />

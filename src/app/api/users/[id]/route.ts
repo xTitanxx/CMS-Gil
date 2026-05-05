@@ -32,20 +32,37 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await requireAdmin())) {
+  const session = await requireAdmin();
+  if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
   const body = await req.json();
-  const { name } = body as { name?: string };
+  const { name, isAdmin } = body as { name?: string; isAdmin?: boolean };
 
-  // Only `name` is editable. Email is set on creation and matches OAuth.
-  // Password is no longer supported (email/password sign-in was removed).
-  if (name === undefined) {
+  const data: { name?: string; isAdmin?: boolean } = {};
+  if (name !== undefined) data.name = name;
+  if (isAdmin !== undefined) {
+    // Don't let an admin demote themselves — would lock them out on next request.
+    if (id === session.user.id && isAdmin === false) {
+      return NextResponse.json(
+        { error: "Cannot demote yourself" },
+        { status: 400 }
+      );
+    }
+    data.isAdmin = isAdmin;
+  }
+
+  if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
-  const user = await prisma.user.update({ where: { id }, data: { name } });
-  return NextResponse.json({ id: user.id, email: user.email, name: user.name });
+  const user = await prisma.user.update({ where: { id }, data });
+  return NextResponse.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    isAdmin: user.isAdmin,
+  });
 }

@@ -14,6 +14,12 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       checks: ["state"],
+      // Safe given the signIn callback below already gates by allowlist —
+      // an attacker can't trigger linking unless their email is allowed.
+      // Without this flag, NextAuth throws OAuthAccountNotLinked when an
+      // admin pre-creates a User row (no Account yet) and the new admin then
+      // signs in with Google for the first time.
+      allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           scope: [
@@ -68,7 +74,7 @@ providers.push(
   })
 );
 
-function isAdminEmail(email: string | null | undefined): boolean {
+function isAdminEmailEnv(email: string | null | undefined): boolean {
   if (!email) return false;
   const allowed = (process.env.ADMIN_EMAILS ?? "")
     .split(",")
@@ -76,6 +82,27 @@ function isAdminEmail(email: string | null | undefined): boolean {
     .filter(Boolean);
   if (allowed.length === 0) return false;
   return allowed.includes(email.toLowerCase());
+}
+
+// Two-tier allowlist: env var ADMIN_EMAILS (bootstrap, baked at deploy time)
+// PLUS the User.isAdmin flag (DB-side, editable from /admin/settings without
+// redeploy). Env var wins on a tie — useful when the DB flag was accidentally
+// cleared and you need to recover via env.
+async function isAllowedAdmin(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  if (isAdminEmailEnv(email)) return true;
+  try {
+    const row = await prisma.user.findUnique({
+      where: { email },
+      select: { isAdmin: true },
+    });
+    return !!row?.isAdmin;
+  } catch {
+    // DB unavailable — fall back to env-var-only allowlist (already returned
+    // false above if it would have allowed). This means a transient DB
+    // outage during sign-in denies new admins, which is the safer failure mode.
+    return false;
+  }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -88,25 +115,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Subscribers always allowed (rate-limited at the provider's authorize step).
       if (account?.provider === "subscriber-credentials") return true;
       // Anything else is an admin sign-in (currently only Google OAuth).
-      // Hard-allowlist by email to prevent any random Google account from
-      // being promoted to admin / impersonating the owner via OWNER_USER_ID.
-      const ok = isAdminEmail(user.email);
+      // Two-tier allowlist: ADMIN_EMAILS env (bootstrap) + User.isAdmin (DB).
+      const ok = await isAllowedAdmin(user.email);
       if (!ok) {
-        // Diagnostic: surface why an admin sign-in was rejected so a real lockout
-        // (e.g. ADMIN_EMAILS misconfigured) can be diagnosed from Vercel logs
-        // without leaking the full env value. Email itself is already PII the
-        // user just submitted, so logging it here doesn't add exposure.
-        const allowedCount = (process.env.ADMIN_EMAILS ?? "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean).length;
         console.warn(
-          `[signIn] denied admin: provider=${account?.provider} email=${user.email ?? "<null>"} allowedCount=${allowedCount}`
+          `[signIn] denied admin: provider=${account?.provider} email=${user.email ?? "<null>"}`
         );
       }
       return ok;
     },
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         const isSubscriber = user.role === "subscriber";
         token.role = isSubscriber ? "subscriber" : "admin";
@@ -124,16 +142,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.email = user.email ?? null;
         }
       }
-      // Defense in depth: re-validate admin tokens on every refresh so that
-      // removing an email from ADMIN_EMAILS revokes existing sessions, and so
-      // any pre-fix JWTs (issued before the allowlist existed) lose admin.
-      // Clear identity too — leaving token.sub = OWNER_USER_ID with role=subscriber
-      // would let a demoted ex-admin act as the owner on routes that scope by
-      // session.user.id (most of /api/posts/*, /api/audio, /api/chat).
-      if (token.role === "admin" && !isAdminEmail(token.email as string | null | undefined)) {
-        token.role = "subscriber";
-        token.sub = undefined;
-        token.subscriberId = undefined;
+      // Defense in depth: re-validate admin tokens periodically. Demotion
+      // (via Settings UI flipping User.isAdmin → false or removing the email
+      // from ADMIN_EMAILS) propagates within ADMIN_RECHECK_MS without paying
+      // a DB hit on every request.
+      const ADMIN_RECHECK_MS = 5 * 60 * 1000;
+      if (token.role === "admin") {
+        const now = Date.now();
+        const lastCheck = (token.adminCheckedAt as number | undefined) ?? 0;
+        if (now - lastCheck > ADMIN_RECHECK_MS) {
+          const stillAllowed = await isAllowedAdmin(
+            token.email as string | null | undefined
+          );
+          if (!stillAllowed) {
+            token.role = "subscriber";
+            token.sub = undefined;
+            token.subscriberId = undefined;
+            return token;
+          }
+          token.adminCheckedAt = now;
+        }
       }
       return token;
     },

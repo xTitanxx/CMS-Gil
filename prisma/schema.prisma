@@ -44,6 +44,10 @@ model User {
   emailVerified        DateTime?
   image                String?
   passwordHash         String?
+  // DB-side admin allowlist. ADMIN_EMAILS env var stays as a bootstrap
+  // (always grants admin), but day-to-day adding/removing co-admins lives
+  // here so it can be edited from the admin Settings UI without redeploying.
+  isAdmin              Boolean                   @default(false)
   accounts             Account[]
   sessions             Session[]
   posts                Post[]

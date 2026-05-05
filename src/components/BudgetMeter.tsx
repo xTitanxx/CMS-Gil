@@ -32,18 +32,29 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
         day: "numeric",
       })
     : "soon";
-  const pct = Math.round(budget.percentUsed);
+  const pct = Math.min(100, Math.max(0, Math.round(budget.percentUsed)));
+  const danger = pct >= 90;
+  const warn = !danger && pct >= 75;
 
   return (
-    <div className="border-b border-gray-200 bg-white px-4 py-2 text-xs text-gray-600">
-      <div className="mx-auto flex max-w-3xl items-center gap-3">
-        <span>Monthly chat allowance: {pct}% used. Renews {reset}.</span>
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200">
-          <div
-            className={`h-full rounded-full ${pct >= 90 ? "bg-red-500" : "bg-blue-500"}`}
-            style={{ width: `${Math.min(100, pct)}%` }}
-          />
-        </div>
+    <div className="px-3 pt-2.5 pb-1">
+      <div className="flex items-center justify-between text-[11px] font-medium text-gray-500">
+        <span className="uppercase tracking-wide">Monthly allowance</span>
+        <span className={danger ? "text-red-600" : warn ? "text-amber-600" : "text-gray-500"}>
+          {pct}% · renews {reset}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ease-out ${
+            danger
+              ? "bg-gradient-to-r from-red-500 to-red-600"
+              : warn
+              ? "bg-gradient-to-r from-amber-400 to-amber-500"
+              : "bg-gradient-to-r from-blue-500 to-indigo-500"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );

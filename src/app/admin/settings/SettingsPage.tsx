@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Trash2, KeyRound } from "lucide-react";
+import { Trash2, ShieldOff, ShieldCheck } from "lucide-react";
 
 interface UserRow {
   id: string;
   name: string | null;
   email: string | null;
   image: string | null;
+  isAdmin: boolean;
   loginMethod: string;
 }
 
@@ -30,16 +31,11 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Add user form
+  // Add admin form
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
-
-  // Reset password
-  const [resetId, setResetId] = useState<string | null>(null);
-  const [resetPassword, setResetPassword] = useState("");
 
   async function fetchUsers() {
     const res = await fetch("/api/users");
@@ -59,25 +55,24 @@ export default function SettingsPage() {
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: newEmail, name: newName, password: newPassword }),
+      body: JSON.stringify({ email: newEmail, name: newName }),
     });
 
     setAdding(false);
 
     if (!res.ok) {
       const data = await res.json();
-      setAddError(data.error || "Failed to add user");
+      setAddError(data.error || "Failed to add admin");
       return;
     }
 
     setNewEmail("");
     setNewName("");
-    setNewPassword("");
     await fetchUsers();
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this user?")) return;
+    if (!confirm("Remove this user? Their posts and data will be deleted too.")) return;
     const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
     if (res.ok) {
       setUsers((prev) => prev.filter((u) => u.id !== id));
@@ -87,20 +82,19 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleResetPassword(id: string) {
-    if (!resetPassword) return;
+  async function handleToggleAdmin(id: string, makeAdmin: boolean) {
+    const verb = makeAdmin ? "Promote" : "Demote";
+    if (!confirm(`${verb} this user?`)) return;
     const res = await fetch(`/api/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: resetPassword }),
+      body: JSON.stringify({ isAdmin: makeAdmin }),
     });
     if (res.ok) {
-      setResetId(null);
-      setResetPassword("");
-      alert("Password updated");
+      await fetchUsers();
     } else {
       const data = await res.json();
-      alert(data.error || "Failed to reset password");
+      alert(data.error || `Failed to ${verb.toLowerCase()}`);
     }
   }
 
@@ -114,9 +108,11 @@ export default function SettingsPage() {
       {/* Admin section */}
       <section className="rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Admin</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Admins</h2>
           <p className="text-sm text-gray-500">
-            Everyone listed here has full admin access.
+            Sign-in is Google-only. Users marked admin can access the
+            content hub. Adding an email here pre-authorizes their next
+            Google sign-in.
           </p>
         </div>
 
@@ -142,100 +138,86 @@ export default function SettingsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-gray-900">
                     {user.name || user.email}
+                    {user.isAdmin && (
+                      <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        admin
+                      </span>
+                    )}
                   </p>
                   <p className="truncate text-xs text-gray-500">
-                    {user.email} · {user.loginMethod}
+                    {user.email}
+                    {user.loginMethod !== "google" && (
+                      <span className="ml-1 text-amber-600">· {user.loginMethod}</span>
+                    )}
                   </p>
                 </div>
 
-                {resetId === user.id ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      placeholder="New password"
-                      value={resetPassword}
-                      onChange={(e) => setResetPassword(e.target.value)}
-                      className="w-32 rounded border border-gray-300 px-2 py-1 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => handleResetPassword(user.id)}
-                    >
-                      Save
-                    </Button>
+                <div className="flex items-center gap-1">
+                  {user.isAdmin ? (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        setResetId(null);
-                        setResetPassword("");
-                      }}
+                      onClick={() => handleToggleAdmin(user.id, false)}
+                      title="Demote (revoke admin access)"
                     >
-                      Cancel
+                      <ShieldOff className="h-4 w-4" />
                     </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    {user.loginMethod === "credentials" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setResetId(user.id)}
-                        title="Reset password"
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
-                    )}
+                  ) : (
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(user.id)}
-                      title="Remove user"
+                      onClick={() => handleToggleAdmin(user.id, true)}
+                      title="Promote to admin"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <ShieldCheck className="h-4 w-4" />
                     </Button>
-                  </div>
-                )}
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={() => handleDelete(user.id)}
+                    title="Remove user"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         )}
 
-        {/* Add user form */}
+        {/* Add admin form */}
         <div className="border-t border-gray-200 px-6 py-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-900">
-            Add new admin
+          <h3 className="mb-1 text-sm font-medium text-gray-900">
+            Pre-authorize a new admin
           </h3>
+          <p className="mb-3 text-xs text-gray-500">
+            Enter the email of a Google account. They&apos;ll be allowed to
+            sign in immediately — no redeploy needed.
+          </p>
           <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[160px]">
-              <label className="block text-xs text-gray-500 mb-1">Email</label>
+              <label className="block text-xs text-gray-500 mb-1">
+                Google email
+              </label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 required
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="min-w-[120px]">
-              <label className="block text-xs text-gray-500 mb-1">Name</label>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                placeholder="someone@gmail.com"
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div className="min-w-[120px]">
               <label className="block text-xs text-gray-500 mb-1">
-                Password
+                Name (optional)
               </label>
               <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>

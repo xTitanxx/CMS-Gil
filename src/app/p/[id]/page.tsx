@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { getPublicPost, getRelatedPosts } from "@/lib/public-posts";
 import { getMediaUrl } from "@/lib/storage";
 import { getLikedPostIds } from "@/lib/engagement/like";
 import { getBookmarkedPostIds } from "@/lib/engagement/bookmark";
+import { listComments } from "@/lib/engagement/comments";
 import { BackButton } from "./BackButton";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
 import { EngagementBar } from "@/components/EngagementBar";
+import { CommentSection } from "@/components/CommentSection";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +51,23 @@ export default async function PublicPostPage({
   const subscriberId = session?.user?.subscriberId;
   const role = session?.user?.role;
   const signedIn = role === "subscriber";
-  const [likedIds, bookmarkedIds] = await Promise.all<string[]>([
-    signedIn && subscriberId ? getLikedPostIds(subscriberId, [post.id]) : [],
-    signedIn && subscriberId ? getBookmarkedPostIds(subscriberId, [post.id]) : [],
+  const likedPromise: Promise<string[]> =
+    signedIn && subscriberId ? getLikedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+  const bookmarkedPromise: Promise<string[]> =
+    signedIn && subscriberId ? getBookmarkedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+  const viewerSubscriberPromise =
+    signedIn && subscriberId
+      ? prisma.subscriber.findUnique({
+          where: { id: subscriberId },
+          select: { displayName: true, commentsDisabledAt: true },
+        })
+      : Promise.resolve(null);
+
+  const [likedIds, bookmarkedIds, initialComments, viewerSubscriber] = await Promise.all([
+    likedPromise,
+    bookmarkedPromise,
+    listComments(post.id, null, subscriberId ?? null),
+    viewerSubscriberPromise,
   ]);
 
   const mainMedia = await mediaWithUrls(post.media);
@@ -103,6 +120,13 @@ export default async function PublicPostPage({
             initialLiked={likedIds.includes(post.id)}
             initialBookmarked={bookmarkedIds.includes(post.id)}
             signedIn={signedIn}
+          />
+          <CommentSection
+            postId={post.id}
+            signedIn={signedIn}
+            initialDisplayName={viewerSubscriber?.displayName ?? null}
+            commentsDisabled={!!viewerSubscriber?.commentsDisabledAt}
+            initialComments={initialComments}
           />
         </article>
 

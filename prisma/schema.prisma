@@ -155,9 +155,10 @@ model Post {
   parentPost   Post?   @relation("PostAlbumChildren", fields: [parentPostId], references: [id], onDelete: SetNull)
   childPosts   Post[]  @relation("PostAlbumChildren")
 
-  // Denormalized engagement counts (PR1: likeCount; PR2: commentCount).
-  // Updated in the same sequential-await chain as the underlying mutation.
-  likeCount Int @default(0)
+  // Denormalized engagement counts. Updated in the same sequential-await chain
+  // as the underlying mutation (no $transaction — pgbouncer gotcha).
+  likeCount    Int @default(0)
+  commentCount Int @default(0)
 
   media      Media[]
   publishes  PublishRecord[]
@@ -167,6 +168,7 @@ model Post {
   memories   UserMemory[]
   likes      PostLike[]
   bookmarks  PostBookmark[]
+  comments   PostComment[]
 
   @@index([userId, originalDate])
   @@index([sourceId])
@@ -200,6 +202,31 @@ model PostBookmark {
 
   @@unique([postId, subscriberId])
   @@index([subscriberId, createdAt(sort: Desc)])
+}
+
+enum CommentStatus {
+  PUBLISHED
+  HIDDEN
+}
+
+model PostComment {
+  id           String        @id @default(cuid())
+  postId       String
+  subscriberId String
+  body         String
+  status       CommentStatus @default(PUBLISHED)
+  editedAt     DateTime?
+  // Set when an admin hides the comment. Author hard-deletes do NOT set this —
+  // they remove the row entirely. Soft delete preserves body for audit.
+  deletedAt    DateTime?
+  createdAt    DateTime      @default(now())
+
+  post         Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  subscriber   Subscriber    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@index([postId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([subscriberId, createdAt])
 }
 
 enum PostSource {
@@ -601,12 +628,21 @@ model Subscriber {
   createdAt        DateTime                  @default(now())
   lastSeenAt       DateTime?
   revokedAt        DateTime?
+  // Public-facing display name shown on comments. Falls back to `name` while
+  // null. Set lazily via the first-comment composer prompt — subscribers who
+  // never comment never need to pick one.
+  displayName        String?
+  // Admin-set commenting disablement (without revoking the whole subscription).
+  // When set, server rejects POST /comments with 403 { error: "comments_disabled" }.
+  commentsDisabledAt DateTime?
+
   createdById      String
   createdBy        User                      @relation(fields: [createdById], references: [id])
   conversations    SubscriberConversation[]
   usageEvents      SubscriberUsage[]
   likes            PostLike[]
   bookmarks        PostBookmark[]
+  comments         PostComment[]
 
   @@index([revokedAt])
 }

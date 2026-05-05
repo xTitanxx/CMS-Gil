@@ -8,7 +8,7 @@ import { priceForUsage } from "@/lib/assistant/cost";
 
 export const maxDuration = 60;
 
-const ASSISTANT_MODEL = "claude-sonnet-4-6";
+const ASSISTANT_MODEL = "claude-haiku-4-5";
 const client = new Anthropic();
 const MAX_ITERATIONS = 6;
 
@@ -16,6 +16,37 @@ type PersistedBlock =
   | { kind: "text"; text: string }
   | { kind: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "tool_result"; toolUseId: string; result: { ok: boolean; data?: unknown; error?: string } };
+
+// Walk a tool_result's data tree and drop fields the model doesn't need on
+// replay. Used only when re-sending prior turns' tool results to Anthropic —
+// the persisted DB row stays rich so the UI keeps rendering full cards. The
+// goal is to stop paying input-tokens for post bodies, media URLs, and other
+// bulk data that the model already factored into its earlier replies.
+const SLIM_DROP_KEYS = new Set(["media", "publishes", "thumbUrl", "platformUrl"]);
+const SLIM_BODY_MAX = 200;
+function slimResultData(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(slimResultData);
+  if (typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (SLIM_DROP_KEYS.has(k)) continue;
+    if (k === "body" && typeof v === "string" && v.length > SLIM_BODY_MAX) {
+      out[k] = v.slice(0, SLIM_BODY_MAX) + "…";
+      continue;
+    }
+    out[k] = slimResultData(v);
+  }
+  return out;
+}
+function slimToolResult(result: PersistedBlock & { kind: "tool_result" }): {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+} {
+  if (!result.result.ok) return result.result;
+  return { ok: true, data: slimResultData(result.result.data) };
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -65,7 +96,7 @@ export async function POST(req: NextRequest) {
             (tr): Anthropic.ToolResultBlockParam => ({
               type: "tool_result",
               tool_use_id: tr.toolUseId,
-              content: JSON.stringify(tr.result),
+              content: JSON.stringify(slimToolResult(tr)),
               is_error: !tr.result.ok,
             }),
           ),
@@ -90,11 +121,14 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const systemText = await buildSystemPrompt(userId, new Date());
-  // 1h ephemeral cache — long enough that idle pauses between turns still hit
-  // the cache instead of paying the cache-write premium each time.
+  const { cached: cachedPrompt, dynamic: dynamicContext } = await buildSystemPrompt(userId, new Date());
+  // 1h ephemeral cache on the static prefix — long enough that idle pauses
+  // between turns still hit the cache instead of paying the write premium.
+  // The dynamic block (date, counts, memories) is appended uncached so it
+  // can change every request without invalidating the cached prefix.
   const systemCached: Anthropic.TextBlockParam[] = [
-    { type: "text", text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } },
+    { type: "text", text: cachedPrompt, cache_control: { type: "ephemeral", ttl: "1h" } },
+    { type: "text", text: dynamicContext },
   ];
   const encoder = new TextEncoder();
   const conversationIdFinal = conv.id;

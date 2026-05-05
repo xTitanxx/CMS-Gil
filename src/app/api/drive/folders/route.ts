@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
+import { decryptGoogleToken } from "@/lib/google-tokens";
 
 export async function GET(_req: NextRequest) {
   const session = await auth();
@@ -15,7 +16,10 @@ export async function GET(_req: NextRequest) {
     select: { access_token: true, refresh_token: true },
   });
 
-  if (!account?.access_token) {
+  const accessToken = decryptGoogleToken(account?.access_token, session.user.id);
+  const refreshToken = decryptGoogleToken(account?.refresh_token, session.user.id);
+
+  if (!accessToken) {
     return NextResponse.json(
       { error: "Google account not connected" },
       { status: 400 }
@@ -27,8 +31,8 @@ export async function GET(_req: NextRequest) {
     process.env.GOOGLE_CLIENT_SECRET
   );
   oauth2Client.setCredentials({
-    access_token: account.access_token,
-    refresh_token: account.refresh_token ?? undefined,
+    access_token: accessToken,
+    refresh_token: refreshToken ?? undefined,
   });
 
   const drive = google.drive({ version: "v3", auth: oauth2Client });

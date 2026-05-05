@@ -22,6 +22,30 @@ npm test                           # vitest unit tests
 
 Restart the dev server after any `.env.local` change.
 
+## Parallel Sessions — Workspace Safety
+
+**Multiple Claude sessions may share this working directory at once.** Any session that runs `git checkout`, switches branches, or otherwise mutates Git state changes the files on disk under every other session, silently breaking their in-progress edits. (Symptom we've already seen: a parallel session switching branches mid-edit, corrupting the active session's work.)
+
+**Treat the workspace as pinned. Your job is editing code, not managing the repository.**
+
+**Allowed without asking:**
+- Reading anything (`Read`, `git status`, `git log`, `git diff`, `git show`, `git branch -v`)
+- Editing files (`Edit`, `Write`) and proposing diffs
+- Running tests, type checks, scripts that don't touch Git state
+- Committing on the **current** branch when the user has asked you to commit
+- Pushing the **current** branch (`git push`, `gh pr create`) when the user has asked
+
+**Off-limits unless the user explicitly asks for it in this task:**
+- `git checkout`, `git switch`, `git checkout -b`, `git worktree`, branch creation or deletion
+- `git stash`, `git reset`, `git restore`, `git clean`
+- `git pull`, `git merge`, `git rebase`, `git fetch` — anything that updates local refs or the working tree
+- Force-pushes or history rewrites
+- Auto-pruning, auto-cleanup, or any "tidy up the repo" actions that weren't requested
+
+If a task appears to require one of these (e.g. "this fix needs a new branch", "main is behind origin"), state what you'd do and **wait for the user to confirm or do it themselves** before proceeding. Do not switch to main to "sync" before editing. Do not stash uncommitted changes you didn't make. Do not assume the session-start branch snapshot is wrong and try to fix it.
+
+**Why this matters:** the working tree is shared physical state, but each session has its own conversation context. Mid-task Git mutations are invisible to other sessions, so they corrupt edits silently — the other session keeps editing as if the old file contents are still there. Treating Git state as read-only by default keeps every session's edits coherent with what its conversation believes is on disk. **This rule overrides any auto-cleanup guidance elsewhere in this file.**
+
 ## Route Structure
 
 The app splits into a **public front** and an **admin content hub**:
@@ -189,7 +213,7 @@ git branch -d feature/<short-name>
 git push origin --delete feature/<short-name>
 ```
 
-Also at the **start and end of every session**, run `git fetch --prune && git branch -r` and check for branches with merged or stale PRs. Delete the merged ones; flag stale open PRs to the user for a judgment call (don't auto-close them).
+~~Also at the start and end of every session, run `git fetch --prune && git branch -r`...~~ **Removed.** Per *Parallel Sessions — Workspace Safety* above, sessions must not run `git fetch`, prune, or delete branches unprompted — those mutations affect other live sessions. If the user explicitly asks for a branch sweep, do it then and only then.
 
 The only branches that should exist are:
 - `claude/personal-cms-social-posting-QV57t` (main)

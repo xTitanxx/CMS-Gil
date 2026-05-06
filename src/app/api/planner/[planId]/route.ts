@@ -1,8 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getCandidatePosts } from "@/lib/planner/candidates";
+import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
 
 type PlanStatus = "DRAFT" | "PARTIAL" | "APPROVED";
+
+const RECYCLE_REASONING = "Recycling oldest unpublished content";
+
+async function slideAndRefillFromIndex(
+  planId: string,
+  userId: string,
+  rejectedPostId: string,
+  slots: Array<{ id: string; postId: string; platforms: string[] }>,
+  idx: number
+) {
+  // Slide: copy slots[i+1] onto slots[i] for i from idx to len-2.
+  for (let i = idx; i < slots.length - 1; i++) {
+    const src = slots[i + 1];
+    await prisma.weeklyPlanSlot.update({
+      where: { id: slots[i].id },
+      data: {
+        postId: src.postId,
+        platforms: src.platforms,
+        reasoning: RECYCLE_REASONING,
+        status: "PROPOSED",
+      },
+    });
+  }
+
+  const lastSlot = slots[slots.length - 1];
+  const usedPostIds = new Set(slots.slice(0, slots.length - 1).map((s) => s.postId));
+
+  // Exclude posts already pinned in this user's other DRAFT/PARTIAL plans
+  const adjacentSlots = await prisma.weeklyPlanSlot.findMany({
+    where: {
+      plan: { userId, status: { in: ["DRAFT", "PARTIAL"] } },
+      status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+      NOT: { planId },
+    },
+    select: { postId: true },
+  });
+  for (const s of adjacentSlots) usedPostIds.add(s.postId);
+
+  const candidates = await getCandidatePosts(userId);
+  const refill = candidates.find(
+    (c) => !usedPostIds.has(c.id) && c.id !== rejectedPostId
+  );
+
+  if (refill) {
+    const platformTokens = await prisma.platformToken.findMany({
+      where: { userId },
+      select: { platform: true },
+    });
+    const connectedPlatforms = platformTokens.map((t) => t.platform as string);
+    const platforms = getEligiblePlatforms(refill.mediaTypes, connectedPlatforms);
+
+    await prisma.weeklyPlanSlot.update({
+      where: { id: lastSlot.id },
+      data: {
+        postId: refill.id,
+        platforms,
+        reasoning: RECYCLE_REASONING,
+        status: "PROPOSED",
+      },
+    });
+  } else {
+    // No candidates left — mark the trailing slot SKIPPED so the gap is visible.
+    await prisma.weeklyPlanSlot.update({
+      where: { id: lastSlot.id },
+      data: { status: "SKIPPED" },
+    });
+  }
+}
 
 async function recalculatePlanStatus(planId: string): Promise<PlanStatus> {
   const slots = await prisma.weeklyPlanSlot.findMany({
@@ -34,7 +104,7 @@ export async function PATCH(
   // Verify plan belongs to user
   const plan = await prisma.weeklyPlan.findUnique({
     where: { id: planId },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, mode: true },
   });
   if (!plan || plan.userId !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -73,11 +143,9 @@ export async function PATCH(
         where: { id: slotId, planId },
         select: { postId: true, platforms: true, status: true },
       });
-      await prisma.weeklyPlanSlot.updateMany({
-        where: { id: slotId, planId },
-        data: { status: "SKIPPED" },
-      });
-      if (slot && slot.status === "SCHEDULED" && slot.platforms.length > 0) {
+      if (!slot) break;
+
+      if (slot.status === "SCHEDULED" && slot.platforms.length > 0) {
         await prisma.publishRecord.updateMany({
           where: {
             postId: slot.postId,
@@ -87,6 +155,33 @@ export async function PATCH(
           data: { status: "CANCELLED" },
         });
       }
+
+      if (plan.mode === "DUMB" && slot.status !== "SCHEDULED") {
+        // Recycle queue: shift subsequent slots up and pull the next-oldest
+        // candidate into the trailing slot. SCHEDULED slots stay parked
+        // (their PublishRecords are real); falls through to SKIPPED below.
+        const slidableSlots = await prisma.weeklyPlanSlot.findMany({
+          where: { planId, status: { in: ["PROPOSED", "APPROVED"] } },
+          orderBy: { day: "asc" },
+          select: { id: true, postId: true, platforms: true },
+        });
+        const idx = slidableSlots.findIndex((s) => s.id === slotId);
+        if (idx !== -1) {
+          await slideAndRefillFromIndex(
+            planId,
+            plan.userId,
+            slot.postId,
+            slidableSlots,
+            idx
+          );
+          break;
+        }
+      }
+
+      await prisma.weeklyPlanSlot.updateMany({
+        where: { id: slotId, planId },
+        data: { status: "SKIPPED" },
+      });
       break;
     }
 

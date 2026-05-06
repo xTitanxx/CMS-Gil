@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Sparkles, CalendarCheck, Loader2, ChevronUp, ChevronDown, Trash2 } from "lucide-react";
+import { CalendarDays, Sparkles, CalendarCheck, Loader2, ChevronUp, ChevronDown, Trash2, Recycle } from "lucide-react";
 import { format } from "date-fns";
 import { utcDateString } from "@/lib/planner/week";
 import { DayGroup } from "./DayGroup";
@@ -16,7 +16,7 @@ const LOAD_MORE = 7;
 interface WeeklyPlanViewProps {
   plan: WeeklyPlanData | null;
   loading: boolean;
-  onGenerate: (preferences?: string) => Promise<void>;
+  onGenerate: (preferences?: string, mode?: "AI" | "DUMB") => Promise<void>;
   onApproveSlot: (slotId: string) => Promise<void>;
   onRemoveSlot: (slotId: string) => Promise<void>;
   onClearAll: () => Promise<void>;
@@ -99,7 +99,15 @@ export function WeeklyPlanView({
         <div className="flex min-w-0 items-center gap-2">
           <CalendarDays className="h-5 w-5 shrink-0 text-gray-500" />
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-gray-900">Planner</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Planner</h2>
+              {plan?.mode === "DUMB" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                  <Recycle className="h-3 w-3" />
+                  Recycle queue
+                </span>
+              )}
+            </div>
             <p className="truncate text-[11px] text-gray-400">
               {format(days[0], "MMM d")} – {format(days[days.length - 1], "MMM d")}
             </p>
@@ -119,6 +127,18 @@ export function WeeklyPlanView({
               <span className="hidden sm:inline">Clear All</span>
             </Button>
           )}
+          <Button
+            onClick={() => onGenerate(undefined, "DUMB")}
+            disabled={loading}
+            size="sm"
+            variant="outline"
+            className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+            title="Fill the week with the oldest unpublished posts (no AI)"
+          >
+            <Recycle className="h-4 w-4" />
+            <span className="hidden sm:inline">Recycle Oldest</span>
+            <span className="sm:hidden">Recycle</span>
+          </Button>
           <Button
             onClick={() => onGenerate()}
             disabled={loading}

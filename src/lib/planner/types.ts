@@ -40,10 +40,13 @@ export interface PlanSlotData {
   };
 }
 
+export type PlanMode = "AI" | "DUMB";
+
 export interface WeeklyPlanData {
   id: string;
   weekStart: string;
   status: "DRAFT" | "PARTIAL" | "APPROVED";
+  mode: PlanMode;
   slots: PlanSlotData[];
 }
 

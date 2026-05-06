@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
   if (!start || !end) {
     return NextResponse.json({ error: "start and end required" }, { status: 400 });
   }
+  const statusFilter = req.nextUrl.searchParams.get("status"); // "published" or null
+  const publishedOnly = statusFilter === "published";
 
   const startDate = new Date(`${start}T00:00:00.000Z`);
   const endDate = new Date(`${end}T23:59:59.999Z`);
@@ -30,38 +32,50 @@ export async function GET(req: NextRequest) {
   }
   const userId = session.user.id;
 
+  const importedPostsPromise = publishedOnly
+    ? null
+    : prisma.post.findMany({
+        where: {
+          userId,
+          source: "FACEBOOK",
+          originalDate: { gte: startDate, lte: endDate },
+          publishes: { none: {} },
+        },
+        include: { media: { take: 1 } },
+      });
+
+  const planSlotsPromise = publishedOnly
+    ? null
+    : prisma.weeklyPlanSlot.findMany({
+        where: {
+          plan: { userId },
+          day: { gte: startDate, lte: endDate },
+          status: { in: ["PROPOSED", "APPROVED"] },
+        },
+        include: {
+          post: { include: { media: { take: 1 } } },
+        },
+      });
+
   const [publishRecords, importedPosts, planSlots] = await Promise.all([
     prisma.publishRecord.findMany({
       where: {
         post: { userId },
-        OR: [
-          { status: "PENDING", scheduledAt: { gte: startDate, lte: endDate } },
-          { status: "PUBLISHED", publishedAt: { gte: startDate, lte: endDate } },
-        ],
+        ...(publishedOnly
+          ? { status: "PUBLISHED", publishedAt: { gte: startDate, lte: endDate } }
+          : {
+              OR: [
+                { status: "PENDING", scheduledAt: { gte: startDate, lte: endDate } },
+                { status: "PUBLISHED", publishedAt: { gte: startDate, lte: endDate } },
+              ],
+            }),
       },
       include: {
         post: { include: { media: { take: 1 } } },
       },
     }),
-    prisma.post.findMany({
-      where: {
-        userId,
-        source: "FACEBOOK",
-        originalDate: { gte: startDate, lte: endDate },
-        publishes: { none: {} },
-      },
-      include: { media: { take: 1 } },
-    }),
-    prisma.weeklyPlanSlot.findMany({
-      where: {
-        plan: { userId },
-        day: { gte: startDate, lte: endDate },
-        status: { in: ["PROPOSED", "APPROVED"] },
-      },
-      include: {
-        post: { include: { media: { take: 1 } } },
-      },
-    }),
+    importedPostsPromise ?? [],
+    planSlotsPromise ?? [],
   ]);
 
   // Group publish records by postId+date+status so a post published to

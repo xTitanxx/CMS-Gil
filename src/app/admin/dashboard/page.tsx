@@ -129,6 +129,7 @@ export default async function DashboardPage() {
       id: plan.id,
       weekStart: format(plan.weekStart, "yyyy-MM-dd"),
       status: plan.status as WeeklyPlanData["status"],
+      mode: plan.mode as WeeklyPlanData["mode"],
       slots,
     };
   }

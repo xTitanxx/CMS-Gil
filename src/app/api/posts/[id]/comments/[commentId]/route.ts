@@ -9,6 +9,7 @@ import {
   deleteComment,
   editComment,
 } from "@/lib/engagement/comments";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 
 export async function PATCH(
   req: NextRequest,
@@ -17,20 +18,20 @@ export async function PATCH(
   const { commentId } = await params;
 
   const session = await auth();
-  const role = session?.user?.role;
-  const subscriberId = session?.user?.subscriberId;
-
   if (!session) return NextResponse.json({ error: "unauth" }, { status: 401 });
-  if (role !== "subscriber" || !subscriberId) {
+
+  const actorId = await resolveActorSubscriberId(session);
+  if (!actorId) {
     return NextResponse.json({ error: "subscriber_required" }, { status: 403 });
   }
-
-  const sub = await prisma.subscriber.findUnique({
-    where: { id: subscriberId },
-    select: { revokedAt: true },
-  });
-  if (!sub || sub.revokedAt) {
-    return NextResponse.json({ error: "revoked" }, { status: 403 });
+  if (session.user.role === "subscriber") {
+    const sub = await prisma.subscriber.findUnique({
+      where: { id: actorId },
+      select: { revokedAt: true },
+    });
+    if (!sub || sub.revokedAt) {
+      return NextResponse.json({ error: "revoked" }, { status: 403 });
+    }
   }
 
   let body: { body?: string };
@@ -44,7 +45,7 @@ export async function PATCH(
   }
 
   try {
-    const comment = await editComment({ commentId, subscriberId, body: body.body });
+    const comment = await editComment({ commentId, subscriberId: actorId, body: body.body });
     return NextResponse.json({ comment });
   } catch (err) {
     if (err instanceof CommentNotFoundError) {
@@ -70,16 +71,15 @@ export async function DELETE(
   const { commentId } = await params;
 
   const session = await auth();
-  const role = session?.user?.role;
-  const subscriberId = session?.user?.subscriberId;
-
   if (!session) return NextResponse.json({ error: "unauth" }, { status: 401 });
-  if (role !== "subscriber" || !subscriberId) {
+
+  const actorId = await resolveActorSubscriberId(session);
+  if (!actorId) {
     return NextResponse.json({ error: "subscriber_required" }, { status: 403 });
   }
 
   try {
-    const result = await deleteComment({ commentId, subscriberId });
+    const result = await deleteComment({ commentId, subscriberId: actorId });
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CommentNotFoundError) {

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl } from "@/lib/storage";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,10 @@ function formatDate(date: Date): string {
 
 export default async function BookmarksPage() {
   const session = await auth();
-  const subscriberId = session?.user?.subscriberId;
-  if (session?.user?.role !== "subscriber" || !subscriberId) {
+  // Admin sees their own shadow-subscriber bookmarks here. Real subscribers
+  // see their own. Anyone else: redirect to /welcome.
+  const subscriberId = await resolveActorSubscriberId(session);
+  if (!subscriberId) {
     redirect("/welcome?next=/bookmarks");
   }
 

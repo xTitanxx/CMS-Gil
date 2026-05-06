@@ -2,11 +2,21 @@
 
 import { useEffect, useState } from "react";
 
-type Budget = {
-  unlimited: boolean;
+type SubscriberBudget = {
+  role: "subscriber";
+  unlimited: false;
   percentUsed: number;
   cycleResetsAt: string | null;
 };
+
+type AdminBudget = {
+  role: "admin";
+  unlimited: true;
+  monthSpentUsd: number;
+  monthLabel: string;
+};
+
+type Budget = SubscriberBudget | AdminBudget;
 
 export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
   const [budget, setBudget] = useState<Budget | null>(null);
@@ -24,7 +34,20 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
     };
   }, [refreshKey]);
 
-  if (!budget || budget.unlimited) return null;
+  if (!budget) return null;
+
+  if (budget.role === "admin") {
+    return (
+      <div className="border-b border-gray-200 bg-white px-4 py-2 text-xs text-gray-600">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+          <span>API spend this month ({budget.monthLabel}):</span>
+          <span className="font-mono font-semibold text-gray-800">
+            ${budget.monthSpentUsd.toFixed(2)}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const reset = budget.cycleResetsAt
     ? new Date(budget.cycleResetsAt).toLocaleDateString("en-US", {

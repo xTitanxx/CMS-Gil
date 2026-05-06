@@ -21,11 +21,16 @@ export async function getPostContext(): Promise<{
     throw new Error("GIL_USER_ID environment variable is not set");
   }
 
+  // Baseline is the always-cached "ambient context" for small-talk and
+  // recency-aware answers. The per-turn hybrid retrieval in /api/chat picks
+  // up older posts that fall outside this window, so we keep the baseline
+  // small (was 200) — saves ~75% of system-prompt tokens without hurting
+  // recall of older content.
   const posts = await prisma.post.findMany({
     where: { userId: gilUserId },
     select: { id: true, body: true, tags: true, originalDate: true },
     orderBy: { originalDate: "desc" },
-    take: 200,
+    take: 50,
   });
 
   const lines = posts.map((p) => {

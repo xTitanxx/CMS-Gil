@@ -1,11 +1,13 @@
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // ─── Auth (NextAuth.js required tables) ─────────────────────────────────────
@@ -163,6 +165,13 @@ model Post {
   // as the underlying mutation (no $transaction — pgbouncer gotcha).
   likeCount    Int @default(0)
   commentCount Int @default(0)
+
+  // Voyage voyage-3-lite (512-dim) embedding of "Tags: {tags}\n{body}".
+  // Powers semantic post-recall in /api/chat and /api/assistant via
+  // pgvector cosine search (HNSW index post_embedding_hnsw_idx). Read/written
+  // through $queryRaw — Prisma 7 has no native vector type. Null until the
+  // backfill or the auto-embed-on-write hook populates it.
+  embedding Unsupported("vector(512)")?
 
   media      Media[]
   publishes  PublishRecord[]

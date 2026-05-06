@@ -188,15 +188,33 @@ export async function publishNow(
         throw new Error(`Publishing to ${platform} is not supported`);
     }
 
+    const publishedAt = new Date();
     await prisma.publishRecord.update({
       where: { id: recordId },
       data: {
         status: "PUBLISHED",
-        publishedAt: new Date(),
+        publishedAt,
         platformPostId: result.platformPostId,
         platformUrl: result.platformUrl ?? null,
       },
     });
+
+    // Mirror the publish event onto Post so list views can sort/filter by
+    // hub-publish state directly without joining PublishRecord. Sequential
+    // awaits — pgbouncer transaction-pool mode rejects $transaction here.
+    // Failure here is non-fatal: PublishRecord is the source of truth, the
+    // Post column is a cache. Don't roll the PublishRecord back to FAILED.
+    try {
+      await prisma.post.update({
+        where: { id: post.id },
+        data: {
+          hubPublishCount: { increment: 1 },
+          lastPublishedViaHubAt: publishedAt,
+        },
+      });
+    } catch (denormErr) {
+      console.error("Post hub-publish denorm failed", { postId: post.id, denormErr });
+    }
   } catch (err) {
     await prisma.publishRecord.update({
       where: { id: recordId },

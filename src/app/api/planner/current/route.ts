@@ -165,6 +165,7 @@ export async function GET() {
     id: currentPlan?.id ?? "",
     weekStart: format(weekStart, "yyyy-MM-dd"),
     status: (currentPlan?.status ?? "DRAFT") as WeeklyPlanData["status"],
+    mode: (currentPlan?.mode ?? "AI") as WeeklyPlanData["mode"],
     slots: allSlots,
   };
 

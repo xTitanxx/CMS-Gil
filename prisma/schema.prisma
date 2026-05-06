@@ -510,12 +510,18 @@ enum SlotStatus {
   SKIPPED
 }
 
+enum PlanMode {
+  AI
+  DUMB
+}
+
 model WeeklyPlan {
   id        String           @id @default(cuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   weekStart DateTime
   status    PlanStatus       @default(DRAFT)
+  mode      PlanMode         @default(AI)
   slots     WeeklyPlanSlot[]
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt

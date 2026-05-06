@@ -21,7 +21,13 @@ import { DayPanel } from "./DayPanel";
 import { getGridDays, getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
-export function ContentCalendar() {
+interface ContentCalendarProps {
+  /** When "published", restrict the view to records that already shipped through
+   *  the hub (PublishRecord.status === PUBLISHED). Default shows the full mix. */
+  statusFilter?: "scheduled" | "published";
+}
+
+export function ContentCalendar({ statusFilter = "scheduled" }: ContentCalendarProps = {}) {
   const [view, setView] = useState<"month" | "week">("week");
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -35,11 +41,12 @@ export function ContentCalendar() {
       start: format(start, "yyyy-MM-dd"),
       end: format(end, "yyyy-MM-dd"),
     });
+    if (statusFilter === "published") params.set("status", "published");
     const res = await fetch(`/api/calendar?${params}`);
     const data = await res.json();
     setEntries(data.entries ?? []);
     setLoading(false);
-  }, [view, cursor]);
+  }, [view, cursor, statusFilter]);
 
   useEffect(() => {
     fetchEntries();

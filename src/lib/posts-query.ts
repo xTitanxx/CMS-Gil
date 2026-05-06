@@ -52,6 +52,9 @@ export interface PostsFilters {
   captionQuality?: string;
   /** "yes" = has PostAnalytics with platform FACEBOOK, "no" = does not, else = no filter */
   enriched?: string;
+  /** When "true", restricts to posts that have been pushed through the hub
+   *  at least once (Post.hubPublishCount > 0). */
+  publishedViaHub?: string;
 }
 
 const STORY_SOURCE_ID_PREFIX = "fb_story_";
@@ -101,6 +104,7 @@ export function parsePostsFilters(sp: SearchParamsLike): PostsFilters {
     quality: getParam(sp, "quality") || undefined,
     captionQuality: getParam(sp, "captionQuality") || undefined,
     enriched: getParam(sp, "enriched") || undefined,
+    publishedViaHub: getParam(sp, "publishedViaHub") || undefined,
   };
 }
 
@@ -117,7 +121,7 @@ function parseCsvSet<T extends string>(
   return set;
 }
 
-type SortField = "originalDate" | "createdAt";
+type SortField = "originalDate" | "createdAt" | "lastPublishedViaHubAt";
 type SortDir = "asc" | "desc";
 
 export function parseSort(sort: string | undefined): {
@@ -131,6 +135,10 @@ export function parseSort(sort: string | undefined): {
       return { field: "createdAt", dir: "desc" };
     case "createdAt_asc":
       return { field: "createdAt", dir: "asc" };
+    case "lastPublishedViaHubAt_desc":
+      return { field: "lastPublishedViaHubAt", dir: "desc" };
+    case "lastPublishedViaHubAt_asc":
+      return { field: "lastPublishedViaHubAt", dir: "asc" };
     default:
       return { field: "originalDate", dir: "desc" };
   }
@@ -352,6 +360,12 @@ export function buildPostsQuery(
     }
   }
 
+  // publishedViaHub filter — only "true" matters. Default omits the clause
+  // so existing posts list views aren't affected.
+  if (filters.publishedViaHub === "true") {
+    extraAnds.push({ hubPublishCount: { gt: 0 } });
+  }
+
   if (filters.kind === "stories") {
     extraAnds.push({ postType: "STORY" });
   } else {
@@ -479,18 +493,22 @@ export function buildCursorClause(
 
 export function cursorFromRow(
   sort: string | undefined,
-  row: { id: string; originalDate: Date; createdAt: Date },
+  row: { id: string; originalDate: Date; createdAt: Date; lastPublishedViaHubAt?: Date | null },
 ): PostCursor {
   const { field } = parseSort(sort);
+  const v = row[field];
   return {
-    value: row[field].toISOString(),
+    // Null-safe: only the published-list path uses lastPublishedViaHubAt as a
+    // sort key, and it filters hubPublishCount>0, so null is unreachable in
+    // practice. Fall back to epoch in the unlikely null case to avoid throwing.
+    value: (v ?? new Date(0)).toISOString(),
     id: row.id,
   };
 }
 
 export function buildNeighborQueries(
   sort: string | undefined,
-  current: { id: string; originalDate: Date; createdAt: Date },
+  current: { id: string; originalDate: Date; createdAt: Date; lastPublishedViaHubAt?: Date | null },
 ): {
   prevWhere: Prisma.PostWhereInput;
   prevOrderBy: Prisma.PostOrderByWithRelationInput[];
@@ -498,7 +516,7 @@ export function buildNeighborQueries(
   nextOrderBy: Prisma.PostOrderByWithRelationInput[];
 } {
   const { field, dir } = parseSort(sort);
-  const value = current[field];
+  const value = current[field] ?? new Date(0);
   const prevOp = dir === "desc" ? "gt" : "lt";
   const prevDir: SortDir = dir === "desc" ? "asc" : "desc";
   const nextOp = dir === "desc" ? "lt" : "gt";
@@ -552,6 +570,7 @@ export const POST_FILTER_KEYS = [
   "quality",
   "captionQuality",
   "enriched",
+  "publishedViaHub",
 ] as const;
 
 export function serializeFilters(

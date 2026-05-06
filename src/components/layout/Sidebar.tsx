@@ -9,6 +9,7 @@ import {
   Upload,
   Link2,
   CalendarClock,
+  CheckCircle2,
   LogOut,
   CheckSquare,
   Music,
@@ -28,6 +29,7 @@ type NavItem =
 const nav: NavItem[] = [
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
   { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
+  { type: "link", href: "/admin/published", label: "Published", icon: CheckCircle2 },
   { type: "separator" },
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },

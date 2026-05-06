@@ -116,7 +116,6 @@ export async function createComment(opts: {
   postId: string;
   subscriberId: string;
   body: string;
-  displayName?: string | null;
 }): Promise<CommentDTO> {
   const body = normalizeBody(opts.body);
 
@@ -130,17 +129,6 @@ export async function createComment(opts: {
   });
   if (!sub) throw new CommentForbiddenError("not_author");
   if (sub.commentsDisabledAt) throw new CommentForbiddenError("comments_disabled");
-
-  let effectiveDisplayName = sub.displayName;
-  if (!sub.displayName && opts.displayName != null) {
-    const dn = opts.displayName.trim();
-    if (dn.length === 0 || dn.length > 50) throw new CommentValidationError("empty");
-    await prisma.subscriber.update({
-      where: { id: opts.subscriberId },
-      data: { displayName: dn },
-    });
-    effectiveDisplayName = dn;
-  }
 
   const created = await prisma.postComment.create({
     data: {
@@ -172,7 +160,7 @@ export async function createComment(opts: {
     {
       ...created,
       status: created.status as CommentStatus,
-      subscriber: { name: sub.name, displayName: effectiveDisplayName },
+      subscriber: { name: sub.name, displayName: sub.displayName },
     },
     opts.subscriberId
   );

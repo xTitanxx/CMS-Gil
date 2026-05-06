@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   format,
   addMonths,
@@ -21,12 +21,40 @@ import { DayPanel } from "./DayPanel";
 import { getGridDays, getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
+type TypeFilter = "proposed" | "scheduled" | "posted" | "imported";
+
+const ALL_TYPES: TypeFilter[] = ["proposed", "scheduled", "posted", "imported"];
+
+const TYPE_LABEL: Record<TypeFilter, string> = {
+  proposed: "Proposed",
+  scheduled: "Scheduled",
+  posted: "Posted",
+  imported: "Imported",
+};
+
+const TYPE_COLOR: Record<TypeFilter, string> = {
+  proposed: "border-gray-400 bg-white text-gray-600",
+  scheduled: "border-yellow-300 bg-yellow-50 text-yellow-800",
+  posted: "border-green-300 bg-green-50 text-green-800",
+  imported: "border-gray-300 bg-gray-100 text-gray-700",
+};
+
+function statusToType(status: CalendarEntry["status"]): TypeFilter {
+  if (status === "PROPOSED" || status === "PLAN_APPROVED") return "proposed";
+  if (status === "PENDING") return "scheduled";
+  if (status === "PUBLISHED") return "posted";
+  return "imported";
+}
+
 export function ContentCalendar() {
   const [view, setView] = useState<"month" | "week">("week");
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTypes, setActiveTypes] = useState<Set<TypeFilter>>(
+    () => new Set(ALL_TYPES),
+  );
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -40,6 +68,20 @@ export function ContentCalendar() {
     setEntries(data.entries ?? []);
     setLoading(false);
   }, [view, cursor]);
+
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => activeTypes.has(statusToType(e.status))),
+    [entries, activeTypes],
+  );
+
+  function toggleType(t: TypeFilter) {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  }
 
   useEffect(() => {
     fetchEntries();
@@ -148,6 +190,28 @@ export function ContentCalendar() {
           </div>
         </div>
 
+        {/* Type filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {ALL_TYPES.map((t) => {
+            const on = activeTypes.has(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => toggleType(t)}
+                aria-pressed={on}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  on
+                    ? TYPE_COLOR[t]
+                    : "border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:text-gray-600"
+                }`}
+              >
+                {TYPE_LABEL[t]}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Grid */}
         <div className="relative">
           {loading && (
@@ -158,14 +222,14 @@ export function ContentCalendar() {
           {view === "month" ? (
             <MonthView
               cursor={cursor}
-              entries={entries}
+              entries={visibleEntries}
               onDayClick={setSelectedDay}
               selectedDay={selectedDay}
             />
           ) : (
             <WeekView
               cursor={cursor}
-              entries={entries}
+              entries={visibleEntries}
               onDayClick={setSelectedDay}
               selectedDay={selectedDay}
             />
@@ -177,7 +241,7 @@ export function ContentCalendar() {
       {selectedDay && (
         <DayPanel
           day={selectedDay}
-          entries={entries.filter(
+          entries={visibleEntries.filter(
             (e) => e.date === format(selectedDay, "yyyy-MM-dd")
           )}
           onClose={() => setSelectedDay(null)}

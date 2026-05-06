@@ -126,6 +126,15 @@ model Post {
   postType     PostType @default(POST)
   publishCount Int      @default(0)
 
+  // Set when ANY PublishRecord for this post transitions to PUBLISHED. Tracks
+  // hub activity directly on the Post so list views ("show me everything I've
+  // pushed through the hub") don't have to JOIN to PublishRecord. Updated in
+  // publishNow() alongside the PublishRecord status flip.
+  lastPublishedViaHubAt DateTime?
+  // Total successful hub publishes across all platforms / all attempts.
+  // Distinct from publishCount above which counts schedule events.
+  hubPublishCount       Int       @default(0)
+
   lifecycle           Lifecycle @default(UNKNOWN)
   season              Season?
   lifecycleOverridden Boolean   @default(false)
@@ -189,6 +198,7 @@ model Post {
   @@index([tags], type: Gin)
   @@index([readiness])
   @@index([lifecycle])
+  @@index([userId, lastPublishedViaHubAt])
 }
 
 model PostLike {
@@ -519,12 +529,18 @@ enum SlotStatus {
   SKIPPED
 }
 
+enum PlanMode {
+  AI
+  DUMB
+}
+
 model WeeklyPlan {
   id        String           @id @default(cuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   weekStart DateTime
   status    PlanStatus       @default(DRAFT)
+  mode      PlanMode         @default(AI)
   slots     WeeklyPlanSlot[]
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
@@ -646,9 +662,9 @@ model Subscriber {
   createdAt        DateTime                  @default(now())
   lastSeenAt       DateTime?
   revokedAt        DateTime?
-  // Public-facing display name shown on comments. Falls back to `name` while
-  // null. Set lazily via the first-comment composer prompt — subscribers who
-  // never comment never need to pick one.
+  // Public-facing display name shown on comments. Falls back to `name` when
+  // null (the default — there is no longer a UI to pick one). Kept nullable
+  // so admin tooling can still set a custom name per subscriber if needed.
   displayName        String?
   // Admin-set commenting disablement (without revoking the whole subscription).
   // When set, server rejects POST /comments with 403 { error: "comments_disabled" }.

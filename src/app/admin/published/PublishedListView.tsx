@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { PostListShell } from "@/app/admin/_shared/PostListShell";
-import { PostRow, type PostRowData } from "@/app/admin/posts/PostRow";
+import type { PostRowData } from "@/app/admin/posts/PostRow";
+import { PublishedPostRow } from "./PublishedPostRow";
 
 export function PublishedListView() {
-  const [posts, setPosts] = useState<PostRowData[]>([]);
+  const [, setPosts] = useState<PostRowData[]>([]);
 
   return (
     <PostListShell<PostRowData>
@@ -28,13 +29,10 @@ export function PublishedListView() {
         </div>
       }
       renderRow={(post, index) => (
-        <PostRow
+        <PublishedPostRow
           post={post}
           index={index}
-          isSelected={false}
           href={`/admin/posts/${post.id}`}
-          onCheckboxClick={() => {}}
-          onDeleted={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))}
         />
       )}
     />

@@ -163,13 +163,13 @@ export default async function HomePage() {
             <section className="rounded-xl bg-white shadow-sm overflow-hidden">
               <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
                 <p className="text-xs font-medium text-amber-800">
-                  Experimental feature — Virtual Gil is an AI that generates responses based on
+                  Experimental feature — the Archivist is an AI that generates responses based on
                   Gil&apos;s posts. It is not Gil, may not always be accurate, and does not
                   provide medical advice.
                 </p>
               </div>
               <div className="px-4 py-4">
-                <h2 className="text-base font-bold text-gray-900">Talk to Virtual Gil</h2>
+                <h2 className="text-base font-bold text-gray-900">Talk to the Archivist</h2>
                 <p className="mt-1.5 text-sm text-gray-600">
                   Trained on Gil&rsquo;s archive.<br />
                   Ask anything &mdash; if it exists, it will dig it up.

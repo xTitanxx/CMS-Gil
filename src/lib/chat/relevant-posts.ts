@@ -1,4 +1,4 @@
-// Per-turn retrieval for /api/chat (Virtual Gil). Surfaces posts from the
+// Per-turn retrieval for /api/chat (the Archivist). Surfaces posts from the
 // wider archive that fall outside the cached newest-N baseline.
 //
 // Backed by the unified hybridSearch (vector + tag + phrase + Haiku rerank)

@@ -22,7 +22,7 @@ export async function SubscriberHeader() {
               className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               <Sparkles className="h-3 w-3" />
-              Talk to Virtual Gil
+              Talk to the Archivist
             </Link>
             <Link
               href="/bookmarks"
@@ -47,7 +47,7 @@ export async function SubscriberHeader() {
   }
 
   // Admins on public pages: show a slim header with the same actions a
-  // subscriber gets — Bookmarks, Talk to Virtual Gil, plus an "Admin" pill
+  // subscriber gets — Bookmarks, Talk to the Archivist, plus an "Admin" pill
   // and Sign out — so engagement features (like, bookmark, comment) are
   // testable without logging out and back in. Their actions write to a
   // hidden "[admin]" shadow subscriber row, kept distinct from real
@@ -78,7 +78,7 @@ export async function SubscriberHeader() {
               className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               <Sparkles className="h-3 w-3" />
-              Talk to Virtual Gil
+              Talk to the Archivist
             </Link>
             <Link
               href="/bookmarks"
@@ -116,7 +116,7 @@ export async function SubscriberHeader() {
           className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
         >
           <Sparkles className="h-3 w-3" />
-          Talk to Virtual Gil
+          Talk to the Archivist
         </Link>
       </div>
     </div>

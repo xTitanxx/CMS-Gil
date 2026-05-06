@@ -316,7 +316,7 @@ export default function GilChatPage() {
           <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
         </div>
         <div>
-          <h1 className="text-sm font-semibold text-gray-900">Virtual Gil</h1>
+          <h1 className="text-sm font-semibold text-gray-900">The Archivist</h1>
           <p className="text-xs text-gray-500">AI trained on Gil&apos;s posts — not the real Gil</p>
         </div>
       </div>
@@ -330,7 +330,7 @@ export default function GilChatPage() {
               <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-700">Talk to Virtual Gil</p>
+              <p className="text-sm font-medium text-gray-700">Talk to the Archivist</p>
               <p className="text-xs text-gray-400 mt-1">Trained on Gil&rsquo;s archive.<br />Ask anything &mdash; if it exists, it will dig it up.</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 mt-2">
@@ -411,10 +411,10 @@ export default function GilChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Virtual Gil..."
+            placeholder="Ask the Archivist..."
             rows={1}
             disabled={inputDisabled || streaming}
-            name="virtual-gil-message"
+            name="archivist-message"
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"

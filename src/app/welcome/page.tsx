@@ -98,7 +98,7 @@ export default async function WelcomePage({
               aria-hidden
             />
             <div className="text-sm text-gray-700">
-              <p className="font-medium text-gray-900">Talk to Virtual Gil</p>
+              <p className="font-medium text-gray-900">Talk to the Archivist</p>
               <p className="mt-1">
                 Free to use. This feature runs on AI technology that has a real
                 cost per message. I offer it at cost, with no profit — just to

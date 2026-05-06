@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPublicPost, getRelatedPosts } from "@/lib/public-posts";
+import {
+  getPublicPost,
+  getRelatedPosts,
+  pickOgImage,
+  postExcerpt,
+} from "@/lib/public-posts";
 import { getMediaUrl } from "@/lib/storage";
 import { getLikedPostIds } from "@/lib/engagement/like";
 import { getBookmarkedPostIds } from "@/lib/engagement/bookmark";
@@ -36,6 +42,49 @@ async function mediaWithUrls<T extends { storageKey: string; mimeType: string; i
       ),
     }))
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const post = await getPublicPost(id);
+  if (!post) return {};
+
+  const dateLabel = formatDate(post.originalDate);
+  const hasBody = post.body.trim().length > 0;
+  const title = hasBody ? postExcerpt(post.body, 70) : `Post from ${dateLabel}`;
+  const description = hasBody
+    ? postExcerpt(post.body, 180)
+    : `An archived post by Gil Alter from ${dateLabel}.`;
+
+  const og = await pickOgImage(post.media);
+  const url = `/p/${post.id}`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      type: "article",
+      url,
+      title,
+      description,
+      siteName: "Gil Alter",
+      publishedTime: post.originalDate.toISOString(),
+      images: og
+        ? [{ url: og.url, width: og.width, height: og.height, alt: og.alt }]
+        : undefined,
+    },
+    twitter: {
+      card: og ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: og ? [og.url] : undefined,
+    },
+    alternates: { canonical: url },
+  };
 }
 
 export default async function PublicPostPage({

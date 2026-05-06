@@ -20,6 +20,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.APP_URL ?? "https://gilalter.com"),
   title: { default: "Gil Alter", template: "%s — Gil Alter" },
   description: "Archive of all posts by Gil Alter",
   icons:

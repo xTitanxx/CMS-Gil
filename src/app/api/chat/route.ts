@@ -4,13 +4,31 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getPostContext } from "@/lib/post-context-cache";
 import {
+  getRelevantPosts,
+  formatRelevantPostsForPrompt,
+} from "@/lib/chat/relevant-posts";
+import {
   checkBudgetAndLazyReset,
+  computeHaikuCost,
   recordUsage,
 } from "@/lib/subscribers/budget";
 import {
   tryAcquireSubscriberTurn,
   releaseSubscriberTurn,
 } from "@/lib/subscribers/serialize-turn";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
+
+// Trailer the server appends to the streaming body so the client can read the
+// per-turn $ cost. The zero-width space + sentinel is invisible if it ever
+// leaks into rendered text, but the client always strips it before display.
+export const COST_TRAILER_PREFIX = "​__USAGE_USD:";
+export const COST_TRAILER_SUFFIX = "__";
+// Permissive cleaner for any prior-turn assistant content. Matches the trailer
+// with or without the optional leading newline + zero-width space — the model
+// will sometimes parrot the pattern verbatim into its own response if it sees
+// it in conversation history, so we strip aggressively before sending the
+// transcript back to Anthropic.
+const COST_TRAILER_STRIP_RE = /\n?​?__USAGE_USD:[0-9.]+__/g;
 
 const client = new Anthropic();
 const MODEL = "claude-haiku-4-5";
@@ -22,10 +40,15 @@ const RATE_LIMIT_MESSAGE =
 function buildSystemPrompt(postContext: string, postCount: number) {
   return `You are Virtual Gil — an AI assistant that helps people explore Gil Alter's archive of posts. Gil is a thoughtful, reflective person who has lived through MS, depression, and discovered breathwork and other practices that help navigate life's challenges.
 
-IMPORTANT RULES:
-- Always speak about Gil in the THIRD PERSON. Say "Gil has written about…", "Gil shared…", "In Gil's experience…" — NEVER "I" or "my".
-- Only discuss topics covered in Gil's posts below. If someone asks about something Gil hasn't written about, say: "Gil hasn't shared his thoughts on that topic yet, but thanks for asking."
-- Before saying Gil hasn't written about something, carefully search through ALL the posts below. If there are posts on the topic, discuss them — never claim Gil hasn't written about a topic when posts exist about it.
+ABSOLUTE RULE — NO INVENTION:
+- Every claim you make about what Gil thinks, says, has shared, or has lived through MUST be supported by a specific post in the context below. If the posts don't say it, you don't say it.
+- Do NOT generalize Gil's perspective beyond what the posts in context actually contain. Do NOT invent, infer, or paraphrase a post that isn't present. Do NOT continue speaking in "Gil's voice" past what the source material supports.
+- When a claim is grounded in a specific post, attach its [POST:<id>] marker (using the ID from "[ID: <id>]" in context) on its own line right after the claim. If you cannot attach an ID, you should not be making the claim.
+- If the posts in context do not cover what the user asked: say so plainly. Use exactly this template — "Gil hasn't shared his thoughts on that specifically. The closest is [POST:<id>] — want to look at that?" If there is genuinely no related post, end with: "Gil hasn't shared his thoughts on that topic yet, but thanks for asking."
+
+VOICE & STYLE:
+- Always speak about Gil in the THIRD PERSON. "Gil has written about…", "Gil shared…", "In Gil's experience…" — NEVER "I" or "my".
+- You ARE the way people interact with Gil here. Never tell the user to message, email, contact, or otherwise reach out to the real Gil. Don't suggest his Facebook, his other social profiles, or "you could ask him directly." If you can't help with something, say so and offer to look at related topics in the archive instead.
 - Gil is NOT a medical professional. His posts share personal experience, never medical advice. Make this clear.
 - Be conversational and concise — this is a chat, not an essay. Keep responses to 2-4 short paragraphs max.
 - Be warm and helpful. You're a guide to Gil's archive, helping people find relevant reflections.
@@ -33,12 +56,13 @@ IMPORTANT RULES:
 FORMATTING:
 - Markdown is rendered. Use **bold** for emphasis, *italics* for nuance, and dash-style bullet lists when listing 2+ short items. Don't overuse formatting — most replies are 2–4 short paragraphs of plain prose. No hashtags for headers (the chat is a conversation, not a document).
 
-REFERENCING POSTS:
-- When your answer draws from specific posts, embed up to 3 post markers in your response using exactly this format: [POST:<id>]
-- Place each marker on its own line, right after the paragraph where you discuss that post's content.
-- The marker becomes a rich card displaying the post's text and media. NEVER quote, paraphrase, summarize, or repeat the post's body in your reply when you embed a marker for it. Just say a single short sentence introducing why the post is relevant, then drop the marker on its own line — the card shows the rest.
-- Only reference posts that are directly relevant to what the person asked. Do not force references.
-- Each post has an ID shown as [ID: <id>] in the context below. Use that exact ID in markers.
+POST CARDS:
+- When you attach [POST:<id>] right after a claim, the marker becomes a rich card showing the post's text and media. NEVER quote, paraphrase, or repeat the post's body in your reply when you embed its marker — just say one short sentence about why it's relevant and drop the marker on its own line. The card shows the rest.
+- Up to 3 markers per response. Use the exact ID from "[ID: <id>]" in context. Markers must match an ID you can see — never guess or fabricate one.
+- If the user asks "show me a post" / "do you have a post about X" — you MUST surface a [POST:<id>] marker if any post in context is on-topic. If none is on-topic, say so plainly without inventing one.
+
+WHERE TO LOOK:
+- Two sources of posts may appear below: the main "GIL'S POSTS" list (newest first) and a "TOP MATCHES FROM SEMANTIC SEARCH" block (ranked by relevance to the current question). When the semantic-search block is present, prefer those posts — they were chosen specifically for this question.
 
 GIL'S POSTS (${postCount} posts, newest first):
 ---
@@ -101,17 +125,55 @@ export async function POST(req: NextRequest) {
 
   // Strip client-only fields (e.g. `posts` from rendered post cards).
   // Anthropic rejects unknown keys with "Extra inputs are not permitted".
+  // Also strip any cost trailers (`__USAGE_USD:X.XXX__`) that may have leaked
+  // into prior assistant turns — otherwise the model sees the pattern and
+  // parrots it back as if it were Gil's output style.
   const messages = rawMessages
     .filter((m) => m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as string }));
+    .map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: (m.content as string).replace(COST_TRAILER_STRIP_RE, "").trimEnd(),
+    }));
 
-  const { text: postContext, count: postCount } = await getPostContext();
+  const { text: postContext, count: postCount, ids: baselineIds } =
+    await getPostContext();
   const systemText = buildSystemPrompt(postContext, postCount);
 
-  // Persist user message immediately (subscriber path only)
+  // Per-turn semantic retrieval over the WHOLE archive (not just the cached
+  // baseline). Without this, topics outside the newest-N window are invisible.
+  //
+  // Use the LAST FEW MESSAGES as the retrieval query, not just the most recent
+  // user message. Otherwise follow-ups like "can you show me such a post" have
+  // no semantic content of their own — they refer back to a topic the prior
+  // turns established. Embedding the recent context lets the vector retriever
+  // ride that topic into the search.
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const gilUserId = process.env.GIL_USER_ID;
+  let relevantBlock = "";
+  if (lastUser && gilUserId) {
+    const recentMessages = messages.slice(-4);
+    const retrievalQuery = recentMessages.map((m) => m.content).join("\n\n");
+    try {
+      const relevant = await getRelevantPosts(
+        gilUserId,
+        retrievalQuery,
+        baselineIds
+      );
+      relevantBlock = formatRelevantPostsForPrompt(relevant);
+    } catch (e) {
+      // Retrieval is best-effort; the cached baseline still answers.
+      console.error("getRelevantPosts failed:", e);
+    }
+  }
+
+  // Persist user message under the actor's subscriberId. For real subscribers
+  // that's their own row; for admins it's their hidden "[admin]" shadow
+  // subscriber. Same SubscriberConversation/SubscriberMessage tables — keeps
+  // the chat persistent across refreshes for both roles.
+  const actorSubscriberId = await resolveActorSubscriberId(session);
   let conversationId: string | null = null;
-  if (role === "subscriber" && subscriberId) {
-    conversationId = await getOrCreateConversationId(subscriberId);
+  if (actorSubscriberId) {
+    conversationId = await getOrCreateConversationId(actorSubscriberId);
     const last = messages[messages.length - 1];
     if (last?.role === "user" && typeof last.content === "string") {
       await prisma.subscriberMessage.create({
@@ -127,16 +189,24 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // Cached baseline FIRST (so prefix is stable for cache hits), then
+        // the per-turn relevant-posts block as an unrelated second system
+        // message that can vary without breaking the cache.
+        const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+          {
+            type: "text",
+            text: systemText,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ];
+        if (relevantBlock) {
+          systemBlocks.push({ type: "text", text: relevantBlock });
+        }
+
         const response = await client.messages.stream({
           model: MODEL,
           max_tokens: 512,
-          system: [
-            {
-              type: "text",
-              text: systemText,
-              cache_control: { type: "ephemeral", ttl: "1h" },
-            },
-          ],
+          system: systemBlocks,
           messages,
         });
 
@@ -151,6 +221,18 @@ export async function POST(req: NextRequest) {
         }
         const finalMessage = await response.finalMessage();
         usage = finalMessage.usage;
+        // Append the per-turn $ cost trailer ONLY for admin sessions. The
+        // client gates the rendering anyway, but emitting only to admins means
+        // subscribers never receive the value over the wire — even via a
+        // browser network inspector. Defense in depth.
+        if (role === "admin") {
+          const turnCost = computeHaikuCost(usage);
+          controller.enqueue(
+            encoder.encode(
+              `\n${COST_TRAILER_PREFIX}${turnCost.toFixed(6)}${COST_TRAILER_SUFFIX}`,
+            ),
+          );
+        }
       } catch (err) {
         console.error("Chat API error:", err);
         controller.enqueue(
@@ -167,10 +249,39 @@ export async function POST(req: NextRequest) {
           console.error("recordUsage failed:", e);
         }
       }
+      // Admins don't have a subscriber budget, but we still want to know what
+      // /chat is costing them in API $. Reuse the AssistantUsage table so the
+      // admin's monthly spend (across /chat AND /admin/assistant) lives in one
+      // place — both surfaces are Haiku 4.5, so the cost math is identical.
+      if (role === "admin" && session?.user?.id && usage) {
+        try {
+          const cost = computeHaikuCost(usage);
+          await prisma.assistantUsage.create({
+            data: {
+              userId: session.user.id,
+              model: MODEL,
+              inputTokens: usage.input_tokens,
+              outputTokens: usage.output_tokens,
+              cacheCreateTokens: usage.cache_creation_input_tokens ?? 0,
+              cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+              costUsd: cost,
+            },
+          });
+        } catch (e) {
+          console.error("admin chat usage record failed:", e);
+        }
+      }
       if (conversationId && assistantText) {
         try {
+          // Defensive strip — if the model parroted the cost trailer pattern
+          // into its own response (it sometimes does after seeing it in
+          // history), don't persist that copy. Stops the loop where each
+          // turn re-teaches the model the pattern.
+          const persisted = assistantText
+            .replace(COST_TRAILER_STRIP_RE, "")
+            .trimEnd();
           await prisma.subscriberMessage.create({
-            data: { conversationId, role: "assistant", content: assistantText },
+            data: { conversationId, role: "assistant", content: persisted },
           });
           await prisma.subscriberConversation.update({
             where: { id: conversationId },

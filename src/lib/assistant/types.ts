@@ -64,6 +64,7 @@ export interface RetrieveHit {
   thumbUrl: string | null;
   contentKind: ContentKind;
   platformUrl: string | null;
+  originalDate?: Date;
 }
 
 export interface CandidateRow {

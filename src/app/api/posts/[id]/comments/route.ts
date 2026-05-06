@@ -9,6 +9,7 @@ import {
   listComments,
 } from "@/lib/engagement/comments";
 import { commentRateLimiter } from "@/lib/engagement/comment-rate-limit";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 
 export async function GET(
   req: NextRequest,
@@ -18,7 +19,9 @@ export async function GET(
   const cursor = req.nextUrl.searchParams.get("cursor");
 
   const session = await auth();
-  const viewer = session?.user?.subscriberId ?? null;
+  // Admin viewing comments is treated as a viewer too — surface their shadow
+  // subscriber id so any of the admin's own test comments highlight as "yours".
+  const viewer = await resolveActorSubscriberId(session);
 
   const post = await prisma.post.findUnique({
     where: { id },
@@ -37,26 +40,29 @@ export async function POST(
   const { id } = await params;
 
   const session = await auth();
-  const role = session?.user?.role;
-  const subscriberId = session?.user?.subscriberId;
-
   if (!session) return NextResponse.json({ error: "unauth" }, { status: 401 });
-  if (role !== "subscriber" || !subscriberId) {
+
+  const actorId = await resolveActorSubscriberId(session);
+  if (!actorId) {
     return NextResponse.json({ error: "subscriber_required" }, { status: 403 });
   }
 
-  const sub = await prisma.subscriber.findUnique({
-    where: { id: subscriberId },
-    select: { revokedAt: true },
-  });
-  if (!sub || sub.revokedAt) {
-    return NextResponse.json({ error: "revoked" }, { status: 403 });
+  // Real subscribers can be revoked. Admin shadows are revoked-by-design and
+  // bypass the check.
+  if (session.user.role === "subscriber") {
+    const sub = await prisma.subscriber.findUnique({
+      where: { id: actorId },
+      select: { revokedAt: true },
+    });
+    if (!sub || sub.revokedAt) {
+      return NextResponse.json({ error: "revoked" }, { status: 403 });
+    }
   }
 
   const post = await prisma.post.findUnique({ where: { id }, select: { id: true } });
   if (!post) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const limit = commentRateLimiter.check(subscriberId);
+  const limit = commentRateLimiter.check(actorId);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: "rate_limited", retryAfterMs: limit.retryAfterMs },
@@ -77,7 +83,7 @@ export async function POST(
   try {
     const comment = await createComment({
       postId: id,
-      subscriberId,
+      subscriberId: actorId,
       body: body.body,
     });
     return NextResponse.json({ comment });

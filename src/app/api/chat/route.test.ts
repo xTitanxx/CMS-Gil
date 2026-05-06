@@ -6,7 +6,14 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/post-context-cache", () => ({
-  getPostContext: vi.fn().mockResolvedValue({ text: "ctx", count: 1 }),
+  getPostContext: vi
+    .fn()
+    .mockResolvedValue({ text: "ctx", count: 1, ids: new Set<string>() }),
+}));
+
+vi.mock("@/lib/chat/relevant-posts", () => ({
+  getRelevantPosts: vi.fn().mockResolvedValue([]),
+  formatRelevantPostsForPrompt: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@anthropic-ai/sdk", () => {

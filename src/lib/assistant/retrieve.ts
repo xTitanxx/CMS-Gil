@@ -122,113 +122,52 @@ export function extractSnippet(body: string, keywords: string[]): string {
 
 export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
   const limit = opts.limit ?? 20;
-  const normalizedPhrase = normalizeForSearch(opts.query);
-  const hasPhrase = normalizedPhrase.length >= 4;
-
-  // Phrase-first short-circuit: when the user pastes a long phrase (>= 12
-  // normalized chars), try a direct bodyNormalized.contains lookup BEFORE
-  // asking Haiku to paraphrase the query into keywords. Haiku's keyword
-  // extraction was sometimes losing the full phrase entirely, so pasted
-  // text never matched. This guarantees pasted exact text always lands.
-  if (hasPhrase && normalizedPhrase.length >= 12) {
-    const phraseHits = await prisma.post.findMany({
-      where: {
-        userId: opts.userId,
-        readiness: { not: "ARCHIVED" },
-        share: { equals: Prisma.DbNull },
-        bodyNormalized: { contains: normalizedPhrase },
-        ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
-        ...(opts.season ? { season: opts.season } : {}),
-        ...(opts.dateRange?.from || opts.dateRange?.to
-          ? {
-              originalDate: {
-                ...(opts.dateRange?.from ? { gte: opts.dateRange.from } : {}),
-                ...(opts.dateRange?.to ? { lte: opts.dateRange.to } : {}),
-              },
-            }
-          : {}),
-      },
-      select: {
-        id: true,
-        body: true,
-        bodyNormalized: true,
-        tags: true,
-        lifecycle: true,
-        postType: true,
-        platformUrl: true,
-        rating: { select: { stars: true } },
-        media: {
-          orderBy: { id: "asc" },
-          select: { storageKey: true, mimeType: true },
-        },
-      },
-      take: limit,
-    });
-    if (phraseHits.length > 0) {
-      const slim: PostSlim[] = phraseHits.map((p) => {
-        const mimes = p.media.map((m) => m.mimeType);
-        const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
-        return {
-          id: p.id,
-          body: p.body,
-          bodyNormalized: p.bodyNormalized,
-          tags: p.tags,
-          stars: p.rating?.stars ?? null,
-          lifecycle: p.lifecycle,
-          thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
-          contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
-          platformUrl: p.platformUrl,
-        };
-      });
-      const filtered = opts.contentKind ? slim.filter((p) => p.contentKind === opts.contentKind) : slim;
-      return rankHits(filtered, { tags: [], keywords: [] }, normalizedPhrase).slice(0, limit);
-    }
-    // No phrase match — fall through to the keyword/Haiku path.
-  }
-
-  const mapped = await mapQuery(opts.userId, opts.query);
-  // Always include the raw query words as keyword fallbacks so we never miss a body match
-  const rawWords = opts.query.split(/\s+/).filter((w) => w.length >= 3);
-  for (const w of rawWords) {
-    if (!mapped.keywords.some((k) => k.toLowerCase() === w.toLowerCase())) {
-      mapped.keywords.push(w);
-    }
-  }
-
+  const hasQuery = opts.query.trim().length > 0;
   const hasDateRange = !!(opts.dateRange?.from || opts.dateRange?.to);
-  const hasTextFilter = mapped.tags.length > 0 || mapped.keywords.length > 0 || hasPhrase;
-  // Allow date-only queries ("posts from 2023") to return chronological hits
-  // even when the user provided no keywords. Without this, the assistant gets
-  // an empty result and tells the user "I couldn't find any".
-  if (!hasTextFilter && !hasDateRange) return [];
 
-  const orClauses = [
-    ...(mapped.tags.length ? [{ tags: { hasSome: mapped.tags } }] : []),
-    ...mapped.keywords.map((k) => ({
-      bodyNormalized: { contains: normalizeForSearch(k) },
-    })),
-    ...(hasPhrase ? [{ bodyNormalized: { contains: normalizedPhrase } }] : []),
-  ];
+  // Date-only queries ("posts from 2023") have no text to embed/keyword-match.
+  // Skip hybridSearch and return chronological hits in the date window so the
+  // assistant doesn't tell the user "I couldn't find any".
+  if (!hasQuery && hasDateRange) {
+    return chronologicalDateRange(opts, limit);
+  }
+  if (!hasQuery) return [];
 
-  const where: Prisma.PostWhereInput = {
+  // Delegate everything else to the unified hybrid retrieval (vector + tag +
+  // phrase + Haiku rerank). hybridSearch already handles phrase-first matches,
+  // mapQuery, and filter pushdown for lifecycle/season/contentKind/dateRange.
+  const { hybridSearch } = await import("@/lib/retrieval/hybrid-search");
+  return hybridSearch({
     userId: opts.userId,
-    readiness: { not: "ARCHIVED" },
-    share: { equals: Prisma.DbNull },
-    ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
-    ...(opts.season ? { season: opts.season } : {}),
-    ...(hasDateRange
-      ? {
-          originalDate: {
-            ...(opts.dateRange?.from ? { gte: opts.dateRange.from } : {}),
-            ...(opts.dateRange?.to ? { lte: opts.dateRange.to } : {}),
-          },
-        }
-      : {}),
-    ...(orClauses.length ? { OR: orClauses } : {}),
-  };
+    query: opts.query,
+    limit,
+    lifecycle: opts.lifecycle,
+    season: opts.season,
+    contentKind: opts.contentKind,
+    dateRange: opts.dateRange,
+  });
+}
 
+async function chronologicalDateRange(
+  opts: RetrieveOptions,
+  limit: number,
+): Promise<RetrieveHit[]> {
   const posts = await prisma.post.findMany({
-    where,
+    where: {
+      userId: opts.userId,
+      readiness: { not: "ARCHIVED" },
+      share: { equals: Prisma.DbNull },
+      ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
+      ...(opts.season ? { season: opts.season } : {}),
+      ...(opts.dateRange?.from || opts.dateRange?.to
+        ? {
+            originalDate: {
+              ...(opts.dateRange?.from ? { gte: opts.dateRange.from } : {}),
+              ...(opts.dateRange?.to ? { lte: opts.dateRange.to } : {}),
+            },
+          }
+        : {}),
+    },
     select: {
       id: true,
       body: true,
@@ -237,34 +176,50 @@ export async function retrieve(opts: RetrieveOptions): Promise<RetrieveHit[]> {
       lifecycle: true,
       postType: true,
       platformUrl: true,
+      originalDate: true,
       rating: { select: { stars: true } },
       media: {
         orderBy: { id: "asc" },
         select: { storageKey: true, mimeType: true },
       },
     },
-    // Date-only queries: most recent first (chronological is what users mean
-    // by "find me posts from December"). Otherwise sort happens in rankHits.
-    ...(!hasTextFilter && hasDateRange ? { orderBy: { originalDate: "desc" as const } } : {}),
-    take: 200,
+    orderBy: { originalDate: "desc" },
+    take: limit,
   });
-
-  const slim: PostSlim[] = posts.map((p: { id: string; body: string; bodyNormalized: string; tags: string[]; lifecycle: Lifecycle; postType: PostType; platformUrl: string | null; rating: { stars: number } | null; media: { storageKey: string; mimeType: string }[] }) => {
-    const mimes = p.media.map((m) => m.mimeType);
-    const thumbSource = p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
-    return {
-      id: p.id,
-      body: p.body,
-      bodyNormalized: p.bodyNormalized,
-      tags: p.tags,
-      stars: p.rating?.stars ?? null,
-      lifecycle: p.lifecycle,
-      thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
-      contentKind: classifyContent({ postType: p.postType, body: p.body, mediaMimes: mimes }),
-      platformUrl: p.platformUrl,
-    };
-  });
-
-  const filtered = opts.contentKind ? slim.filter((p) => p.contentKind === opts.contentKind) : slim;
-  return rankHits(filtered, mapped, hasPhrase ? normalizedPhrase : undefined).slice(0, limit);
+  const slim: PostSlim[] = posts.map(
+    (p: {
+      id: string;
+      body: string;
+      bodyNormalized: string;
+      tags: string[];
+      lifecycle: Lifecycle;
+      postType: PostType;
+      platformUrl: string | null;
+      rating: { stars: number } | null;
+      media: { storageKey: string; mimeType: string }[];
+    }) => {
+      const mimes = p.media.map((m) => m.mimeType);
+      const thumbSource =
+        p.media.find((m) => m.mimeType.startsWith("image/")) ?? p.media[0];
+      return {
+        id: p.id,
+        body: p.body,
+        bodyNormalized: p.bodyNormalized,
+        tags: p.tags,
+        stars: p.rating?.stars ?? null,
+        lifecycle: p.lifecycle,
+        thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
+        contentKind: classifyContent({
+          postType: p.postType,
+          body: p.body,
+          mediaMimes: mimes,
+        }),
+        platformUrl: p.platformUrl,
+      };
+    },
+  );
+  const filtered = opts.contentKind
+    ? slim.filter((p) => p.contentKind === opts.contentKind)
+    : slim;
+  return rankHits(filtered, { tags: [], keywords: [] }).slice(0, limit);
 }

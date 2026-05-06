@@ -7,6 +7,7 @@ import { getMediaUrl } from "@/lib/storage";
 import { getLikedPostIds } from "@/lib/engagement/like";
 import { getBookmarkedPostIds } from "@/lib/engagement/bookmark";
 import { listComments } from "@/lib/engagement/comments";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 import { BackButton } from "./BackButton";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
 import { EngagementBar } from "@/components/EngagementBar";
@@ -48,17 +49,19 @@ export default async function PublicPostPage({
 
   const related = await getRelatedPosts(post, 5);
 
-  const subscriberId = session?.user?.subscriberId;
   const role = session?.user?.role;
-  const signedIn = role === "subscriber";
+  // Admin acts under their shadow subscriber so they can test engagement
+  // features end-to-end without logging out. See lib/engagement/admin-shadow.ts.
+  const actorSubscriberId = await resolveActorSubscriberId(session);
+  const signedIn = !!actorSubscriberId;
   const likedPromise: Promise<string[]> =
-    signedIn && subscriberId ? getLikedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+    actorSubscriberId ? getLikedPostIds(actorSubscriberId, [post.id]) : Promise.resolve([]);
   const bookmarkedPromise: Promise<string[]> =
-    signedIn && subscriberId ? getBookmarkedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+    actorSubscriberId ? getBookmarkedPostIds(actorSubscriberId, [post.id]) : Promise.resolve([]);
   const viewerSubscriberPromise =
-    signedIn && subscriberId
+    actorSubscriberId
       ? prisma.subscriber.findUnique({
-          where: { id: subscriberId },
+          where: { id: actorSubscriberId },
           select: { commentsDisabledAt: true },
         })
       : Promise.resolve(null);
@@ -66,9 +69,11 @@ export default async function PublicPostPage({
   const [likedIds, bookmarkedIds, initialComments, viewerSubscriber] = await Promise.all([
     likedPromise,
     bookmarkedPromise,
-    listComments(post.id, null, subscriberId ?? null),
+    listComments(post.id, null, actorSubscriberId ?? null),
     viewerSubscriberPromise,
   ]);
+  // Suppress unused-vars warning for `role` until we wire admin-only chrome.
+  void role;
 
   const mainMedia = await mediaWithUrls(post.media);
   const relatedWithUrls = await Promise.all(

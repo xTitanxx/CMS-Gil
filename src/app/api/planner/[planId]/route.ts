@@ -112,7 +112,7 @@ export async function PATCH(
 
   const body = await req.json();
   const { action, slotId, postId, day, reasoning, platforms } = body as {
-    action: "approve" | "remove" | "swap" | "pin";
+    action: "approve" | "remove" | "swap" | "pin" | "clear";
     slotId?: string;
     postId?: string;
     day?: string;
@@ -197,6 +197,13 @@ export async function PATCH(
           platforms: platforms ?? [],
           status: "PROPOSED",
         },
+      });
+      break;
+    }
+
+    case "clear": {
+      await prisma.weeklyPlanSlot.deleteMany({
+        where: { planId, status: { in: ["PROPOSED", "APPROVED"] } },
       });
       break;
     }

@@ -13,6 +13,8 @@ const INITIAL_PAST = 3;
 const INITIAL_FUTURE = 10;
 const LOAD_MORE = 7;
 
+type LoadingAction = "AI" | "DUMB" | "clear" | "schedule" | null;
+
 interface WeeklyPlanViewProps {
   plan: WeeklyPlanData | null;
   loading: boolean;
@@ -48,6 +50,7 @@ export function WeeklyPlanView({
   onClearAll,
   onScheduleAll,
 }: WeeklyPlanViewProps) {
+  const [activeAction, setActiveAction] = useState<LoadingAction>(null);
   const [pastDays, setPastDays] = useState(INITIAL_PAST);
   const [futureDays, setFutureDays] = useState(INITIAL_FUTURE);
   const days = buildDayRange(pastDays, futureDays);
@@ -95,10 +98,10 @@ export function WeeklyPlanView({
   return (
     <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="border-b border-gray-100 px-3 py-3 sm:px-4">
+        <div className="mb-2.5 flex items-center gap-2">
           <CalendarDays className="h-5 w-5 shrink-0 text-gray-500" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-gray-900">Planner</h2>
               {plan?.mode === "DUMB" && (
@@ -114,45 +117,66 @@ export function WeeklyPlanView({
           </div>
         </div>
 
-        <div className="ml-2 flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {proposedSlots.length > 0 && (
             <Button
-              onClick={onClearAll}
+              onClick={async () => {
+                setActiveAction("clear");
+                await onClearAll();
+                setActiveAction(null);
+              }}
               disabled={loading}
               size="sm"
               variant="outline"
               className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
             >
-              <Trash2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Clear All</span>
+              {activeAction === "clear" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              <span>Clear</span>
             </Button>
           )}
           <Button
-            onClick={() => onGenerate(undefined, "DUMB")}
+            onClick={async () => {
+              setActiveAction("DUMB");
+              await onGenerate(undefined, "DUMB");
+              setActiveAction(null);
+            }}
             disabled={loading}
             size="sm"
             variant="outline"
             className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
             title="Fill the week with the oldest unpublished posts (no AI)"
           >
-            <Recycle className="h-4 w-4" />
-            <span className="hidden sm:inline">Recycle Oldest</span>
-            <span className="sm:hidden">Recycle</span>
+            {activeAction === "DUMB" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Recycle className="h-4 w-4" />}
+            <span>Recycle</span>
           </Button>
           <Button
-            onClick={() => onGenerate()}
+            onClick={async () => {
+              setActiveAction("AI");
+              await onGenerate();
+              setActiveAction(null);
+            }}
             disabled={loading}
             size="sm"
             className="gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60"
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">Plan My Week</span>
-            <span className="sm:hidden">Plan</span>
+            {activeAction === "AI" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            <span>Plan Week</span>
           </Button>
+          {activeSlots.length > 0 && (
+            <Button
+              onClick={async () => {
+                setActiveAction("schedule");
+                await onScheduleAll();
+                setActiveAction(null);
+              }}
+              disabled={loading}
+              size="sm"
+              className="ml-auto gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60"
+            >
+              {activeAction === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
+              <span>Approve all ({activeSlots.length})</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -198,20 +222,6 @@ export function WeeklyPlanView({
         )}
       </div>
 
-      {/* Footer */}
-      {activeSlots.length > 0 && (
-        <div className="border-t border-gray-100 px-4 py-2.5">
-          <Button
-            onClick={onScheduleAll}
-            disabled={loading}
-            className="w-full gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-60"
-            size="sm"
-          >
-            <CalendarCheck className="h-4 w-4" />
-            Approve &amp; Schedule All ({activeSlots.length})
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

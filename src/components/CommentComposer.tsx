@@ -9,8 +9,6 @@ interface Props {
   postId: string;
   /** True when the viewer has a subscriber session. */
   signedIn: boolean;
-  /** Subscriber's display name, or null if not yet set. Triggers the inline displayName prompt on first comment. */
-  initialDisplayName: string | null;
   /** Subscriber's commentsDisabledAt (truthy → disabled state). */
   commentsDisabled: boolean;
   /** Callback to append the new comment into the thread. */
@@ -23,13 +21,10 @@ const SIGN_IN_HREF = (postId: string) =>
 export function CommentComposer({
   postId,
   signedIn,
-  initialDisplayName,
   commentsDisabled,
   onPosted,
 }: Props) {
   const [body, setBody] = useState("");
-  const [displayName, setDisplayName] = useState(initialDisplayName ?? "");
-  const [savedDisplayName, setSavedDisplayName] = useState(initialDisplayName);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,16 +53,10 @@ export function CommentComposer({
     );
   }
 
-  const needsDisplayName = !savedDisplayName;
   const trimmed = body.trim();
   const overLimit = trimmed.length > COMMENT_BODY_MAX;
   const showCounter = trimmed.length > 1800;
-  const dnTrimmed = displayName.trim();
-  const canSubmit =
-    !posting &&
-    trimmed.length > 0 &&
-    !overLimit &&
-    (!needsDisplayName || (dnTrimmed.length > 0 && dnTrimmed.length <= 50));
+  const canSubmit = !posting && trimmed.length > 0 && !overLimit;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,10 +67,7 @@ export function CommentComposer({
       const res = await fetch(`/api/posts/${postId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          body: trimmed,
-          ...(needsDisplayName ? { displayName: dnTrimmed } : {}),
-        }),
+        body: JSON.stringify({ body: trimmed }),
       });
       if (res.status === 429) {
         setError("Too fast — wait a moment before posting again.");
@@ -103,7 +89,6 @@ export function CommentComposer({
       const data = (await res.json()) as { comment: CommentDTO };
       onPosted(data.comment);
       setBody("");
-      if (needsDisplayName) setSavedDisplayName(dnTrimmed);
       textareaRef.current?.focus();
     } catch {
       setError("Couldn't post. Try again.");
@@ -114,30 +99,6 @@ export function CommentComposer({
 
   return (
     <form onSubmit={submit} className="border-t border-gray-200 bg-white p-4">
-      {needsDisplayName && (
-        <div className="mb-3">
-          <label
-            htmlFor="composer-display-name"
-            className="mb-1 block text-xs font-semibold text-gray-700"
-          >
-            Pick a display name
-          </label>
-          <p className="mb-1.5 text-xs text-gray-500">
-            This is what other readers will see. Choose something you&rsquo;re
-            comfortable with — Gil already knows you by your real name.
-          </p>
-          <input
-            id="composer-display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. Eitan A."
-            maxLength={50}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-      )}
-
       <textarea
         ref={textareaRef}
         value={body}

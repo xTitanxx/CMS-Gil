@@ -64,7 +64,7 @@ export async function POST(
     );
   }
 
-  let body: { body?: string; displayName?: string };
+  let body: { body?: string };
   try {
     body = await req.json();
   } catch {
@@ -79,7 +79,6 @@ export async function POST(
       postId: id,
       subscriberId,
       body: body.body,
-      displayName: body.displayName,
     });
     return NextResponse.json({ comment });
   } catch (err) {

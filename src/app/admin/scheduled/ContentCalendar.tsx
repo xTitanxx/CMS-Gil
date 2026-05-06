@@ -12,7 +12,7 @@ import {
   isSameWeek,
   startOfDay,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { MonthView } from "./MonthView";
@@ -32,12 +32,18 @@ const TYPE_LABEL: Record<TypeFilter, string> = {
   imported: "Imported",
 };
 
-const TYPE_COLOR: Record<TypeFilter, string> = {
-  proposed: "border-gray-400 bg-white text-gray-600",
-  scheduled: "border-yellow-300 bg-yellow-50 text-yellow-800",
-  posted: "border-green-300 bg-green-50 text-green-800",
-  imported: "border-gray-300 bg-gray-100 text-gray-700",
+// Active styles use saturated, distinct hues so each chip's "on" state is
+// unambiguous on its own. Inactive style is shared and obviously OFF
+// (dashed outline, faded). See toggleType() callsite below.
+const TYPE_ACTIVE_CLASS: Record<TypeFilter, string> = {
+  proposed: "border-violet-300 bg-violet-100 text-violet-800",
+  scheduled: "border-amber-300 bg-amber-100 text-amber-800",
+  posted: "border-green-300 bg-green-100 text-green-800",
+  imported: "border-slate-400 bg-slate-200 text-slate-800",
 };
+
+const TYPE_INACTIVE_CLASS =
+  "border-dashed border-gray-300 bg-white text-gray-400 opacity-60 hover:opacity-90";
 
 function statusToType(status: CalendarEntry["status"]): TypeFilter {
   if (status === "PROPOSED" || status === "PLAN_APPROVED") return "proposed";
@@ -200,12 +206,13 @@ export function ContentCalendar() {
                 type="button"
                 onClick={() => toggleType(t)}
                 aria-pressed={on}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
                   on
-                    ? TYPE_COLOR[t]
-                    : "border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:text-gray-600"
+                    ? `${TYPE_ACTIVE_CLASS[t]} shadow-sm`
+                    : TYPE_INACTIVE_CLASS
                 }`}
               >
+                {on && <Check className="h-3 w-3" aria-hidden="true" />}
                 {TYPE_LABEL[t]}
               </button>
             );

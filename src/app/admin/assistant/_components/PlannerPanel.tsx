@@ -23,13 +23,13 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
     void refreshPlan().finally(() => setLoading(false));
   }, [refreshPlan]);
 
-  const handleGenerate = useCallback(async () => {
+  const handleGenerate = useCallback(async (preferences?: string, mode?: "AI" | "DUMB") => {
     setLoading(true);
     try {
       const res = await fetch("/api/planner/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ preferences, mode }),
       });
       if (res.ok) await refreshPlan();
     } finally {

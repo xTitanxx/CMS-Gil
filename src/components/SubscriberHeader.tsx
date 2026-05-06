@@ -84,7 +84,7 @@ export async function SubscriberHeader() {
           Sign in
         </Link>
         <Link
-          href="/welcome"
+          href="/welcome?next=/chat"
           className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
         >
           <Sparkles className="h-3 w-3" />

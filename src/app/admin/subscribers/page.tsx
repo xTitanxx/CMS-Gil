@@ -1,0 +1,24 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { SubscribersListClient } from "./SubscribersListClient";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Subscribers" };
+
+export default async function AdminSubscribersPage() {
+  const session = await auth();
+  if (session?.user?.role !== "admin") redirect("/login");
+
+  return (
+    <div className="px-6 py-8">
+      <div className="mb-4 flex items-baseline justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Subscribers</h1>
+        <p className="text-xs text-gray-500">
+          Per-person paid access to Virtual Gil. Click a subscriber to see
+          their bookmarks, comments, and usage.
+        </p>
+      </div>
+      <SubscribersListClient />
+    </div>
+  );
+}

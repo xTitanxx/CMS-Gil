@@ -124,6 +124,15 @@ model Post {
   postType     PostType @default(POST)
   publishCount Int      @default(0)
 
+  // Set when ANY PublishRecord for this post transitions to PUBLISHED. Tracks
+  // hub activity directly on the Post so list views ("show me everything I've
+  // pushed through the hub") don't have to JOIN to PublishRecord. Updated in
+  // publishNow() alongside the PublishRecord status flip.
+  lastPublishedViaHubAt DateTime?
+  // Total successful hub publishes across all platforms / all attempts.
+  // Distinct from publishCount above which counts schedule events.
+  hubPublishCount       Int       @default(0)
+
   lifecycle           Lifecycle @default(UNKNOWN)
   season              Season?
   lifecycleOverridden Boolean   @default(false)
@@ -180,6 +189,7 @@ model Post {
   @@index([tags], type: Gin)
   @@index([readiness])
   @@index([lifecycle])
+  @@index([userId, lastPublishedViaHubAt])
 }
 
 model PostLike {

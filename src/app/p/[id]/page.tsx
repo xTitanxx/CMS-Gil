@@ -59,7 +59,7 @@ export default async function PublicPostPage({
     signedIn && subscriberId
       ? prisma.subscriber.findUnique({
           where: { id: subscriberId },
-          select: { displayName: true, commentsDisabledAt: true },
+          select: { commentsDisabledAt: true },
         })
       : Promise.resolve(null);
 
@@ -124,7 +124,6 @@ export default async function PublicPostPage({
           <CommentSection
             postId={post.id}
             signedIn={signedIn}
-            initialDisplayName={viewerSubscriber?.displayName ?? null}
             commentsDisabled={!!viewerSubscriber?.commentsDisabledAt}
             initialComments={initialComments}
           />

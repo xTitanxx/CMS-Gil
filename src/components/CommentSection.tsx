@@ -7,7 +7,6 @@ import { CommentComposer } from "./CommentComposer";
 interface Props {
   postId: string;
   signedIn: boolean;
-  initialDisplayName: string | null;
   commentsDisabled: boolean;
   initialComments: { comments: CommentDTO[]; nextCursor: string | null };
 }
@@ -15,7 +14,6 @@ interface Props {
 export function CommentSection({
   postId,
   signedIn,
-  initialDisplayName,
   commentsDisabled,
   initialComments,
 }: Props) {
@@ -27,7 +25,6 @@ export function CommentSection({
       <CommentComposer
         postId={postId}
         signedIn={signedIn}
-        initialDisplayName={initialDisplayName}
         commentsDisabled={commentsDisabled}
         onPosted={(c) => appendRef.current?.(c)}
       />

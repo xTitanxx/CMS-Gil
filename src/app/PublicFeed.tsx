@@ -49,11 +49,19 @@ function PostCard({
   liked,
   bookmarked,
   signedIn,
+  likeCount,
+  onLikeChange,
+  onBookmarkChange,
+  onAuthError,
 }: {
   post: FeedPost;
   liked: boolean;
   bookmarked: boolean;
   signedIn: boolean;
+  likeCount: number;
+  onLikeChange: (postId: string, liked: boolean, count: number) => void;
+  onBookmarkChange: (postId: string, bookmarked: boolean) => void;
+  onAuthError: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const body = post.body ?? "";
@@ -139,10 +147,13 @@ function PostCard({
 
       <EngagementBar
         postId={post.id}
-        initialLikeCount={post.likeCount}
+        initialLikeCount={likeCount}
         initialLiked={liked}
         initialBookmarked={bookmarked}
         signedIn={signedIn}
+        onLikeChange={(l, c) => onLikeChange(post.id, l, c)}
+        onBookmarkChange={(b) => onBookmarkChange(post.id, b)}
+        onAuthError={onAuthError}
       />
     </article>
   );
@@ -160,7 +171,47 @@ export function PublicFeed({
   const [loading, setLoading] = useState(false);
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  // Lifted likeCount per post — lets optimistic updates from EngagementBar
+  // survive any parent re-render that would otherwise pass stale post.likeCount
+  // back into the controlled bar.
+  const [likeCounts, setLikeCounts] = useState<Map<string, number>>(
+    () => new Map(initial.posts.map((p) => [p.id, p.likeCount]))
+  );
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const handleLikeChange = useCallback(
+    (postId: string, isLiked: boolean, count: number) => {
+      setLiked((prev) => {
+        const next = new Set(prev);
+        if (isLiked) next.add(postId);
+        else next.delete(postId);
+        return next;
+      });
+      setLikeCounts((prev) => {
+        const next = new Map(prev);
+        next.set(postId, count);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleBookmarkChange = useCallback(
+    (postId: string, isBookmarked: boolean) => {
+      setBookmarked((prev) => {
+        const next = new Set(prev);
+        if (isBookmarked) next.add(postId);
+        else next.delete(postId);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleAuthError = useCallback(() => {
+    const next = window.location.pathname + window.location.hash;
+    window.location.assign(`/welcome?next=${encodeURIComponent(next)}`);
+  }, []);
 
   const fetchEngagement = useCallback(
     async (ids: string[]) => {
@@ -204,6 +255,13 @@ export function PublicFeed({
       const data: FeedPage = await res.json();
       setPosts((prev) => [...prev, ...data.posts]);
       setCursor(data.nextCursor);
+      setLikeCounts((prev) => {
+        const next = new Map(prev);
+        for (const p of data.posts) {
+          if (!next.has(p.id)) next.set(p.id, p.likeCount);
+        }
+        return next;
+      });
       fetchEngagement(data.posts.map((p) => p.id));
     } finally {
       setLoading(false);
@@ -230,6 +288,10 @@ export function PublicFeed({
           liked={liked.has(p.id)}
           bookmarked={bookmarked.has(p.id)}
           signedIn={signedIn}
+          likeCount={likeCounts.get(p.id) ?? p.likeCount}
+          onLikeChange={handleLikeChange}
+          onBookmarkChange={handleBookmarkChange}
+          onAuthError={handleAuthError}
         />
       ))}
       {cursor && (

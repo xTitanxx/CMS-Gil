@@ -637,9 +637,9 @@ model Subscriber {
   createdAt        DateTime                  @default(now())
   lastSeenAt       DateTime?
   revokedAt        DateTime?
-  // Public-facing display name shown on comments. Falls back to `name` while
-  // null. Set lazily via the first-comment composer prompt — subscribers who
-  // never comment never need to pick one.
+  // Public-facing display name shown on comments. Falls back to `name` when
+  // null (the default — there is no longer a UI to pick one). Kept nullable
+  // so admin tooling can still set a custom name per subscriber if needed.
   displayName        String?
   // Admin-set commenting disablement (without revoking the whole subscription).
   // When set, server rejects POST /comments with 403 { error: "comments_disabled" }.

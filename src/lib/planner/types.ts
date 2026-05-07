@@ -52,6 +52,7 @@ export interface WeeklyPlanData {
 
 export interface AiPickResult {
   day: string;
+  hour: number;
   postId: string;
   reasoning: string;
 }

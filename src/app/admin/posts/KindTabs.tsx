@@ -33,7 +33,7 @@ export function KindTabs({ current, counts }: { current: PostKind; counts?: Kind
   return (
     <div
       role="tablist"
-      className="inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-gray-100/70 p-0.5"
+      className="inline-flex w-fit items-center gap-0.5 rounded-full border border-gray-200 bg-gray-100/70 p-0.5"
     >
       {(["posts", "stories"] as const).map((k) => {
         const active = current === k;

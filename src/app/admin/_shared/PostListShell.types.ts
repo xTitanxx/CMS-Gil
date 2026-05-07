@@ -54,6 +54,7 @@ export interface PostListShellProps<TPost> {
   bulkBar?: ReactNode;
   emptyState?: ReactNode;
   renderRow: (post: TPost, index: number) => ReactNode;
+  listClassName?: string;
   hideKindTabs?: boolean;
   showSelectAll?: boolean;
   onSelectAllToggle?: (selectAll: boolean, visiblePosts: TPost[]) => void;

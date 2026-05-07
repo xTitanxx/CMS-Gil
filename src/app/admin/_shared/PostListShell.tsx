@@ -90,6 +90,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     bulkBar,
     emptyState,
     renderRow,
+    listClassName,
     hideKindTabs,
     showSelectAll,
     onSelectAllToggle,
@@ -719,7 +720,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               <Spinner className="h-6 w-6 text-gray-400" />
             </div>
           )}
-          <div className="space-y-2">
+          <div className={listClassName ?? "space-y-2"}>
             {showSelectAll && onSelectAllToggle && (
               <label className="flex cursor-pointer select-none items-center gap-2 px-2 pb-0.5 text-xs text-gray-400 hover:text-gray-600">
                 <input

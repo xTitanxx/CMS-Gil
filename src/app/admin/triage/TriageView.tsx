@@ -54,6 +54,7 @@ export function TriageView() {
         extraParams={{ bucket }}
         title="Needs fixes"
         itemNoun={{ singular: "post", plural: "posts" }}
+        listClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
         beforeList={<TriageBuckets />}
         getPostId={(p) => p.id}
         onPostsChanged={() => {

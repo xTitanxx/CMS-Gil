@@ -2,7 +2,7 @@ import SettingsPage from "./SettingsPage";
 
 export const metadata = { title: "Settings" };
 
-const VALID_TABS = ["admins", "connections", "import", "engagement"] as const;
+const VALID_TABS = ["admins", "subscribers", "connections", "import", "engagement"] as const;
 type TabId = (typeof VALID_TABS)[number];
 
 export default async function Page({

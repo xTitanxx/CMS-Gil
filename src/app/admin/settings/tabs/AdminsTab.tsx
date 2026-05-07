@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Trash2, ShieldOff, ShieldCheck } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 interface UserRow {
   id: string;
@@ -24,7 +24,10 @@ export function AdminsTab() {
 
   async function fetchUsers() {
     const res = await fetch("/api/users");
-    if (res.ok) setUsers(await res.json());
+    if (res.ok) {
+      const all: UserRow[] = await res.json();
+      setUsers(all.filter((u) => u.isAdmin));
+    }
     setLoading(false);
   }
 
@@ -57,7 +60,7 @@ export function AdminsTab() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this user? Their posts and data will be deleted too.")) return;
+    if (!confirm("Remove this admin? Their posts and data will be deleted too.")) return;
     const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
     if (res.ok) {
       setUsers((prev) => prev.filter((u) => u.id !== id));
@@ -67,29 +70,12 @@ export function AdminsTab() {
     }
   }
 
-  async function handleToggleAdmin(id: string, makeAdmin: boolean) {
-    const verb = makeAdmin ? "Promote" : "Demote";
-    if (!confirm(`${verb} this user?`)) return;
-    const res = await fetch(`/api/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isAdmin: makeAdmin }),
-    });
-    if (res.ok) {
-      await fetchUsers();
-    } else {
-      const data = await res.json();
-      alert(data.error || `Failed to ${verb.toLowerCase()}`);
-    }
-  }
-
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-6 py-4">
         <h2 className="text-lg font-semibold text-gray-900">Admins</h2>
         <p className="text-sm text-gray-500">
-          Sign-in is Google-only. Users marked admin can access the content hub.
-          Adding an email here pre-authorizes their next Google sign-in.
+          Sign-in is Google-only. Adding an email here pre-authorizes their next Google sign-in.
         </p>
       </div>
 
@@ -110,50 +96,24 @@ export function AdminsTab() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">
                   {user.name || user.email}
-                  {user.isAdmin && (
-                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      admin
-                    </span>
-                  )}
                 </p>
                 <p className="truncate text-xs text-gray-500">
                   {user.email}
-                  {user.loginMethod !== "google" && (
-                    <span className="ml-1 text-amber-600">· {user.loginMethod}</span>
+                  {user.loginMethod === "pending" && (
+                    <span className="ml-1 text-amber-600">· pending</span>
                   )}
                 </p>
               </div>
 
-              <div className="flex items-center gap-1">
-                {user.isAdmin ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleToggleAdmin(user.id, false)}
-                    title="Demote (revoke admin access)"
-                  >
-                    <ShieldOff className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleToggleAdmin(user.id, true)}
-                    title="Promote to admin"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={() => handleDelete(user.id)}
-                  title="Remove user"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-red-600 hover:text-red-700"
+                onClick={() => handleDelete(user.id)}
+                title="Remove admin"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </li>
           ))}
         </ul>

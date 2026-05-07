@@ -6,9 +6,11 @@ import { AdminsTab } from "./tabs/AdminsTab";
 import { EngagementTab } from "./tabs/EngagementTab";
 import ConnectionsPage from "../connections/ConnectionsPage";
 import ImportPage from "../import/ImportPage";
+import { SubscribersListClient } from "../subscribers/SubscribersListClient";
 
 const TABS = [
   { id: "admins", label: "Admins" },
+  { id: "subscribers", label: "Subscribers" },
   { id: "connections", label: "Connections" },
   { id: "import", label: "Import" },
   { id: "engagement", label: "Engagement" },
@@ -28,7 +30,7 @@ export default function SettingsPage({ activeTab }: Props) {
           Settings
         </h1>
         <p className="text-sm text-gray-500">
-          Manage admins, platform connections, imports, and engagement.
+          Manage admins, subscribers, platform connections, imports, and engagement.
         </p>
       </div>
 
@@ -51,6 +53,7 @@ export default function SettingsPage({ activeTab }: Props) {
 
       <div className="mt-6">
         {activeTab === "admins" && <AdminsTab />}
+        {activeTab === "subscribers" && <SubscribersListClient />}
         {activeTab === "connections" && <ConnectionsPage />}
         {activeTab === "import" && <ImportPage />}
         {activeTab === "engagement" && <EngagementTab />}

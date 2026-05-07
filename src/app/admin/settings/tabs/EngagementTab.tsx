@@ -33,11 +33,11 @@ export function EngagementTab() {
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-6 py-4">
-        <h2 className="text-lg font-semibold text-gray-900">Engagement counts</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Fix like &amp; comment counts</h2>
         <p className="text-sm text-gray-500">
-          Recompute Post.likeCount and Post.commentCount from the join tables.
-          Drift in practice should be tiny — every mutation does an in-mutation
-          recompute. Use this if a count looks wrong on the public archive.
+          Each post stores its like and comment counts so the public archive loads fast.
+          Normally these stay accurate automatically, but if a number looks wrong on the
+          archive, click below to recalculate every post&apos;s counts from scratch.
         </p>
       </div>
       <div className="px-6 py-4">

@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
       body: true,
       originalDate: true,
       tags: true,
+      platformUrl: true,
       media: {
         select: {
           id: true,
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
         body: p.body,
         originalDate: p.originalDate,
         tags: p.tags,
+        platformUrl: p.platformUrl,
         mediaUrl,
         mediaMimeType,
         mediaWidth: firstMedia?.width ?? null,

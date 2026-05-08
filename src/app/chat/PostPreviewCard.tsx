@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
 import { postAudioState } from "@/lib/post-audio-state";
 
@@ -17,6 +18,8 @@ export interface PreviewPost {
   hasAudio: boolean | null;
   /** Surfaced from the public chat API when an AudioTrack is attached. */
   audioTrackId?: string | null;
+  /** FB permalink when the post was imported from Facebook. */
+  platformUrl?: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -69,7 +72,25 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
         {truncated && (
           <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
         )}
-        <p className="mt-1 text-xs text-gray-400">{formatDate(post.originalDate)}</p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="text-xs text-gray-400">{formatDate(post.originalDate)}</p>
+          {post.platformUrl && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(post.platformUrl!, "_blank", "noopener,noreferrer");
+              }}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-600 hover:bg-blue-50"
+              title="Open original on Facebook"
+              aria-label="Open original on Facebook"
+            >
+              <ExternalLink className="h-3 w-3" />
+              <span>Facebook</span>
+            </button>
+          )}
+        </div>
       </div>
     </Link>
   );

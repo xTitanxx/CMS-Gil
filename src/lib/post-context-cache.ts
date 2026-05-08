@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 let cachedContext: string | null = null;
@@ -26,8 +27,19 @@ export async function getPostContext(): Promise<{
   // up older posts that fall outside this window, so we keep the baseline
   // small (was 200) — saves ~75% of system-prompt tokens without hurting
   // recall of older content.
+  // Only include public-appropriate POST-type posts — exclude ARCHIVED readiness
+  // (Gil removed them), STORY/REEL (public feed rule per CLAUDE.md), and
+  // shared/crosspost entries (not Gil's original writing). Without these
+  // filters the baselineIds exclusion list wastes slots on IDs that
+  // hybridSearch would never return anyway (it already filters them), which
+  // shrinks the pool of additional posts the per-turn retrieval can surface.
   const posts = await prisma.post.findMany({
-    where: { userId: gilUserId },
+    where: {
+      userId: gilUserId,
+      readiness: { not: "ARCHIVED" },
+      share: { equals: Prisma.DbNull },
+      postType: "POST",
+    },
     select: { id: true, body: true, tags: true, originalDate: true },
     orderBy: { originalDate: "desc" },
     take: 50,

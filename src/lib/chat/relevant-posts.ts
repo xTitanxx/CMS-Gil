@@ -28,6 +28,9 @@ export async function getRelevantPosts(
     query,
     limit,
     excludeIds,
+    // The public Archivist only surfaces original POSTs — STORY and REEL are
+    // excluded from the public feed per the project's content rules.
+    postTypes: ["POST"],
   });
   return hits.map((h) => ({
     id: h.postId,
@@ -52,8 +55,11 @@ export function formatRelevantPostsForPrompt(posts: RelevantPost[]): string {
   // Heading is intentionally directive — these posts came back from semantic
   // search ranked against the recent conversation, not a vague keyword sweep.
   // Soft language ("POSSIBLY") was making the model dismiss them too readily.
+  // "beyond the newest-N baseline" is clearer than "NOT in the main list above"
+  // because the two sources arrive in separate system blocks — the model must
+  // not assume "above" refers to the same block.
   return [
-    `TOP MATCHES FROM SEMANTIC SEARCH (ranked by relevance to the current question; from the wider archive, NOT in the main list above):`,
+    `TOP MATCHES FROM SEMANTIC SEARCH (ranked by relevance to the current question; retrieved from the wider archive beyond the newest-50 baseline):`,
     `These are the most relevant posts available — when discussing topics related to the user's question, prefer citing posts from THIS list.`,
     `---`,
     lines.join("\n---\n"),

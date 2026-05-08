@@ -22,6 +22,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
 import type { Lifecycle, PostType, Season } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { normalizeForSearch } from "@/lib/search-normalize";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
@@ -49,6 +50,10 @@ export interface HybridSearchOptions {
   // When false, skip the Haiku rerank pass — useful for tests or callers
   // that prioritize latency over precision. Defaults to true.
   rerank?: boolean;
+  // Restrict results to specific post kinds. The Archivist passes ["POST"] to
+  // exclude STORY and REEL entries (public-feed rule: these types are not
+  // surfaced to followers). Omit for the admin assistant which can see all.
+  postTypes?: PostType[];
 }
 
 interface RankedId {
@@ -62,12 +67,16 @@ async function vectorCandidates(
   userId: string,
   queryVec: number[],
   limit: number,
+  postTypes?: PostType[],
 ): Promise<RankedId[]> {
   const vec = toPgVectorLiteral(queryVec);
   // Order by cosine distance ascending (closer = more similar). Filter ARCHIVED
   // and shared posts at the SQL level. We stay loose on lifecycle/season/etc
   // here and apply those in app code after fetching the full row — keeps the
   // raw query simple at our corpus size (~5k rows).
+  const postTypeClause = postTypes
+    ? Prisma.sql`AND "postType" = ANY(${postTypes}::text[])`
+    : Prisma.empty;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id
     FROM "Post"
@@ -75,6 +84,7 @@ async function vectorCandidates(
       AND embedding IS NOT NULL
       AND readiness != 'ARCHIVED'
       AND share IS NULL
+      ${postTypeClause}
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${limit}
   `;
@@ -85,6 +95,7 @@ async function tagCandidates(
   userId: string,
   query: string,
   limit: number,
+  postTypes?: PostType[],
 ): Promise<RankedId[]> {
   const mapped = await mapQuery(userId, query);
   // Always seed keywords with the raw query words (>= 3 chars) so we never
@@ -108,6 +119,7 @@ async function tagCandidates(
       userId,
       readiness: { not: "ARCHIVED" },
       share: { equals: Prisma.DbNull },
+      ...(postTypes ? { postType: { in: postTypes } } : {}),
       OR: orClauses,
     },
     select: { id: true, tags: true, bodyNormalized: true },
@@ -132,6 +144,7 @@ async function phraseCandidates(
   userId: string,
   query: string,
   limit: number,
+  postTypes?: PostType[],
 ): Promise<RankedId[]> {
   const normalized = normalizeForSearch(query);
   if (normalized.length < 12) return [];
@@ -140,6 +153,7 @@ async function phraseCandidates(
       userId,
       readiness: { not: "ARCHIVED" },
       share: { equals: Prisma.DbNull },
+      ...(postTypes ? { postType: { in: postTypes } } : {}),
       bodyNormalized: { contains: normalized },
     },
     select: { id: true, originalDate: true },
@@ -314,12 +328,12 @@ export async function hybridSearch(opts: HybridSearchOptions): Promise<RetrieveH
   // Embed query (if Voyage configured) in parallel with starting tag mapping.
   const [queryVec, tagRanked, phraseRanked] = await Promise.all([
     embedQuery(opts.query),
-    tagCandidates(opts.userId, opts.query, PER_RETRIEVER_LIMIT),
-    phraseCandidates(opts.userId, opts.query, PER_RETRIEVER_LIMIT),
+    tagCandidates(opts.userId, opts.query, PER_RETRIEVER_LIMIT, opts.postTypes),
+    phraseCandidates(opts.userId, opts.query, PER_RETRIEVER_LIMIT, opts.postTypes),
   ]);
 
   const vectorRanked = queryVec
-    ? await vectorCandidates(opts.userId, queryVec, PER_RETRIEVER_LIMIT)
+    ? await vectorCandidates(opts.userId, queryVec, PER_RETRIEVER_LIMIT, opts.postTypes)
     : [];
 
   // RRF merge.

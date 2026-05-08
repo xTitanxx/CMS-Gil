@@ -115,6 +115,42 @@ function MessageContent({ content, posts }: { content: string; posts?: PreviewPo
   return <>{parts}</>;
 }
 
+const SUGGESTIONS = [
+  "What has Gil written about breathwork?",
+  "How does Gil deal with tough days?",
+  "What has Gil shared about MS?",
+  "What does Gil say about depression?",
+];
+
+function EmptyIntro({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-6 py-10 text-center">
+      <div className="h-20 w-20 overflow-hidden rounded-full bg-gray-200 ring-4 ring-white shadow-md">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
+      </div>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-gray-900">Talk to Virtual Gil</h2>
+        <p className="text-sm text-gray-500 max-w-xs">
+          Trained on Gil&rsquo;s archive. Ask anything &mdash; if it&rsquo;s in there, he&rsquo;ll dig it up.
+        </p>
+      </div>
+      <div className="grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
+        {SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onPick(s)}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-left text-sm text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GilChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -124,11 +160,26 @@ export default function GilChatPage() {
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0);
   const [role, setRole] = useState<"admin" | "subscriber" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const stickToBottomRef = useRef(true);
+
+  // Track whether user has scrolled up so we don't yank them back down.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = dist < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth" });
+  }, [messages, streaming]);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +240,12 @@ export default function GilChatPage() {
     };
   }, []);
 
+  function resetTextareaHeight() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+  }
+
   async function sendMessage() {
     const text = input.trim();
     if (!text || streaming || inputDisabled) return;
@@ -196,7 +253,8 @@ export default function GilChatPage() {
     const newMessages: Message[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    resetTextareaHeight();
+    stickToBottomRef.current = true;
     setStreaming(true);
 
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -317,156 +375,138 @@ export default function GilChatPage() {
     }
   }
 
-  const suggestions = [
-    "What has Gil written about breathwork?",
-    "How does Gil deal with tough days?",
-    "What has Gil shared about MS?",
-    "What does Gil say about depression?",
-  ];
-
   return (
-    <>
-      {/* Chat header */}
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 flex-shrink-0">
-        <Link
-          href="/"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
-          aria-label="Back to feed"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
-        </div>
-        <div>
-          <h1 className="text-sm font-semibold text-gray-900">The Archivist</h1>
-          <p className="text-xs text-gray-500">AI trained on Gil&apos;s posts — not the real Gil</p>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="h-16 w-16 overflow-hidden rounded-full bg-gray-200">
+    <div className="relative h-full bg-gray-50">
+      {/* Floating top header — Virtual Gil identity */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-20"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+        <div className="pointer-events-auto border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-2.5">
+            <Link
+              href="/"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+              aria-label="Back to feed"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-700">Talk to the Archivist</p>
-              <p className="text-xs text-gray-400 mt-1">Trained on Gil&rsquo;s archive.<br />Ask anything &mdash; if it exists, it will dig it up.</p>
-            </div>
-            <div className="flex flex-wrap justify-center gap-2 mt-2">
-              {suggestions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setInput(s);
-                  }}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold text-gray-900 leading-tight">Virtual Gil</h1>
+              <p className="text-xs text-gray-500 leading-tight">AI trained on Gil&apos;s posts &mdash; not the real Gil</p>
             </div>
           </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {msg.role === "assistant" && (
-              <div className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 self-start mt-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
-              </div>
-            )}
-            {msg.role === "user" ? (
-              <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words bg-blue-600 text-white rounded-br-sm">
-                {msg.content}
-              </div>
-            ) : (
-              <div
-                className={`text-sm whitespace-pre-wrap break-words text-gray-800 ${
-                  msg.posts && msg.posts.length > 0
-                    ? "max-w-[85%]"
-                    : "max-w-[75%] rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm"
-                }`}
-              >
-                {msg.posts && msg.posts.length > 0 ? (
-                  <div className="flex flex-col gap-0">
-                    <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm break-words">
-                      <MessageContent content={msg.content} posts={msg.posts} />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <MessageContent content={msg.content} />
-                    {streaming &&
-                      i === messages.length - 1 &&
-                      msg.content === "" && (
-                        <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-sm" />
-                      )}
-                  </>
-                )}
-                {role === "admin" && typeof msg.costUsd === "number" && (
-                  <div className="mt-1.5">
-                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-mono font-medium text-amber-700 ring-1 ring-amber-200/60">
-                      +${msg.costUsd.toFixed(4)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-
-      <BudgetMeter refreshKey={budgetRefreshKey} />
-
-      {/* Input */}
-      <div
-        className="border-t border-gray-200 bg-white px-4 pt-3 flex-shrink-0"
-        style={{ paddingBottom: "max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom, 0px)))" }}
-      >
-        <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              const el = e.target;
-              el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask the Archivist..."
-            rows={1}
-            disabled={inputDisabled || streaming}
-            name="archivist-message"
-            autoComplete="off"
-            autoCorrect="on"
-            autoCapitalize="sentences"
-            spellCheck={true}
-            inputMode="text"
-            data-form-type="other"
-            data-1p-ignore
-            data-lpignore="true"
-            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50 overflow-y-auto"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || streaming || inputDisabled}
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700 transition-colors"
-          >
-            <Send className="h-4 w-4" />
-          </button>
         </div>
       </div>
-    </>
+
+      {/* Scrollable message region */}
+      <div
+        ref={scrollRef}
+        className="absolute inset-0 overflow-y-auto px-3 md:px-4"
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 4.25rem)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 9.5rem)",
+        }}
+      >
+        <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-3">
+          {messages.length === 0 ? (
+            <EmptyIntro onPick={(s) => { setInput(s); textareaRef.current?.focus(); }} />
+          ) : (
+            messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                {msg.role === "assistant" && (
+                  <div className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 self-start mt-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
+                  </div>
+                )}
+                {msg.role === "user" ? (
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap bg-blue-600 text-white rounded-br-sm shadow-sm">
+                    {msg.content}
+                  </div>
+                ) : (
+                  <div
+                    className={`text-sm whitespace-pre-wrap text-gray-800 ${
+                      msg.posts && msg.posts.length > 0
+                        ? "max-w-[88%]"
+                        : "max-w-[80%] rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm shadow-sm"
+                    }`}
+                  >
+                    {msg.posts && msg.posts.length > 0 ? (
+                      <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm shadow-sm">
+                        <MessageContent content={msg.content} posts={msg.posts} />
+                      </div>
+                    ) : (
+                      <>
+                        <MessageContent content={msg.content} />
+                        {streaming &&
+                          i === messages.length - 1 &&
+                          msg.content === "" && (
+                            <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse rounded-sm" />
+                          )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {/* Floating composer card — budget bar + textarea + send */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 md:px-4"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}
+      >
+        <div className="pointer-events-auto mx-auto w-full max-w-3xl rounded-2xl border border-gray-200 bg-white shadow-lg">
+          <BudgetMeter refreshKey={budgetRefreshKey} />
+          <div className="flex items-end gap-2 px-2 pb-2 pt-1">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                const el = e.target;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 120) + "px";
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Virtual Gil…"
+              rows={1}
+              disabled={inputDisabled || streaming}
+              name="virtual-gil-message"
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck={true}
+              inputMode="text"
+              enterKeyHint="send"
+              data-form-type="other"
+              data-1p-ignore
+              data-lpignore="true"
+              className="flex-1 resize-none self-center rounded-xl bg-transparent px-3 py-2.5 text-base leading-5 text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+              style={{ height: "auto", maxHeight: "120px", overflowY: "auto" }}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || streaming || inputDisabled}
+              aria-label="Send"
+              className="mb-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow disabled:opacity-40 hover:bg-blue-700 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

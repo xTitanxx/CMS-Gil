@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCandidatePosts } from "@/lib/planner/candidates";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
+import { getConnectedPlatforms } from "@/lib/connected-platforms";
 
 type PlanStatus = "DRAFT" | "PARTIAL" | "APPROVED";
 
@@ -49,11 +50,7 @@ async function slideAndRefillFromIndex(
   );
 
   if (refill) {
-    const platformTokens = await prisma.platformToken.findMany({
-      where: { userId },
-      select: { platform: true },
-    });
-    const connectedPlatforms = platformTokens.map((t) => t.platform as string);
+    const connectedPlatforms = await getConnectedPlatforms(userId);
     const platforms = getEligiblePlatforms(refill.mediaTypes, connectedPlatforms);
 
     await prisma.weeklyPlanSlot.update({

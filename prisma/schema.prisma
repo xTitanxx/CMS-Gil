@@ -65,6 +65,31 @@ model User {
   archiveUnderstanding UserArchiveUnderstanding?
   assistantUsage       AssistantUsage[]
   subscribersCreated   Subscriber[]
+  googleIntegration    GoogleIntegration?
+}
+
+// Google OAuth tokens for the YouTube + Drive integration. Kept SEPARATE from
+// the NextAuth `Account` row so the admin sign-in is decoupled from the
+// integration: signing out / re-signing in / NextAuth re-linking never touches
+// integration tokens, and disconnecting YouTube doesn't risk locking the user
+// out. One row per user; channel metadata is stored here for future
+// brand-account selection. Tokens are encrypted via `encryptGoogleToken`.
+model GoogleIntegration {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleSub           String
+  email               String
+  accessToken         String
+  refreshToken        String?
+  expiresAt           Int?
+  scope               String?
+  youtubeChannelId    String?
+  youtubeChannelTitle String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([googleSub])
 }
 
 model VerificationToken {

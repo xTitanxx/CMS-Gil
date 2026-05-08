@@ -9,6 +9,7 @@ import {
   getTagDistribution,
 } from "@/lib/planner/candidates";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
+import { getConnectedPlatforms } from "@/lib/connected-platforms";
 import {
   buildPlannerSystemPrompt,
   PLANNER_TOOLS,
@@ -27,14 +28,20 @@ export async function POST(req: NextRequest) {
   const mode: "AI" | "DUMB" = body.mode === "DUMB" ? "DUMB" : "AI";
 
   const weekStart = getMondayUTC();
-  const days = Array.from({ length: 7 }, (_, i) =>
+  const allDays = Array.from({ length: 7 }, (_, i) =>
     utcDateString(new Date(weekStart.getTime() + i * 86400000))
   );
+  const todayUTC = utcDateString(new Date());
+  const days = allDays.filter((d) => d >= todayUTC);
+
+  if (days.length === 0) {
+    return NextResponse.json({ error: "No future slots remaining this week" }, { status: 400 });
+  }
 
   if (mode === "DUMB") {
-    const [candidates, platformTokens] = await Promise.all([
+    const [candidates, connectedPlatforms] = await Promise.all([
       getCandidatePosts(userId),
-      prisma.platformToken.findMany({ where: { userId }, select: { platform: true } }),
+      getConnectedPlatforms(userId),
     ]);
 
     if (candidates.length === 0) {
@@ -44,8 +51,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const connectedPlatforms = platformTokens.map((t) => t.platform as string);
-    const picks = candidates.slice(0, 7);
+    const picks = candidates.slice(0, days.length);
 
     const plan = await prisma.weeklyPlan.upsert({
       where: { userId_weekStart: { userId, weekStart } },
@@ -81,21 +87,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Parallel fetch all data needed
-  const [candidates, history, tagDist, platformTokens] = await Promise.all([
+  const [candidates, history, tagDist, connectedPlatforms] = await Promise.all([
     getCandidatePosts(userId),
     getRecentPublishHistory(userId),
     getTagDistribution(userId),
-    prisma.platformToken.findMany({ where: { userId }, select: { platform: true } }),
+    getConnectedPlatforms(userId),
   ]);
 
-  if (candidates.length < 7) {
+  if (candidates.length < days.length) {
     return NextResponse.json(
-      { error: "Not enough candidate posts (need at least 7)" },
+      { error: `Not enough candidate posts (need at least ${days.length})` },
       { status: 400 }
     );
   }
-
-  const connectedPlatforms = platformTokens.map((t) => t.platform as string);
 
   const systemPrompt = buildPlannerSystemPrompt(
     candidates,

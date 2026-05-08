@@ -49,7 +49,7 @@ const PLATFORMS: PlatformInfo[] = [
     id: "YOUTUBE",
     label: "YouTube / Google Drive",
     caps: { Text: false, Photos: false, Video: true, Stories: false, Analytics: true, Page: false, "Personal profile": true },
-    note: "Also enables Google Drive import",
+    note: "One Google grant covers both YouTube and Drive. Independent of admin sign-in — disconnecting won't sign you out.",
     color: "text-red-600",
     connectUrl: "/api/connections/google?from=connections",
   },
@@ -69,10 +69,16 @@ interface TokenInfo {
   updatedAt: string;
 }
 
+interface YoutubeInfo {
+  connected: boolean;
+  email?: string | null;
+  channelTitle?: string | null;
+}
+
 export default function ConnectionsPage() {
   const searchParams = useSearchParams();
   const [tokens, setTokens] = useState<TokenInfo[]>([]);
-  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [youtube, setYoutube] = useState<YoutubeInfo>({ connected: false });
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
@@ -85,7 +91,11 @@ export default function ConnectionsPage() {
     if (res.ok) {
       const data = await res.json();
       setTokens(data.tokens ?? []);
-      setYoutubeConnected(data.youtube?.connected ?? false);
+      setYoutube({
+        connected: data.youtube?.connected ?? false,
+        email: data.youtube?.email ?? null,
+        channelTitle: data.youtube?.channelTitle ?? null,
+      });
     }
     setLoading(false);
   };
@@ -95,6 +105,12 @@ export default function ConnectionsPage() {
   }, []);
 
   const disconnect = async (platform: string) => {
+    if (platform === "YOUTUBE") {
+      const ok = window.confirm(
+        "Disconnecting YouTube also disconnects Google Drive import (one OAuth grant covers both). You will stay signed in. Continue?",
+      );
+      if (!ok) return;
+    }
     setDisconnecting(platform);
     await fetch(`/api/connections?platform=${platform}`, { method: "DELETE" });
     await load();
@@ -102,7 +118,7 @@ export default function ConnectionsPage() {
   };
 
   const isConnected = (platformId: string) => {
-    if (platformId === "YOUTUBE") return youtubeConnected;
+    if (platformId === "YOUTUBE") return youtube.connected;
     return tokens.some((t) => t.platform === platformId);
   };
 
@@ -176,23 +192,21 @@ export default function ConnectionsPage() {
                         >
                           Reconnect
                         </Button>
-                        {platform.id !== "YOUTUBE" && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={disconnecting === platform.id}
-                            onClick={() => disconnect(platform.id)}
-                          >
-                            {disconnecting === platform.id ? (
-                              <>
-                                <Spinner />
-                                Disconnecting...
-                              </>
-                            ) : (
-                              "Disconnect"
-                            )}
-                          </Button>
-                        )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={disconnecting === platform.id}
+                          onClick={() => disconnect(platform.id)}
+                        >
+                          {disconnecting === platform.id ? (
+                            <>
+                              <Spinner />
+                              Disconnecting...
+                            </>
+                          ) : (
+                            "Disconnect"
+                          )}
+                        </Button>
                       </>
                     )}
                   </div>
@@ -227,7 +241,19 @@ export default function ConnectionsPage() {
                   </div>
                 )}
                 {connected && platform.id === "YOUTUBE" && !token && (
-                  <p className="text-sm text-gray-600">Connected via Google account</p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
+                    {youtube.email ? (
+                      <span className="font-medium">{youtube.email}</span>
+                    ) : (
+                      <span>Connected via Google account</span>
+                    )}
+                    {youtube.channelTitle && (
+                      <>
+                        <span className="text-gray-300">|</span>
+                        <span>Channel: <span className="font-medium">{youtube.channelTitle}</span></span>
+                      </>
+                    )}
+                  </div>
                 )}
 
                 {/* Row 3: Capabilities — available first, then unavailable */}

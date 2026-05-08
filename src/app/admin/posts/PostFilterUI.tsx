@@ -5,6 +5,8 @@ import {
   SlidersHorizontal,
   ArrowUpDown,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 /**
@@ -719,13 +721,17 @@ export function SortMenu({
 /*  JumpToDateMenu                                                     */
 /* ------------------------------------------------------------------ */
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MIN_YEAR = 2009;
+const MAX_YEAR = new Date().getFullYear();
+
 export function JumpToDateMenu({
   onJump,
 }: {
   onJump: (dateStr: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
+  const [year, setYear] = useState(MAX_YEAR);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const clampedRight = useClampedDropdown(open, ref, menuRef);
@@ -737,11 +743,13 @@ export function JumpToDateMenu({
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
-  function submit() {
-    if (!value) return;
-    onJump(value);
+
+  function jump(month: number) {
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-01`;
+    onJump(dateStr);
     setOpen(false);
   }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -757,35 +765,43 @@ export function JumpToDateMenu({
         <div
           ref={menuRef}
           style={{ right: clampedRight }}
-          className="absolute top-full z-20 mt-1 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+          className="absolute top-full z-20 mt-1 w-52 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
         >
-          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
             Jump to
-          </label>
-          <input
-            type="date"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-            }}
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-            autoFocus
-          />
-          <div className="mt-2 flex justify-end gap-2">
+          </p>
+          <div className="mb-2.5 flex items-center justify-between">
             <button
-              onClick={() => setOpen(false)}
-              className="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+              type="button"
+              onClick={() => setYear((y) => Math.max(MIN_YEAR, y - 1))}
+              disabled={year <= MIN_YEAR}
+              className="rounded p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+              aria-label="Previous year"
             >
-              Cancel
+              <ChevronLeft className="h-4 w-4" />
             </button>
+            <span className="text-sm font-semibold tabular-nums">{year}</span>
             <button
-              onClick={submit}
-              disabled={!value}
-              className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={() => setYear((y) => Math.min(MAX_YEAR, y + 1))}
+              disabled={year >= MAX_YEAR}
+              className="rounded p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+              aria-label="Next year"
             >
-              Jump
+              <ChevronRight className="h-4 w-4" />
             </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTHS.map((m, i) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => jump(i + 1)}
+                className="rounded py-1.5 text-sm text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-700"
+              >
+                {m}
+              </button>
+            ))}
           </div>
         </div>
       )}

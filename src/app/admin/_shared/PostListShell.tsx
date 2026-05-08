@@ -150,7 +150,6 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     () => new Set(CAPTION_QUALITY_VALUES),
   );
   const [enriched, setEnriched] = useState<Set<EnrichedValue>>(() => new Set(ENRICHED_VALUES));
-  const [jumpCursor, setJumpCursor] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -277,19 +276,19 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
   );
 
   const fetchInitial = useCallback(
-    async (retryCount = 0) => {
+    async (startCursor: string | null = null, retryCount = 0) => {
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
       setLoading(true);
       setFetchError(null);
       try {
-        const params = buildQuery(jumpCursor);
+        const params = buildQuery(startCursor);
         const res = await fetch(`${apiEndpoint}?${params}`);
         if (!res.ok) {
           if (retryCount < 3) {
             isLoadingRef.current = false;
             await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retryCount)));
-            return fetchInitial(retryCount + 1);
+            return fetchInitial(startCursor, retryCount + 1);
           }
           setFetchError("Failed to load. Server may be temporarily unavailable.");
           return;
@@ -312,16 +311,15 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         if (retryCount < 3) {
           isLoadingRef.current = false;
           await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, retryCount)));
-          return fetchInitial(retryCount + 1);
+          return fetchInitial(startCursor, retryCount + 1);
         }
         setFetchError("Failed to load. Check your connection.");
       } finally {
         setLoading(false);
         isLoadingRef.current = false;
-        if (jumpCursor) setJumpCursor(null);
       }
     },
-    [apiEndpoint, buildQuery, jumpCursor, onPostsChanged, onMetricsChanged],
+    [apiEndpoint, buildQuery, onPostsChanged, onMetricsChanged],
   );
 
   const fetchMore = useCallback(async () => {
@@ -640,7 +638,12 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
             <JumpToDateMenu
               onJump={(dateStr) => {
                 const c = jumpCursorForDate(dateStr, sort);
-                setJumpCursor(c);
+                if (c) {
+                  listCache.delete(cacheKey);
+                  initialisedKeyRef.current = cacheKey;
+                  setPosts([]);
+                  fetchInitial(c);
+                }
               }}
             />
             <FilterMenu

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
-import { decryptGoogleToken } from "@/lib/google-tokens";
+import { getGoogleIntegration } from "@/lib/google-integration";
 import { postToInstagram } from "@/lib/platforms/instagram";
 import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
@@ -117,17 +117,16 @@ export async function publishNow(
       where: { userId_platform: { userId, platform } },
     });
 
-    // For YouTube/Drive the token is in the Account table (NextAuth)
+    // YouTube reads from GoogleIntegration; everything else from PlatformToken.
     let accessToken: string;
     let refreshToken: string | undefined;
     let platformUserId: string | undefined;
 
     if (platform === "YOUTUBE") {
-      const account = await prisma.account.findFirst({
-        where: { userId, provider: "google" },
-      });
-      accessToken = decryptGoogleToken(account?.access_token, userId) ?? "";
-      refreshToken = decryptGoogleToken(account?.refresh_token, userId) ?? undefined;
+      const integration = await getGoogleIntegration(userId);
+      if (!integration) throw new Error("YouTube not connected");
+      accessToken = integration.accessToken;
+      refreshToken = integration.refreshToken ?? undefined;
     } else {
       if (!token) throw new Error(`No ${platform} token found`);
       accessToken = decrypt(token.accessToken);

@@ -10,6 +10,7 @@ import {
   getTagDistribution,
 } from "@/lib/planner/candidates";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
+import { getConnectedPlatforms } from "@/lib/connected-platforms";
 import {
   buildPlannerSystemPrompt,
   PLANNER_TOOLS,
@@ -116,9 +117,9 @@ export async function POST(req: NextRequest) {
   });
 
   if (mode === "DUMB") {
-    const [candidates, platformTokens] = await Promise.all([
+    const [candidates, connectedPlatforms] = await Promise.all([
       getCandidatePosts(userId),
-      prisma.platformToken.findMany({ where: { userId }, select: { platform: true } }),
+      getConnectedPlatforms(userId),
     ]);
 
     if (candidates.length === 0) {
@@ -128,7 +129,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const connectedPlatforms = platformTokens.map((t) => t.platform as string);
     const picks = candidates.slice(0, slotGrid.length);
 
     for (let i = 0; i < picks.length; i++) {
@@ -161,11 +161,11 @@ export async function POST(req: NextRequest) {
   }
 
   // AI mode
-  const [candidates, history, tagDist, platformTokens] = await Promise.all([
+  const [candidates, history, tagDist, connectedPlatforms] = await Promise.all([
     getCandidatePosts(userId),
     getRecentPublishHistory(userId),
     getTagDistribution(userId),
-    prisma.platformToken.findMany({ where: { userId }, select: { platform: true } }),
+    getConnectedPlatforms(userId),
   ]);
 
   if (candidates.length < slotGrid.length) {
@@ -174,8 +174,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-
-  const connectedPlatforms = platformTokens.map((t) => t.platform as string);
 
   const systemPrompt = buildPlannerSystemPrompt(
     candidates,

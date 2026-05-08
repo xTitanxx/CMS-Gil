@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encrypt";
-import { decryptGoogleToken } from "@/lib/google-tokens";
+import { getGoogleIntegration } from "@/lib/google-integration";
 import { fetchAnalytics } from "./index";
 import type { Platform } from "@prisma/client";
 
@@ -120,12 +120,9 @@ async function getAccessToken(
   platform: Platform
 ): Promise<string> {
   if (platform === "YOUTUBE") {
-    const account = await prisma.account.findFirst({
-      where: { userId, provider: "google" },
-    });
-    const decrypted = decryptGoogleToken(account?.access_token, userId);
-    if (!decrypted) throw new Error("No YouTube/Google token");
-    return decrypted;
+    const integration = await getGoogleIntegration(userId);
+    if (!integration) throw new Error("No YouTube/Google token");
+    return integration.accessToken;
   }
 
   const token = await prisma.platformToken.findUnique({

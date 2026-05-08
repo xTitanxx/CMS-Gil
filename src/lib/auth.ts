@@ -22,16 +22,10 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
-          scope: [
-            "openid",
-            "email",
-            "profile",
-            "https://www.googleapis.com/auth/youtube.upload",
-            "https://www.googleapis.com/auth/youtube.readonly",
-            "https://www.googleapis.com/auth/drive.readonly",
-          ].join(" "),
-          access_type: "offline",
-          prompt: "consent",
+          // Sign-in is identity only. YouTube + Drive scopes are granted
+          // separately via /api/connections/google so the integration tokens
+          // live in `GoogleIntegration`, not on the NextAuth `Account` row.
+          scope: ["openid", "email", "profile"].join(" "),
         },
       },
     })

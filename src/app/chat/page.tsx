@@ -50,6 +50,28 @@ const MARKDOWN_COMPONENTS = {
   code: ({ children }: { children?: React.ReactNode }) => (
     <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{children}</code>
   ),
+  pre: ({ children }: { children?: React.ReactNode }) => (
+    <pre className="overflow-x-auto rounded bg-gray-100 px-3 py-2 text-xs mb-2 whitespace-pre-wrap">{children}</pre>
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline break-all hover:text-blue-800"
+    >
+      {children}
+    </a>
+  ),
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-bold mb-2">{children}</p>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-bold mb-1.5">{children}</p>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-semibold mb-1">{children}</p>
+  ),
 };
 
 function Markdown({ text }: { text: string }) {
@@ -102,6 +124,7 @@ export default function GilChatPage() {
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0);
   const [role, setRole] = useState<"admin" | "subscriber" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -173,6 +196,7 @@ export default function GilChatPage() {
     const newMessages: Message[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setStreaming(true);
 
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -361,12 +385,12 @@ export default function GilChatPage() {
               </div>
             )}
             {msg.role === "user" ? (
-              <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap bg-blue-600 text-white rounded-br-sm">
+              <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words bg-blue-600 text-white rounded-br-sm">
                 {msg.content}
               </div>
             ) : (
               <div
-                className={`text-sm whitespace-pre-wrap text-gray-800 ${
+                className={`text-sm whitespace-pre-wrap break-words text-gray-800 ${
                   msg.posts && msg.posts.length > 0
                     ? "max-w-[85%]"
                     : "max-w-[75%] rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm"
@@ -374,7 +398,7 @@ export default function GilChatPage() {
               >
                 {msg.posts && msg.posts.length > 0 ? (
                   <div className="flex flex-col gap-0">
-                    <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm">
+                    <div className="rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm break-words">
                       <MessageContent content={msg.content} posts={msg.posts} />
                     </div>
                   </div>
@@ -405,11 +429,20 @@ export default function GilChatPage() {
       <BudgetMeter refreshKey={budgetRefreshKey} />
 
       {/* Input */}
-      <div className="border-t border-gray-200 bg-white px-4 py-3 flex-shrink-0">
+      <div
+        className="border-t border-gray-200 bg-white px-4 pt-3 flex-shrink-0"
+        style={{ paddingBottom: "max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom, 0px)))" }}
+      >
         <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Ask the Archivist..."
             rows={1}
@@ -423,8 +456,7 @@ export default function GilChatPage() {
             data-form-type="other"
             data-1p-ignore
             data-lpignore="true"
-            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50"
-            style={{ maxHeight: "120px", overflowY: "auto" }}
+            className="flex-1 resize-none rounded-2xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:bg-white transition-colors disabled:opacity-50 overflow-y-auto"
           />
           <button
             onClick={sendMessage}

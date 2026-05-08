@@ -499,9 +499,9 @@ export function PostsFeed() {
             onJump={(dateStr) => {
               const c = jumpCursorForDate(dateStr, sort);
               if (c) {
-                setJumpCursor(c);
-                // Reset cache key so the effect re-fires
+                feedCache.delete(cacheKey);
                 initialisedKeyRef.current = null;
+                setJumpCursor(c);
               }
             }}
           />

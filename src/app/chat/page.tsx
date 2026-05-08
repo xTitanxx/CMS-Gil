@@ -130,9 +130,9 @@ function EmptyIntro({ onPick }: { onPick: (text: string) => void }) {
         <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
       </div>
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-gray-900">Talk to Virtual Gil</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Talk to the Archivist</h2>
         <p className="text-sm text-gray-500 max-w-xs">
-          Trained on Gil&rsquo;s archive. Ask anything &mdash; if it&rsquo;s in there, he&rsquo;ll dig it up.
+          Trained on Gil&rsquo;s archive. Ask anything &mdash; if it&rsquo;s in there, it&rsquo;ll dig it up.
         </p>
       </div>
       <div className="grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
@@ -377,7 +377,7 @@ export default function GilChatPage() {
 
   return (
     <div className="relative h-full bg-gray-50">
-      {/* Floating top header — Virtual Gil identity */}
+      {/* Floating top header — Archivist identity */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-20"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
@@ -396,7 +396,7 @@ export default function GilChatPage() {
               <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-semibold text-gray-900 leading-tight">Virtual Gil</h1>
+              <h1 className="text-sm font-semibold text-gray-900 leading-tight">The Archivist</h1>
               <p className="text-xs text-gray-500 leading-tight">AI trained on Gil&apos;s posts &mdash; not the real Gil</p>
             </div>
           </div>
@@ -480,7 +480,7 @@ export default function GilChatPage() {
                 el.style.height = Math.min(el.scrollHeight, 120) + "px";
               }}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Virtual Gil…"
+              placeholder="Ask the Archivist…"
               rows={1}
               disabled={inputDisabled || streaming}
               name="virtual-gil-message"

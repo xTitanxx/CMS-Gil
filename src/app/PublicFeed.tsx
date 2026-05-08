@@ -68,6 +68,18 @@ function PostCard({
   const isLong = body.length > CAPTION_CHAR_LIMIT;
   const shown = !expanded && isLong ? body.slice(0, CAPTION_CHAR_LIMIT).trimEnd() + "…" : body;
 
+  const handleSeeMore = () => {
+    // Lock scroll position before expansion so the card growing taller doesn't
+    // let the browser's scroll-anchor heuristic jump the viewport.
+    const y = window.scrollY;
+    setExpanded(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, y);
+      });
+    });
+  };
+
   return (
     <article className="overflow-hidden rounded-lg bg-white shadow-sm">
       {/* Header */}
@@ -102,7 +114,7 @@ function PostCard({
                 {" "}
                 <button
                   type="button"
-                  onClick={() => setExpanded(true)}
+                  onClick={handleSeeMore}
                   className="font-semibold text-gray-600 hover:underline"
                 >
                   See more
@@ -126,6 +138,8 @@ function PostCard({
                   playsInline
                   wrapperClassName="w-full bg-black"
                   className="w-full"
+                  naturalWidth={m.width ?? undefined}
+                  naturalHeight={m.height ?? undefined}
                 />
                 <AudioStateBadge
                   state={postAudioState([m])}
@@ -139,6 +153,10 @@ function PostCard({
                 src={m.url}
                 alt={m.altText ?? ""}
                 className="h-auto w-full"
+                loading="lazy"
+                decoding="async"
+                width={m.width ?? undefined}
+                height={m.height ?? undefined}
               />
             ) : null,
           )}

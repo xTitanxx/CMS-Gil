@@ -29,6 +29,9 @@ type LazyVideoProps = {
   preload?: "none" | "metadata" | "auto";
   videoRef?: React.Ref<HTMLVideoElement>;
   alt?: string;
+  /** When provided, the wrapper reserves this aspect ratio before any media loads, preventing CLS. */
+  naturalWidth?: number;
+  naturalHeight?: number;
 };
 
 /**
@@ -54,6 +57,8 @@ export function LazyVideo({
   preload = "metadata",
   videoRef,
   alt = "",
+  naturalWidth,
+  naturalHeight,
 }: LazyVideoProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(false);
@@ -94,8 +99,15 @@ export function LazyVideo({
     };
   }, [mountMargin, unmountMargin]);
 
+  const wrapperStyle: CSSProperties = {
+    ...style,
+    ...(naturalWidth && naturalHeight
+      ? { aspectRatio: `${naturalWidth} / ${naturalHeight}` }
+      : {}),
+  };
+
   return (
-    <div ref={wrapperRef} className={wrapperClassName} style={style}>
+    <div ref={wrapperRef} className={wrapperClassName} style={wrapperStyle}>
       {active ? (
         <video
           ref={videoRef}

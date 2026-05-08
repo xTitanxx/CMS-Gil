@@ -189,23 +189,8 @@ export default function NewPostPage() {
         {/* Hidden dropzone input */}
         <input {...getInputProps()} />
 
-        {/* Header — avatar + name + audience pill */}
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-          <div className="flex h-10 w-10 flex-shrink-0 select-none items-center justify-center rounded-full bg-blue-500 text-sm font-bold text-white">
-            G
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold leading-tight text-gray-900">
-              Gil Alter
-            </span>
-            <span className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
-              🌍 Public ▾
-            </span>
-          </div>
-        </div>
-
         {/* Text area — auto-grows */}
-        <div className="px-4 pb-2">
+        <div className="px-4 pt-4 pb-2">
           <textarea
             ref={textareaRef}
             value={body}
@@ -214,7 +199,7 @@ export default function NewPostPage() {
               setError(null);
               autoResize(e.target);
             }}
-            placeholder="What's on your mind, Gil?"
+            placeholder="Write something…"
             rows={3}
             className="w-full resize-none bg-transparent text-lg placeholder:text-gray-400 focus:outline-none"
             style={{ minHeight: "72px" }}

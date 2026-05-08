@@ -43,6 +43,9 @@ export function MobilePageHeader() {
 
   const title = titleFor(pathname);
 
+  // burger = safe-area-inset-top + my-2 (8px) + h-10 (40px) + my-2 (8px) = safe-area + 3.5rem
+  const burgerBlockHeight = "calc(env(safe-area-inset-top, 0px) + 3.5rem)";
+
   return (
     <>
       <div
@@ -58,7 +61,7 @@ export function MobilePageHeader() {
           <Menu className="h-5 w-5" strokeWidth={1.75} />
         </button>
       </div>
-      {title && (
+      {title ? (
         <div
           className="flex justify-center pb-2 md:hidden"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
@@ -67,6 +70,9 @@ export function MobilePageHeader() {
             <span className="text-sm font-semibold text-[#0d0d0d]">{title}</span>
           </div>
         </div>
+      ) : (
+        // No title pill — emit an invisible spacer so content clears the fixed burger.
+        <div className="md:hidden" style={{ height: burgerBlockHeight }} aria-hidden />
       )}
     </>
   );

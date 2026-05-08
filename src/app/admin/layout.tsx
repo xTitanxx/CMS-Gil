@@ -40,7 +40,12 @@ export default async function DashboardLayout({
         className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8"
       >
         <MobilePageHeader />
-        <div className="px-4 pb-4 md:p-0">{children}</div>
+        <div
+          className="px-4 md:p-0"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );

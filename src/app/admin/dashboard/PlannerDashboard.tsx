@@ -30,13 +30,13 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     }
   }, []);
 
-  const handleGenerate = useCallback(async (preferences?: string, mode?: "AI" | "DUMB") => {
+  const handleGenerate = useCallback(async (preferences?: string, mode?: "AI" | "DUMB", numSlots?: number) => {
     setLoading(true);
     try {
       const res = await fetch("/api/planner/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferences, mode: mode ?? "AI" }),
+        body: JSON.stringify({ preferences, mode: mode ?? "AI", numSlots: numSlots ?? 7 }),
       });
       if (res.ok) {
         await refreshPlan();

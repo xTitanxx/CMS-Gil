@@ -5,6 +5,7 @@ import { verifyOAuthState } from "@/lib/oauth-state";
 import { redactSecrets } from "@/lib/redact";
 import {
   decodeIdTokenClaims,
+  fetchGoogleUserInfo,
   upsertGoogleIntegration,
 } from "@/lib/google-integration";
 
@@ -47,9 +48,13 @@ export async function GET(req: NextRequest) {
       throw new Error("No access token returned from Google");
     }
 
-    // Identify the Google account that consented. id_token is signed by
-    // Google over TLS in this exchange — no need to re-verify locally.
-    const claims = tokens.id_token ? decodeIdTokenClaims(tokens.id_token) : null;
+    // Identify the Google account that consented. We don't request `openid`
+    // here (mixing it with `drive.readonly` trips Google's policy on
+    // unverified apps), so we use the userinfo endpoint via the access
+    // token instead. Fall back to id_token if Google ever sends one.
+    const claims =
+      (tokens.id_token ? decodeIdTokenClaims(tokens.id_token) : null) ??
+      (await fetchGoogleUserInfo(tokens.access_token));
     if (!claims) {
       throw new Error("Google did not return identifying claims");
     }

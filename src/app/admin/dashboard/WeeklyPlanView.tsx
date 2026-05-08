@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Sparkles, CalendarCheck, Loader2, ChevronUp, ChevronDown, Trash2, Recycle } from "lucide-react";
+import { CalendarDays, Sparkles, CalendarCheck, Loader2, Trash2, Recycle } from "lucide-react";
 import { format } from "date-fns";
 import { utcDateString } from "@/lib/planner/week";
 import { DayGroup } from "./DayGroup";
 import type { WeeklyPlanData, PlanSlotData } from "@/lib/planner/types";
 
 const DAY_MS = 86400000;
-const INITIAL_PAST = 3;
 const INITIAL_FUTURE = 10;
 const LOAD_MORE = 7;
 
@@ -18,12 +17,12 @@ type LoadingAction = "AI" | "DUMB" | "clear" | "schedule" | null;
 interface WeeklyPlanViewProps {
   plan: WeeklyPlanData | null;
   loading: boolean;
-  onGenerate: (preferences?: string, mode?: "AI" | "DUMB") => Promise<void>;
+  onGenerate: (preferences?: string, mode?: "AI" | "DUMB", numSlots?: number) => Promise<void>;
   onApproveSlot: (slotId: string) => Promise<void>;
   onRemoveSlot: (slotId: string) => Promise<void>;
   onClearAll: () => Promise<void>;
   onScheduleAll: () => Promise<void>;
-  /** @deprecated unused — retained for compatibility with assistant PlannerPanel until that's updated. */
+  /** @deprecated unused — retained for compatibility */
   onSwapSlot?: (slotId: string) => void;
 }
 
@@ -32,10 +31,10 @@ function todayUTC(): Date {
   return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
 }
 
-function buildDayRange(pastDays: number, futureDays: number): Date[] {
+function buildDayRange(futureDays: number): Date[] {
   const base = todayUTC();
   const days: Date[] = [];
-  for (let i = -pastDays; i <= futureDays; i++) {
+  for (let i = 0; i <= futureDays; i++) {
     days.push(new Date(base.getTime() + i * DAY_MS));
   }
   return days;
@@ -51,10 +50,13 @@ export function WeeklyPlanView({
   onScheduleAll,
 }: WeeklyPlanViewProps) {
   const [activeAction, setActiveAction] = useState<LoadingAction>(null);
-  const [pastDays, setPastDays] = useState(INITIAL_PAST);
   const [futureDays, setFutureDays] = useState(INITIAL_FUTURE);
-  const days = buildDayRange(pastDays, futureDays);
+  const days = buildDayRange(futureDays);
   const todayKey = utcDateString(todayUTC());
+
+  // Slot-count prompt state
+  const [pendingMode, setPendingMode] = useState<"AI" | "DUMB" | null>(null);
+  const [slotCount, setSlotCount] = useState(7);
 
   // Build slot lookup — multiple slots per day
   const slotsByDay = new Map<string, PlanSlotData[]>();
@@ -73,7 +75,6 @@ export function WeeklyPlanView({
 
   // Scroll to today on mount
   const todayRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const didScroll = useRef(false);
   useEffect(() => {
     if (!didScroll.current && todayRef.current) {
@@ -82,18 +83,32 @@ export function WeeklyPlanView({
     }
   });
 
-  const loadEarlier = useCallback(() => {
-    const el = scrollRef.current;
-    const prevHeight = el?.scrollHeight ?? 0;
-    setPastDays((d) => d + LOAD_MORE);
-    requestAnimationFrame(() => {
-      if (el) el.scrollTop += el.scrollHeight - prevHeight;
-    });
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setFutureDays((d) => d + LOAD_MORE);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
-  const loadLater = useCallback(() => {
-    setFutureDays((d) => d + LOAD_MORE);
-  }, []);
+  const handleGenerateConfirm = useCallback(async () => {
+    if (!pendingMode) return;
+    const mode = pendingMode;
+    const slots = slotCount;
+    setPendingMode(null);
+    setActiveAction(mode);
+    await onGenerate(undefined, mode, slots);
+    setActiveAction(null);
+  }, [pendingMode, slotCount, onGenerate]);
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -135,32 +150,24 @@ export function WeeklyPlanView({
             </Button>
           )}
           <Button
-            onClick={async () => {
-              setActiveAction("DUMB");
-              await onGenerate(undefined, "DUMB");
-              setActiveAction(null);
-            }}
-            disabled={loading}
+            onClick={() => { setPendingMode("DUMB"); setSlotCount(7); }}
+            disabled={loading || pendingMode !== null}
             size="sm"
             variant="outline"
             className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
-            title="Fill the week with the oldest unpublished posts (no AI)"
+            title="Fill slots with the oldest unpublished posts (no AI)"
           >
             {activeAction === "DUMB" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Recycle className="h-4 w-4" />}
             <span>Recycle</span>
           </Button>
           <Button
-            onClick={async () => {
-              setActiveAction("AI");
-              await onGenerate();
-              setActiveAction(null);
-            }}
-            disabled={loading}
+            onClick={() => { setPendingMode("AI"); setSlotCount(7); }}
+            disabled={loading || pendingMode !== null}
             size="sm"
             className="gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60"
           >
             {activeAction === "AI" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            <span>Plan Week</span>
+            <span>Plan</span>
           </Button>
           {activeSlots.length > 0 && (
             <Button
@@ -178,10 +185,48 @@ export function WeeklyPlanView({
             </Button>
           )}
         </div>
+
+        {/* Slot-count prompt — inline below buttons when a mode is pending */}
+        {pendingMode !== null && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <span className="shrink-0 text-xs text-gray-600">How many slots?</span>
+            <input
+              type="number"
+              min={1}
+              max={56}
+              value={slotCount}
+              onChange={(e) =>
+                setSlotCount(Math.max(1, Math.min(56, Number(e.target.value))))
+              }
+              className="w-16 rounded border border-gray-300 bg-white px-2 py-1 text-center text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleGenerateConfirm();
+                if (e.key === "Escape") setPendingMode(null);
+              }}
+            />
+            <span className="shrink-0 text-[10px] text-gray-400">4 = 1 day · 28 = 7 days</span>
+            <Button
+              size="sm"
+              onClick={handleGenerateConfirm}
+              className="ml-auto gap-1.5 bg-purple-600 hover:bg-purple-700"
+            >
+              Go
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setPendingMode(null)}
+              className="text-gray-500"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Day list */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="flex-1 overflow-y-auto px-3 py-2">
         {loading && !plan ? (
           <div className="flex h-40 items-center justify-center gap-2 text-gray-500">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -189,13 +234,6 @@ export function WeeklyPlanView({
           </div>
         ) : (
           <div className="space-y-5">
-            <button
-              onClick={loadEarlier}
-              className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 py-1.5 text-[11px] text-gray-400 hover:border-gray-300 hover:text-gray-500 transition-colors"
-            >
-              <ChevronUp className="h-3 w-3" /> Earlier
-            </button>
-
             {days.map((day) => {
               const dayKey = utcDateString(day);
               const isToday = dayKey === todayKey;
@@ -211,17 +249,11 @@ export function WeeklyPlanView({
                 </div>
               );
             })}
-
-            <button
-              onClick={loadLater}
-              className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 py-1.5 text-[11px] text-gray-400 hover:border-gray-300 hover:text-gray-500 transition-colors"
-            >
-              <ChevronDown className="h-3 w-3" /> Later
-            </button>
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
           </div>
         )}
       </div>
-
     </div>
   );
 }

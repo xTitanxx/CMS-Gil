@@ -3,11 +3,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
-import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, X, Film, Upload } from "lucide-react";
+import { ArrowLeft, X, ImagePlus, Music } from "lucide-react";
 import Link from "next/link";
+import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
+import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
 
 const ACCEPTED_MIME_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
@@ -20,120 +20,88 @@ const ACCEPTED_MIME_TYPES = {
   "video/quicktime": [".mov"],
 };
 
-const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
-
 interface SelectedFile {
   file: File;
-  preview: string | null; // object URL for images, null for videos
-}
-
-function toDatetimeLocal(d: Date): string {
-  // Produces "YYYY-MM-DDTHH:mm" in local time for datetime-local input
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  preview: string; // object URL for both images and videos
 }
 
 export default function NewPostPage() {
   const router = useRouter();
 
   const [body, setBody] = useState("");
-  const [bodyError, setBodyError] = useState("");
-  const [date, setDate] = useState(() => toDatetimeLocal(new Date()));
   const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [selectedAudioTrackId, setSelectedAudioTrackId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const filesRef = useRef(files);
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
 
+  // Revoke all object URLs on unmount
   useEffect(() => {
     return () => {
-      filesRef.current.forEach((f) => {
-        if (f.preview) URL.revokeObjectURL(f.preview);
-      });
+      filesRef.current.forEach((f) => URL.revokeObjectURL(f.preview));
     };
-  }, []); // runs only on unmount
+  }, []);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
 
   const onDrop = useCallback((accepted: File[]) => {
     const next: SelectedFile[] = accepted.map((file) => ({
       file,
-      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      preview: URL.createObjectURL(file),
     }));
     setFiles((prev) => [...prev, ...next]);
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive,
+    open: openFilePicker,
+  } = useDropzone({
     onDrop,
     accept: ACCEPTED_MIME_TYPES,
     multiple: true,
+    noClick: true, // only drag-drop on the card; buttons trigger picker explicitly
   });
 
   function removeFile(index: number) {
     setFiles((prev) => {
       const copy = [...prev];
       const removed = copy.splice(index, 1)[0];
-      if (removed.preview) URL.revokeObjectURL(removed.preview);
+      URL.revokeObjectURL(removed.preview);
       return copy;
     });
   }
 
-  async function uploadMediaFile(postId: string, selected: SelectedFile): Promise<void> {
-    const { file } = selected;
-
-    if (file.size < DIRECT_UPLOAD_LIMIT) {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(`/api/posts/${postId}/media`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await res.text());
-    } else {
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob",
-      });
-      const res = await fetch(`/api/posts/${postId}/media`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blobUrl: blob.url,
-          filename: file.name,
-          mimeType: file.type,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
+  async function handlePost() {
     if (!body.trim()) {
-      setBodyError("Post content is required.");
+      setError("Post content is required.");
       return;
     }
-    setBodyError("");
+
     setSubmitting(true);
     setError(null);
 
     try {
-      // Phase 1: Create the post
+      // Phase 1: Create the post — use current time (no date picker)
       const postRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: body.trim(),
-          originalDate: new Date(date).toISOString(),
-        }),
+        body: JSON.stringify({ text: body.trim() }),
       });
 
       if (!postRes.ok) {
-        setError("Failed to create post. Please try again.");
+        const msg = await postRes.text().catch(() => "");
+        setError(`Failed to create post: ${msg || postRes.statusText}`);
         setSubmitting(false);
         return;
       }
@@ -141,28 +109,47 @@ export default function NewPostPage() {
       const post = await postRes.json();
       const postId: string = post.id;
 
-      // Phase 2: Upload media files
+      // Phase 2: Upload media in parallel
       if (files.length > 0) {
         let completed = 0;
-        const failedCount = { value: 0 };
-        setProgress(`Uploading media (0/${files.length})...`);
+        let failedCount = 0;
+        setProgress(`Uploading (0/${files.length})…`);
 
-        await Promise.all(
+        const uploadedMedia = await Promise.all(
           files.map(async (selected) => {
             try {
-              await uploadMediaFile(postId, selected);
-            } catch {
-              failedCount.value++;
+              const uploaded = await uploadPostMedia(postId, selected.file);
+              return uploaded;
+            } catch (err) {
+              console.error("Media upload failed:", err);
+              failedCount++;
+              return null;
             } finally {
               completed++;
-              setProgress(`Uploading media (${completed}/${files.length})...`);
+              setProgress(`Uploading (${completed}/${files.length})…`);
             }
-          })
+          }),
         );
 
-        if (failedCount.value > 0) {
+        // Phase 3: Apply selected music track to any uploaded videos
+        if (selectedAudioTrackId) {
+          const videoMedia = uploadedMedia.filter(
+            (m) => m !== null && m.mimeType.startsWith("video/"),
+          );
+          await Promise.all(
+            videoMedia.map((m) =>
+              fetch(`/api/posts/${postId}/media/${m!.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ audioTrackId: selectedAudioTrackId }),
+              }).catch(console.error),
+            ),
+          );
+        }
+
+        if (failedCount > 0) {
           setError(
-            `${failedCount.value} file${failedCount.value === 1 ? "" : "s"} failed to upload. The post was still created.`
+            `${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload. The post was still created.`,
           );
           setSubmitting(false);
           return;
@@ -170,139 +157,257 @@ export default function NewPostPage() {
       }
 
       router.push(`/admin/posts/${postId}`);
-    } catch {
+    } catch (err) {
+      console.error("Unexpected error:", err);
       setError("An unexpected error occurred. Please try again.");
       setSubmitting(false);
     }
   }
 
+  const canPost = !submitting && body.trim().length > 0;
+
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center gap-3">
+    <div className="max-w-[520px] space-y-4">
+      <div className="flex items-center gap-2">
         <Link href="/admin/posts">
           <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="mr-1 h-4 w-4" />
             Back
           </Button>
         </Link>
-        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">New Post</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Content */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Content</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <textarea
-              value={body}
-              onChange={(e) => {
-                setBody(e.target.value);
-                setBodyError("");
+      {/* Facebook-style composer card */}
+      <div
+        {...getRootProps()}
+        className={`relative rounded-xl border bg-white shadow-md transition-colors ${
+          isDragActive
+            ? "border-blue-400 ring-2 ring-blue-100"
+            : "border-gray-200"
+        }`}
+      >
+        {/* Hidden dropzone input */}
+        <input {...getInputProps()} />
+
+        {/* Header — avatar + name + audience pill */}
+        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+          <div className="flex h-10 w-10 flex-shrink-0 select-none items-center justify-center rounded-full bg-blue-500 text-sm font-bold text-white">
+            G
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold leading-tight text-gray-900">
+              Gil Alter
+            </span>
+            <span className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-xs text-gray-600">
+              🌍 Public ▾
+            </span>
+          </div>
+        </div>
+
+        {/* Text area — auto-grows */}
+        <div className="px-4 pb-2">
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(e) => {
+              setBody(e.target.value);
+              setError(null);
+              autoResize(e.target);
+            }}
+            placeholder="What's on your mind, Gil?"
+            rows={3}
+            className="w-full resize-none bg-transparent text-lg placeholder:text-gray-400 focus:outline-none"
+            style={{ minHeight: "72px" }}
+            autoFocus
+          />
+        </div>
+
+        {/* Media preview — inline below text */}
+        {files.length > 0 && (
+          <div className="relative border-t border-gray-100">
+            <MediaGrid files={files} onRemove={removeFile} />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openFilePicker();
               }}
-              placeholder="What's on your mind?"
-              rows={5}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
-            />
-            {bodyError && (
-              <p className="mt-1 text-xs text-red-600">{bodyError}</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Media */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Media</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div
-              {...getRootProps()}
-              className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 text-center transition-colors ${
-                isDragActive
-                  ? "border-blue-400 bg-blue-50"
-                  : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-              }`}
+              className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white/90 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm hover:bg-white"
             >
-              <input {...getInputProps()} />
-              <Upload className="h-6 w-6 text-gray-400 mb-2" />
-              <p className="text-sm text-gray-500">
-                {isDragActive ? "Drop files here" : "Click or drag files here"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Images (JPG, PNG, GIF, WebP, HEIC) and videos (MP4, MOV)
-              </p>
-            </div>
-
-            {files.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {files.map((selected, i) => (
-                  <div
-                    key={i}
-                    className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
-                  >
-                    {selected.preview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={selected.preview}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center p-2">
-                        <Film className="h-6 w-6 text-gray-400" />
-                        <span className="mt-1 text-center text-xs text-gray-500 line-clamp-2">
-                          {selected.file.name}
-                        </span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Date */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Date</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <input
-              type="datetime-local"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-          </CardContent>
-        </Card>
-
-        {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
+              <ImagePlus className="h-3.5 w-3.5" />
+              Add more
+            </button>
+          </div>
         )}
 
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? (progress ?? "Creating...") : "Create Post"}
-          </Button>
-          <Link href="/admin/posts">
-            <Button type="button" variant="outline" disabled={submitting}>
-              Cancel
-            </Button>
-          </Link>
+        {/* Error message */}
+        {error && (
+          <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Divider */}
+        <div className="mx-4 border-t border-gray-100" />
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-1 px-3 py-3">
+          {/* Photo/Video button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openFilePicker();
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-green-600 transition-colors hover:bg-green-50"
+          >
+            <ImagePlus className="h-5 w-5" />
+            <span className="hidden sm:inline">Photo/Video</span>
+          </button>
+
+          {/* Add Music button */}
+          <div
+            className="flex items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <AudioPicker
+              currentTrack={
+                selectedAudioTrackId
+                  ? { id: selectedAudioTrackId, title: "" }
+                  : null
+              }
+              onSetAudio={setSelectedAudioTrackId}
+            />
+          </div>
+
+          {/* Show track-attached indicator */}
+          {selectedAudioTrackId && (
+            <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+              <Music className="h-3 w-3" />
+              Music added
+            </span>
+          )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Post button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handlePost();
+            }}
+            disabled={!canPost}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? (progress ?? "Posting…") : "Post"}
+          </button>
         </div>
-      </form>
+
+        {/* Drag-over overlay hint */}
+        {isDragActive && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-blue-50/80">
+            <p className="text-base font-medium text-blue-600">Drop files here</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Media Grid ──────────────────────────────────────────────────────────────
+
+interface MediaGridProps {
+  files: SelectedFile[];
+  onRemove: (index: number) => void;
+}
+
+function MediaGrid({ files, onRemove }: MediaGridProps) {
+  const count = files.length;
+
+  if (count === 1) {
+    return <MediaItem file={files[0]} onRemove={() => onRemove(0)} variant="single" />;
+  }
+
+  if (count === 2) {
+    return (
+      <div className="grid grid-cols-2 gap-0.5">
+        {files.map((f, i) => (
+          <MediaItem key={i} file={f} onRemove={() => onRemove(i)} variant="grid" />
+        ))}
+      </div>
+    );
+  }
+
+  if (count === 3) {
+    // Facebook 3-photo layout: 1 large on left, 2 stacked on right
+    return (
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: "2fr 1fr" }}>
+        <div className="row-span-2">
+          <MediaItem file={files[0]} onRemove={() => onRemove(0)} variant="tall" />
+        </div>
+        <MediaItem file={files[1]} onRemove={() => onRemove(1)} variant="grid" />
+        <MediaItem file={files[2]} onRemove={() => onRemove(2)} variant="grid" />
+      </div>
+    );
+  }
+
+  // 4+ items: 2-column grid, first row wider if odd count
+  return (
+    <div className="grid grid-cols-2 gap-0.5">
+      {files.map((f, i) => (
+        <MediaItem key={i} file={f} onRemove={() => onRemove(i)} variant="grid" />
+      ))}
+    </div>
+  );
+}
+
+// ─── Media Item ──────────────────────────────────────────────────────────────
+
+type MediaVariant = "single" | "grid" | "tall";
+
+interface MediaItemProps {
+  file: SelectedFile;
+  onRemove: () => void;
+  variant: MediaVariant;
+}
+
+const VARIANT_CLASS: Record<MediaVariant, string> = {
+  single: "max-h-80 w-full",
+  grid: "h-44 w-full",
+  tall: "h-full w-full min-h-[11rem]",
+};
+
+function MediaItem({ file, onRemove, variant }: MediaItemProps) {
+  const isVideo = file.file.type.startsWith("video/");
+  const containerClass = VARIANT_CLASS[variant];
+  // Videos: contain (no cropping), images: cover (fill cell)
+  const fitClass = isVideo ? "object-contain" : "object-cover";
+
+  return (
+    <div className={`relative overflow-hidden bg-black ${containerClass}`}>
+      {isVideo ? (
+        <video
+          src={file.preview}
+          controls
+          className={`h-full w-full ${fitClass}`}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={file.preview} alt="" className={`h-full w-full ${fitClass}`} />
+      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

@@ -37,7 +37,7 @@ SELECTION RULES:
 2. STRONGLY PREFER OLDER "LAST POSTED" DATES: posts from many months / years ago are ideal. Avoid anything posted in the last few months.
 3. RECYCLED COUNT FAIRNESS: Prefer posts with lower recycled count. Give under-shared content a chance.
 4. EVERGREEN ONLY: Skip posts that are clearly time-bound — holiday-specific, news reactions, birthday posts, "today I..." with temporal context. Use your judgment.
-5. ONE POST PER DAY: Select exactly one post per day, Monday through Sunday.
+5. ONE POST PER SLOT: Each slot is a specific day + time (e.g. 2026-05-07 12:00). Fill every requested slot with a different post. You may assign multiple posts to the same day if multiple slots fall on that day.
 
 When explaining your picks, be specific: "You haven't posted about cooking in 3 weeks" is good. "This is a good post" is not.
 
@@ -54,26 +54,26 @@ ${candidateLines.join("\n")}`;
 export const PLANNER_TOOLS = [
   {
     name: "plan_week" as const,
-    description: "Fill all empty slots in the weekly plan with AI-recommended posts. Call this when the user says 'plan my week' or similar.",
+    description: "Fill the requested slots with AI-recommended posts.",
     input_schema: {
       type: "object" as const,
       properties: {
-        preferences: {
-          type: "string",
-          description: "Optional user preferences like 'focus on cooking' or 'nothing sad this week'",
-        },
         picks: {
           type: "array",
           items: {
             type: "object",
             properties: {
               day: { type: "string", description: "Date in YYYY-MM-DD format" },
+              hour: {
+                type: "number",
+                description: "Hour-of-day in Asia/Jerusalem timezone. Must be exactly one of: 12, 15, 18, 21",
+              },
               postId: { type: "string", description: "ID of the selected post" },
-              reasoning: { type: "string", description: "Why this post was chosen for this day" },
+              reasoning: { type: "string", description: "Why this post was chosen for this slot" },
             },
-            required: ["day", "postId", "reasoning"],
+            required: ["day", "hour", "postId", "reasoning"],
           },
-          description: "Array of 7 picks, one per day Monday-Sunday",
+          description: "One pick per requested slot. Match the exact day+hour pairs from the user message.",
         },
       },
       required: ["picks"],
@@ -132,6 +132,7 @@ export const PLANNER_TOOLS = [
 export function parseAiPicks(toolInput: { picks: AiPickResult[] }): AiPickResult[] {
   return toolInput.picks.map((pick) => ({
     day: pick.day,
+    hour: pick.hour,
     postId: pick.postId,
     reasoning: pick.reasoning,
   }));

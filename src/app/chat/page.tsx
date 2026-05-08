@@ -11,12 +11,24 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   posts?: PreviewPost[];
+  // Per-turn $ cost from the server's COST_TRAILER. Only displayed for admins.
+  costUsd?: number;
 }
 
 const POST_MARKER_RE = /\[POST:([^\]]+)\]/g;
+// Matches the cost trailer the server appends at end-of-stream:
+//   "\n​__USAGE_USD:0.012345__"  (the ​ is a U+200B zero-width space)
+// The leading "\n" + zero-width-space are optional in the strip pattern —
+// the model occasionally parrots the bare "__USAGE_USD:X__" form into its
+// own output, and we want to scrub those too.
+const COST_TRAILER_CAPTURE_RE = /\n?​?__USAGE_USD:([0-9.]+)__/;
+const COST_TRAILER_STRIP_RE = /\n?​?__USAGE_USD:[0-9.]+__/g;
 
 function stripMarkers(text: string): string {
-  return text.replace(POST_MARKER_RE, "").replace(/\n{3,}/g, "\n\n");
+  return text
+    .replace(POST_MARKER_RE, "")
+    .replace(COST_TRAILER_STRIP_RE, "")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 const MARKDOWN_COMPONENTS = {
@@ -37,6 +49,28 @@ const MARKDOWN_COMPONENTS = {
   ),
   code: ({ children }: { children?: React.ReactNode }) => (
     <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{children}</code>
+  ),
+  pre: ({ children }: { children?: React.ReactNode }) => (
+    <pre className="overflow-x-auto rounded bg-gray-100 px-3 py-2 text-xs mb-2 whitespace-pre-wrap">{children}</pre>
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline break-all hover:text-blue-800"
+    >
+      {children}
+    </a>
+  ),
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-bold mb-2">{children}</p>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-bold mb-1.5">{children}</p>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <p className="font-semibold mb-1">{children}</p>
   ),
 };
 
@@ -124,6 +158,7 @@ export default function GilChatPage() {
   const [inputDisabled, setInputDisabled] = useState(false);
   const [, setMessagesLoaded] = useState(false);
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0);
+  const [role, setRole] = useState<"admin" | "subscriber" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -154,7 +189,9 @@ export default function GilChatPage() {
         if (!res.ok) return;
         const data = (await res.json()) as {
           messages: { role: "user" | "assistant"; content: string }[];
+          role?: "admin" | "subscriber" | null;
         };
+        if (!cancelled && data.role) setRole(data.role);
         if (cancelled || data.messages.length === 0) return;
 
         // Re-hydrate post cards: collect every [POST:id] across all messages,
@@ -266,6 +303,28 @@ export default function GilChatPage() {
           return [...prev.slice(0, -1), { ...last, content: last.content + chunk }];
         });
       }
+
+      // Extract per-turn cost from the trailer the server appended at end of
+      // stream, then strip it (and any model-parrot copies) from the message
+      // we keep in state — otherwise the next turn echoes it back to the API
+      // and the model adopts the pattern as part of its output style.
+      const costMatch = fullContent.match(COST_TRAILER_CAPTURE_RE);
+      const costUsd = costMatch ? parseFloat(costMatch[1]) : null;
+      const cleanedContent = fullContent
+        .replace(COST_TRAILER_STRIP_RE, "")
+        .trimEnd();
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (!last) return prev;
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...last,
+            content: cleanedContent,
+            ...(costUsd !== null ? { costUsd } : {}),
+          },
+        ];
+      });
 
       // Extract post IDs and fetch previews
       const ids: string[] = [];

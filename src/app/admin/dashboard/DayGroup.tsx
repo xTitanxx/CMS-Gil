@@ -23,8 +23,6 @@ export function DayGroup({ day, isToday, slots, onApprove, onRemove }: DayGroupP
     return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9);
   });
 
-  const approvable = slots.filter((s) => s.status === "PROPOSED" || s.status === "APPROVED");
-
   return (
     <div className={isToday ? "rounded-xl border-l-[3px] border-amber-400 bg-amber-50/50 px-3 py-3" : ""}>
       <DayHeader
@@ -32,7 +30,6 @@ export function DayGroup({ day, isToday, slots, onApprove, onRemove }: DayGroupP
         isToday={isToday}
         slotCount={slots.length}
         slots={slots}
-        onApproveAll={approvable.length > 0 ? () => approvable.forEach((s) => onApprove(s.id)) : undefined}
       />
       <div className="mt-3 space-y-3">
         {sorted.length === 0 ? (

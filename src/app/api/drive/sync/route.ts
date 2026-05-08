@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { google, drive_v3 } from "googleapis";
 import { runImportJob } from "@/lib/import-worker";
 import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
-import { decryptGoogleToken } from "@/lib/google-tokens";
+import { buildGoogleOAuthClient, getGoogleIntegration } from "@/lib/google-integration";
 
 export async function GET(_req: NextRequest) {
   const session = await auth();
@@ -123,23 +123,10 @@ async function collectDriveFiles(
 }
 
 export async function syncDriveFolder(userId: string, folderId: string) {
-  const account = await prisma.account.findFirst({
-    where: { userId, provider: "google" },
-    select: { access_token: true, refresh_token: true },
-  });
-  const accessToken = decryptGoogleToken(account?.access_token, userId);
-  const refreshToken = decryptGoogleToken(account?.refresh_token, userId);
-  if (!accessToken) return [];
+  const integration = await getGoogleIntegration(userId);
+  if (!integration) return [];
 
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
-  oauth2Client.setCredentials({
-    access_token: accessToken,
-    refresh_token: refreshToken ?? undefined,
-  });
-
+  const oauth2Client = buildGoogleOAuthClient(userId, integration);
   const drive = google.drive({ version: "v3", auth: oauth2Client });
 
   // Recursively traverse the folder tree, indexing all files by name

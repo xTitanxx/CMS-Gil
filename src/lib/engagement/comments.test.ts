@@ -69,13 +69,12 @@ describe("createComment", () => {
     ).rejects.toMatchObject({ code: "comments_disabled" });
   });
 
-  it("sets displayName before insert when subscriber has none and one is provided", async () => {
+  it("never writes Subscriber.displayName during a comment", async () => {
     mockPrisma.subscriber.findUnique.mockResolvedValue({
       name: "Real Name",
       displayName: null,
       commentsDisabledAt: null,
     });
-    mockPrisma.subscriber.update.mockResolvedValue({});
     mockPrisma.postComment.create.mockResolvedValue({
       id: "c1",
       postId: "p1",
@@ -88,25 +87,16 @@ describe("createComment", () => {
     mockPrisma.postComment.count.mockResolvedValue(1);
     mockPrisma.post.update.mockResolvedValue({});
 
-    const result = await createComment({
-      postId: "p1",
-      subscriberId: "s1",
-      body: "hi",
-      displayName: "Eitan A.",
-    });
+    await createComment({ postId: "p1", subscriberId: "s1", body: "hi" });
 
-    expect(mockPrisma.subscriber.update).toHaveBeenCalledWith({
-      where: { id: "s1" },
-      data: { displayName: "Eitan A." },
-    });
-    expect(result.authorName).toBe("Eitan A.");
+    expect(mockPrisma.subscriber.update).not.toHaveBeenCalled();
     expect(mockPrisma.post.update).toHaveBeenCalledWith({
       where: { id: "p1" },
       data: { commentCount: 1 },
     });
   });
 
-  it("ignores displayName when subscriber already has one", async () => {
+  it("uses subscriber.displayName when one is already set", async () => {
     mockPrisma.subscriber.findUnique.mockResolvedValue({
       name: "Real Name",
       displayName: "AlreadySet",
@@ -128,10 +118,8 @@ describe("createComment", () => {
       postId: "p1",
       subscriberId: "s1",
       body: "hi",
-      displayName: "Trying To Change",
     });
 
-    expect(mockPrisma.subscriber.update).not.toHaveBeenCalled();
     expect(result.authorName).toBe("AlreadySet");
   });
 

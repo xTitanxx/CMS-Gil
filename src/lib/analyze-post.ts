@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { getObject } from "@/lib/storage";
 import { extractFrames } from "@/lib/video-processing";
+import { embedPost } from "@/lib/retrieval/embed-post";
 
 const client = new Anthropic();
 
@@ -113,6 +114,7 @@ export async function analyzePost(postId: string): Promise<string[]> {
 
   if (contentBlocks.length === 0) {
     await prisma.post.update({ where: { id: postId }, data: { tags: [] } });
+    embedPost(postId).catch((e) => console.error("embedPost after analyze failed", e));
     return [];
   }
 
@@ -137,6 +139,9 @@ export async function analyzePost(postId: string): Promise<string[]> {
     data.season = result.season;
   }
   await prisma.post.update({ where: { id: postId }, data });
+
+  // New tags = new search vector. Fire-and-forget; never block the analyzer.
+  embedPost(postId).catch((e) => console.error("embedPost after analyze failed", e));
 
   return result.tags;
 }

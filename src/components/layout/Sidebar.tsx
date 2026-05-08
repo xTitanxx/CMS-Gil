@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   FileText,
-  Upload,
-  Link2,
   CalendarClock,
   LogOut,
   CheckSquare,
@@ -18,27 +16,31 @@ import {
   X,
   Settings,
   MessageSquare,
+  Users,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 type NavItem =
   | { type: "link"; href: string; label: string; icon: typeof FileText; badge?: "triage" }
-  | { type: "separator" };
+  | { type: "section"; label: string };
 
 const nav: NavItem[] = [
+  { type: "section", label: "Work" },
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
   { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
-  { type: "separator" },
+  { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
+
+  { type: "section", label: "Content" },
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
-  { type: "link", href: "/admin/comments", label: "Comments", icon: MessageSquare },
   { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
   { type: "link", href: "/admin/rate", label: "Review Posts", icon: Star },
-  { type: "separator" },
-  { type: "link", href: "/admin/import", label: "Import", icon: Upload },
-  { type: "link", href: "/admin/connections", label: "Connections", icon: Link2 },
-  { type: "separator" },
-  { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
+
+  { type: "section", label: "Audience" },
+  { type: "link", href: "/admin/comments", label: "Comments", icon: MessageSquare },
+  { type: "link", href: "/admin/subscribers", label: "Subscribers", icon: Users },
+
+  { type: "section", label: "System" },
   { type: "link", href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -112,10 +114,20 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1">
+      <nav className="flex flex-1 flex-col gap-0.5">
         {nav.map((item, i) => {
-          if (item.type === "separator") {
-            return <hr key={i} className="my-2 border-gray-200" />;
+          if (item.type === "section") {
+            return (
+              <div
+                key={`section-${i}`}
+                className={cn(
+                  "px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400",
+                  i === 0 && "pt-0"
+                )}
+              >
+                {item.label}
+              </div>
+            );
           }
           const { href, label, icon: Icon, badge } = item;
           return (

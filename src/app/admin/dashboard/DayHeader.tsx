@@ -8,10 +8,9 @@ interface DayHeaderProps {
   isToday: boolean;
   slotCount: number;
   slots: PlanSlotData[];
-  onApproveAll?: () => void;
 }
 
-export function DayHeader({ day, isToday, slots, onApproveAll }: DayHeaderProps) {
+export function DayHeader({ day, isToday, slots }: DayHeaderProps) {
   const label = isToday
     ? `Today, ${format(day, "MMM d")}`
     : format(day, "EEEE, MMM d");
@@ -26,20 +25,10 @@ export function DayHeader({ day, isToday, slots, onApproveAll }: DayHeaderProps)
   if (proposed > 0) parts.push(`${proposed} proposed`);
 
   return (
-    <div className="flex items-center justify-between border-b border-[#eae7df] pb-2">
-      <div className="min-w-0">
-        <h3 className={`text-[17px] font-semibold leading-tight ${isToday ? "text-amber-700" : "text-[#161513]"}`}>{label}</h3>
-        {parts.length > 0 && (
-          <p className="mt-0.5 text-[12px] text-[#7a7870]">{parts.join(" \u00b7 ")}</p>
-        )}
-      </div>
-      {proposed > 0 && onApproveAll && (
-        <button
-          onClick={onApproveAll}
-          className="shrink-0 rounded-full bg-[#161513] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-80"
-        >
-          Approve all
-        </button>
+    <div className="border-b border-[#eae7df] pb-2">
+      <h3 className={`text-[17px] font-semibold leading-tight ${isToday ? "text-amber-700" : "text-[#161513]"}`}>{label}</h3>
+      {parts.length > 0 && (
+        <p className="mt-0.5 text-[12px] text-[#7a7870]">{parts.join(" \u00b7 ")}</p>
       )}
     </div>
   );

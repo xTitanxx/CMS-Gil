@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { redactSecrets } from "@/lib/redact";
-import { encryptGoogleToken } from "@/lib/google-tokens";
+import {
+  decodeIdTokenClaims,
+  fetchGoogleUserInfo,
+  upsertGoogleIntegration,
+} from "@/lib/google-integration";
 
 const REDIRECT_URI = `${process.env.APP_URL}/api/connections/google/callback`;
 
@@ -45,23 +48,25 @@ export async function GET(req: NextRequest) {
       throw new Error("No access token returned from Google");
     }
 
-    // Update the existing Google Account record with fresh tokens.
-    // Only overwrite refresh_token if Google returned a new one
-    // (Google omits it on subsequent authorizations if it's still valid).
-    const updateData: Record<string, unknown> = {
-      access_token: encryptGoogleToken(tokens.access_token, userId),
-      ...(tokens.expiry_date
-        ? { expires_at: Math.floor(tokens.expiry_date / 1000) }
-        : {}),
-      ...(tokens.scope ? { scope: tokens.scope } : {}),
-    };
-    if (tokens.refresh_token) {
-      updateData.refresh_token = encryptGoogleToken(tokens.refresh_token, userId);
+    // Identify the Google account that consented. We don't request `openid`
+    // here (mixing it with `drive.readonly` trips Google's policy on
+    // unverified apps), so we use the userinfo endpoint via the access
+    // token instead. Fall back to id_token if Google ever sends one.
+    const claims =
+      (tokens.id_token ? decodeIdTokenClaims(tokens.id_token) : null) ??
+      (await fetchGoogleUserInfo(tokens.access_token));
+    if (!claims) {
+      throw new Error("Google did not return identifying claims");
     }
 
-    await prisma.account.updateMany({
-      where: { userId, provider: "google" },
-      data: updateData,
+    await upsertGoogleIntegration({
+      userId,
+      googleSub: claims.sub,
+      email: claims.email,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token ?? null,
+      expiresAt: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : null,
+      scope: tokens.scope ?? null,
     });
 
     const successUrl =

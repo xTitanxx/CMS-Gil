@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, deleteObject } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
 import { refreshReadiness } from "@/lib/readiness-service";
+import { embedPost } from "@/lib/retrieval/embed-post";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
@@ -137,6 +139,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await refreshReadiness(id).catch((e) => console.error("readiness refresh failed", e));
+
+  // Refresh the embedding when text content changed. Fire-and-forget via
+  // after() so the response isn't blocked on the Voyage round-trip.
+  if (body.body !== undefined || body.tags !== undefined) {
+    after(async () => {
+      try {
+        await embedPost(id);
+      } catch (e) {
+        console.error("embedPost after PATCH failed", e);
+      }
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

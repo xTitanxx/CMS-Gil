@@ -32,6 +32,7 @@ const POST_INCLUDE = {
       status: true,
       platformUrl: true,
       scheduledAt: true,
+      publishedAt: true,
     },
   },
   rating: true,

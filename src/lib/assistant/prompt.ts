@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { currentSeason } from "./season";
+import { getConnectedPlatforms } from "@/lib/connected-platforms";
 
 const PLATFORM_LABEL: Record<string, string> = {
   INSTAGRAM: "Instagram",
@@ -9,27 +10,6 @@ const PLATFORM_LABEL: Record<string, string> = {
   TIKTOK: "TikTok",
   YOUTUBE: "YouTube",
 };
-
-async function getConnectedPlatforms(userId: string): Promise<string[]> {
-  const [tokens, googleAccount] = await Promise.all([
-    prisma.platformToken.findMany({
-      where: { userId },
-      select: { platform: true },
-    }),
-    prisma.account.findFirst({
-      where: { userId, provider: "google" },
-      select: { scope: true },
-    }),
-  ]);
-  const platforms = new Set<string>();
-  for (const t of tokens) {
-    // FACEBOOK personal profile is not publishable; the FB Page connection is.
-    if (t.platform === "FACEBOOK") continue;
-    platforms.add(t.platform);
-  }
-  if (googleAccount?.scope?.includes("youtube")) platforms.add("YOUTUBE");
-  return Array.from(platforms);
-}
 
 export interface AssistantSystemPrompt {
   // Stable per-user content. Safe to cache for the full TTL — only changes

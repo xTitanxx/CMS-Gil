@@ -74,33 +74,31 @@ export function TriageBuckets() {
   }
 
   return (
-    <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-      {BUCKETS.map(({ slug, label }) => {
-        const count = countFor(slug);
-        const active = activeBucket === slug;
-        return (
-          <button
-            key={slug ?? "all"}
-            onClick={() => selectBucket(slug)}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-              active
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            {label}
-            {count > 0 && (
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  active ? "bg-white/20 text-white" : "bg-gray-300 text-gray-700"
-                }`}
-              >
-                {count}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="-mx-4 overflow-x-auto px-4 scrollbar-hide md:mx-0 md:px-0">
+      <div className="mb-4 flex w-max items-center gap-1.5 pb-0.5">
+        {BUCKETS.map(({ slug, label }) => {
+          const count = countFor(slug);
+          const active = activeBucket === slug;
+          return (
+            <button
+              key={slug ?? "all"}
+              onClick={() => selectBucket(slug)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                active
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {label}
+              {count > 0 && (
+                <span className={`tabular-nums ${active ? "text-gray-300" : "text-gray-400"}`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

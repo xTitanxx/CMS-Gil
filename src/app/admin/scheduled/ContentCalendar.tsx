@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   format,
   addMonths,
@@ -12,7 +12,7 @@ import {
   isSameWeek,
   startOfDay,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { MonthView } from "./MonthView";
@@ -21,12 +21,46 @@ import { DayPanel } from "./DayPanel";
 import { getGridDays, getDateRange } from "./calendar-utils";
 import type { CalendarEntry } from "./types";
 
+type TypeFilter = "proposed" | "scheduled" | "posted" | "imported";
+
+const ALL_TYPES: TypeFilter[] = ["proposed", "scheduled", "posted", "imported"];
+
+const TYPE_LABEL: Record<TypeFilter, string> = {
+  proposed: "Proposed",
+  scheduled: "Scheduled",
+  posted: "Posted",
+  imported: "Imported",
+};
+
+// Active styles use saturated, distinct hues so each chip's "on" state is
+// unambiguous on its own. Inactive style is shared and obviously OFF
+// (dashed outline, faded). See toggleType() callsite below.
+const TYPE_ACTIVE_CLASS: Record<TypeFilter, string> = {
+  proposed: "border-violet-300 bg-violet-100 text-violet-800",
+  scheduled: "border-amber-300 bg-amber-100 text-amber-800",
+  posted: "border-green-300 bg-green-100 text-green-800",
+  imported: "border-slate-400 bg-slate-200 text-slate-800",
+};
+
+const TYPE_INACTIVE_CLASS =
+  "border-dashed border-gray-300 bg-white text-gray-400 opacity-60 hover:opacity-90";
+
+function statusToType(status: CalendarEntry["status"]): TypeFilter {
+  if (status === "PROPOSED" || status === "PLAN_APPROVED") return "proposed";
+  if (status === "PENDING") return "scheduled";
+  if (status === "PUBLISHED") return "posted";
+  return "imported";
+}
+
 export function ContentCalendar() {
   const [view, setView] = useState<"month" | "week">("week");
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTypes, setActiveTypes] = useState<Set<TypeFilter>>(
+    () => new Set(ALL_TYPES),
+  );
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -40,6 +74,20 @@ export function ContentCalendar() {
     setEntries(data.entries ?? []);
     setLoading(false);
   }, [view, cursor]);
+
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => activeTypes.has(statusToType(e.status))),
+    [entries, activeTypes],
+  );
+
+  function toggleType(t: TypeFilter) {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  }
 
   useEffect(() => {
     fetchEntries();
@@ -148,6 +196,29 @@ export function ContentCalendar() {
           </div>
         </div>
 
+        {/* Type filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {ALL_TYPES.map((t) => {
+            const on = activeTypes.has(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => toggleType(t)}
+                aria-pressed={on}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
+                  on
+                    ? `${TYPE_ACTIVE_CLASS[t]} shadow-sm`
+                    : TYPE_INACTIVE_CLASS
+                }`}
+              >
+                {on && <Check className="h-3 w-3" aria-hidden="true" />}
+                {TYPE_LABEL[t]}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Grid */}
         <div className="relative">
           {loading && (
@@ -158,14 +229,14 @@ export function ContentCalendar() {
           {view === "month" ? (
             <MonthView
               cursor={cursor}
-              entries={entries}
+              entries={visibleEntries}
               onDayClick={setSelectedDay}
               selectedDay={selectedDay}
             />
           ) : (
             <WeekView
               cursor={cursor}
-              entries={entries}
+              entries={visibleEntries}
               onDayClick={setSelectedDay}
               selectedDay={selectedDay}
             />
@@ -177,7 +248,7 @@ export function ContentCalendar() {
       {selectedDay && (
         <DayPanel
           day={selectedDay}
-          entries={entries.filter(
+          entries={visibleEntries.filter(
             (e) => e.date === format(selectedDay, "yyyy-MM-dd")
           )}
           onClose={() => setSelectedDay(null)}

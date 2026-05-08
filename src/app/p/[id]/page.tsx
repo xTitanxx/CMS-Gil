@@ -1,12 +1,19 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPublicPost, getRelatedPosts } from "@/lib/public-posts";
+import {
+  getPublicPost,
+  getRelatedPosts,
+  pickOgImage,
+  postExcerpt,
+} from "@/lib/public-posts";
 import { getMediaUrl } from "@/lib/storage";
 import { getLikedPostIds } from "@/lib/engagement/like";
 import { getBookmarkedPostIds } from "@/lib/engagement/bookmark";
 import { listComments } from "@/lib/engagement/comments";
+import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 import { BackButton } from "./BackButton";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
 import { EngagementBar } from "@/components/EngagementBar";
@@ -37,6 +44,49 @@ async function mediaWithUrls<T extends { storageKey: string; mimeType: string; i
   );
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const post = await getPublicPost(id);
+  if (!post) return {};
+
+  const dateLabel = formatDate(post.originalDate);
+  const hasBody = post.body.trim().length > 0;
+  const title = hasBody ? postExcerpt(post.body, 70) : `Post from ${dateLabel}`;
+  const description = hasBody
+    ? postExcerpt(post.body, 180)
+    : `An archived post by Gil Alter from ${dateLabel}.`;
+
+  const og = await pickOgImage(post.media);
+  const url = `/p/${post.id}`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      type: "article",
+      url,
+      title,
+      description,
+      siteName: "Gil Alter",
+      publishedTime: post.originalDate.toISOString(),
+      images: og
+        ? [{ url: og.url, width: og.width, height: og.height, alt: og.alt }]
+        : undefined,
+    },
+    twitter: {
+      card: og ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: og ? [og.url] : undefined,
+    },
+    alternates: { canonical: url },
+  };
+}
+
 export default async function PublicPostPage({
   params,
 }: {
@@ -48,27 +98,31 @@ export default async function PublicPostPage({
 
   const related = await getRelatedPosts(post, 5);
 
-  const subscriberId = session?.user?.subscriberId;
   const role = session?.user?.role;
-  const signedIn = role === "subscriber";
+  // Admin acts under their shadow subscriber so they can test engagement
+  // features end-to-end without logging out. See lib/engagement/admin-shadow.ts.
+  const actorSubscriberId = await resolveActorSubscriberId(session);
+  const signedIn = !!actorSubscriberId;
   const likedPromise: Promise<string[]> =
-    signedIn && subscriberId ? getLikedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+    actorSubscriberId ? getLikedPostIds(actorSubscriberId, [post.id]) : Promise.resolve([]);
   const bookmarkedPromise: Promise<string[]> =
-    signedIn && subscriberId ? getBookmarkedPostIds(subscriberId, [post.id]) : Promise.resolve([]);
+    actorSubscriberId ? getBookmarkedPostIds(actorSubscriberId, [post.id]) : Promise.resolve([]);
   const viewerSubscriberPromise =
-    signedIn && subscriberId
+    actorSubscriberId
       ? prisma.subscriber.findUnique({
-          where: { id: subscriberId },
-          select: { displayName: true, commentsDisabledAt: true },
+          where: { id: actorSubscriberId },
+          select: { commentsDisabledAt: true },
         })
       : Promise.resolve(null);
 
   const [likedIds, bookmarkedIds, initialComments, viewerSubscriber] = await Promise.all([
     likedPromise,
     bookmarkedPromise,
-    listComments(post.id, null, subscriberId ?? null),
+    listComments(post.id, null, actorSubscriberId ?? null),
     viewerSubscriberPromise,
   ]);
+  // Suppress unused-vars warning for `role` until we wire admin-only chrome.
+  void role;
 
   const mainMedia = await mediaWithUrls(post.media);
   const relatedWithUrls = await Promise.all(
@@ -124,7 +178,6 @@ export default async function PublicPostPage({
           <CommentSection
             postId={post.id}
             signedIn={signedIn}
-            initialDisplayName={viewerSubscriber?.displayName ?? null}
             commentsDisabled={!!viewerSubscriber?.commentsDisabledAt}
             initialComments={initialComments}
           />

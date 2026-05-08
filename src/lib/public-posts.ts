@@ -1,5 +1,6 @@
 // src/lib/public-posts.ts
 import { prisma } from "@/lib/prisma";
+import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
 
 export interface PublicPostMedia {
   id: string;
@@ -284,6 +285,37 @@ export async function getPublicStoriesPage(cursor?: {
       : null;
 
   return { stories: filtered, nextCursor };
+}
+
+export interface OgImage {
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+}
+
+export async function pickOgImage(
+  media: PublicPostMedia[]
+): Promise<OgImage | null> {
+  const firstImage = media.find((m) => m.mimeType.startsWith("image/"));
+  const candidate =
+    firstImage ?? media.find((m) => m.mimeType.startsWith("video/"));
+  if (!candidate) return null;
+
+  const baseUrl = await getMediaUrl(candidate);
+  const url = await getThumbnailUrl(baseUrl, candidate.mimeType);
+  return {
+    url,
+    width: candidate.width ?? undefined,
+    height: candidate.height ?? undefined,
+    alt: candidate.altText ?? undefined,
+  };
+}
+
+export function postExcerpt(body: string, max: number): string {
+  const cleaned = body.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  return cleaned.slice(0, max - 1).trimEnd() + "…";
 }
 
 export async function getPublicStory(id: string): Promise<PublicPost | null> {

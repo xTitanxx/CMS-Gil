@@ -1,7 +1,5 @@
-import ConnectionsPage from "./ConnectionsPage";
-
-export const metadata = { title: "Connections" };
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <ConnectionsPage />;
+  redirect("/admin/settings?tab=connections");
 }

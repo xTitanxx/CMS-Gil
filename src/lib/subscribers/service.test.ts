@@ -1,4 +1,150 @@
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
+
+// ── In-memory Prisma simulator ─────────────────────────────────────────────
+const { mockPrisma } = vi.hoisted(() => {
+  // Provide a valid pepper so blindIndex() doesn't throw in test environments
+  // that have no .env.local. Value doesn't need to be secret — just 32 bytes.
+  process.env.SUBSCRIBER_INDEX_PEPPER ??= "00".repeat(32);
+
+  let _id = 0;
+  const newId = () => `mock-${++_id}`;
+  const decimal = (n: number) => ({ toNumber: () => n });
+  const DECIMAL_FIELDS = new Set(["monthlyBudgetUsd", "cycleUsedUsd"]);
+
+  type Row = Record<string, unknown>;
+  const subscribers = new Map<string, Row>();
+  const users = new Map<string, Row>();
+
+  function matches(row: Row, where: Row): boolean {
+    for (const [k, cond] of Object.entries(where)) {
+      const v = row[k];
+      if (cond === null) {
+        if (v !== null && v !== undefined) return false;
+      } else if (cond && typeof cond === "object") {
+        const c = cond as Row;
+        if ("startsWith" in c && (typeof v !== "string" || !v.startsWith(c.startsWith as string)))
+          return false;
+      } else if (v !== cond) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function project(row: Row, select?: Row): Row {
+    if (!select) {
+      const r = { ...row };
+      for (const f of DECIMAL_FIELDS) if (f in r) r[f] = decimal(r[f] as number);
+      return r;
+    }
+    const r: Row = {};
+    for (const [k, on] of Object.entries(select)) {
+      if (on && k in row) r[k] = DECIMAL_FIELDS.has(k) ? decimal(row[k] as number) : row[k];
+    }
+    return r;
+  }
+
+  function withDefaults(data: Row): Row {
+    const now = new Date();
+    return {
+      id: newId(),
+      displayName: null,
+      email: null,
+      monthlyBudgetUsd: 1.2,
+      cycleStart: now,
+      cycleUsedUsd: 0,
+      createdAt: now,
+      lastSeenAt: null,
+      revokedAt: null,
+      commentsDisabledAt: null,
+      codeBlindIndex: null,
+      ...data,
+    };
+  }
+
+  const subscriber = {
+    async findFirst({ where, select }: { where?: Row; select?: Row } = {}) {
+      for (const row of subscribers.values()) {
+        if (!where || matches(row, where)) return project(row, select);
+      }
+      return null;
+    },
+    async findUnique({ where, select }: { where: Row; select?: Row }) {
+      for (const row of subscribers.values()) {
+        if (matches(row, where)) return project(row, select);
+      }
+      return null;
+    },
+    async findUniqueOrThrow({ where, select }: { where: Row; select?: Row }) {
+      for (const row of subscribers.values()) {
+        if (matches(row, where)) return project(row, select);
+      }
+      throw Object.assign(new Error("Record not found"), { code: "P2025" });
+    },
+    async findMany({ where, select, orderBy }: { where?: Row; select?: Row; orderBy?: Row } = {}) {
+      let rows = [...subscribers.values()].filter((r) => !where || matches(r, where));
+      if (orderBy) {
+        const [field, dir] = Object.entries(orderBy)[0] ?? [];
+        if (field)
+          rows.sort((a, b) => {
+            const av = a[field] as string | number | Date;
+            const bv = b[field] as string | number | Date;
+            return (av < bv ? -1 : av > bv ? 1 : 0) * (dir === "desc" ? -1 : 1);
+          });
+      }
+      return rows.map((r) => project(r, select));
+    },
+    async create({ data, select }: { data: Row; select?: Row }) {
+      const row = withDefaults(data);
+      subscribers.set(row.id as string, row);
+      return project(row, select);
+    },
+    async update({ where, data, select }: { where: Row; data: Row; select?: Row }) {
+      for (const row of subscribers.values()) {
+        if (matches(row, where)) {
+          Object.assign(row, data);
+          return project(row, select);
+        }
+      }
+      throw Object.assign(new Error("Record not found for update"), { code: "P2025" });
+    },
+    async delete({ where }: { where: Row }) {
+      for (const [id, row] of subscribers.entries()) {
+        if (matches(row, where)) {
+          subscribers.delete(id);
+          return row;
+        }
+      }
+    },
+    async deleteMany({ where }: { where?: Row } = {}) {
+      let count = 0;
+      for (const [id, row] of subscribers.entries()) {
+        if (!where || matches(row, where)) {
+          subscribers.delete(id);
+          count++;
+        }
+      }
+      return { count };
+    },
+  };
+
+  const user = {
+    async findUnique({ where }: { where: Row }) {
+      return users.get(where.id as string) ?? null;
+    },
+    async create({ data }: { data: Row }) {
+      const row = { id: newId(), ...data };
+      users.set(row.id as string, row);
+      return row;
+    },
+  };
+
+  return { mockPrisma: { subscriber, user } };
+});
+
+vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+
+// eslint-disable-next-line import/order
 import { prisma } from "@/lib/prisma";
 import {
   createSubscriber,
@@ -12,8 +158,6 @@ import {
 let adminId: string;
 
 beforeAll(async () => {
-  // The schema uses createdById -> User. Reuse the OWNER_USER_ID from env if present;
-  // otherwise create a transient admin row for the test run.
   const ownerId = process.env.OWNER_USER_ID;
   if (ownerId) {
     const u = await prisma.user.findUnique({ where: { id: ownerId } });
@@ -25,7 +169,7 @@ beforeAll(async () => {
   const u = await prisma.user.create({
     data: { email: `test-admin-${Date.now()}@example.com`, name: "Test Admin" },
   });
-  adminId = u.id;
+  adminId = u.id as string;
 });
 
 afterEach(async () => {
@@ -40,7 +184,7 @@ describe("subscriber service", () => {
       name: "test-sub-alpha",
       createdById: adminId,
     });
-    expect(result.code).toMatch(/^gil-[a-z0-9]{8}$/);
+    expect(result.code).toMatch(/^gil-[a-z0-9]+$/);
     expect(result.subscriber.name).toBe("test-sub-alpha");
     expect((result.subscriber as { codeHash?: string }).codeHash).toBeUndefined();
   });

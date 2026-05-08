@@ -1,11 +1,13 @@
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // ─── Auth (NextAuth.js required tables) ─────────────────────────────────────
@@ -63,6 +65,31 @@ model User {
   archiveUnderstanding UserArchiveUnderstanding?
   assistantUsage       AssistantUsage[]
   subscribersCreated   Subscriber[]
+  googleIntegration    GoogleIntegration?
+}
+
+// Google OAuth tokens for the YouTube + Drive integration. Kept SEPARATE from
+// the NextAuth `Account` row so the admin sign-in is decoupled from the
+// integration: signing out / re-signing in / NextAuth re-linking never touches
+// integration tokens, and disconnecting YouTube doesn't risk locking the user
+// out. One row per user; channel metadata is stored here for future
+// brand-account selection. Tokens are encrypted via `encryptGoogleToken`.
+model GoogleIntegration {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleSub           String
+  email               String
+  accessToken         String
+  refreshToken        String?
+  expiresAt           Int?
+  scope               String?
+  youtubeChannelId    String?
+  youtubeChannelTitle String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([googleSub])
 }
 
 model VerificationToken {
@@ -124,6 +151,15 @@ model Post {
   postType     PostType @default(POST)
   publishCount Int      @default(0)
 
+  // Set when ANY PublishRecord for this post transitions to PUBLISHED. Tracks
+  // hub activity directly on the Post so list views ("show me everything I've
+  // pushed through the hub") don't have to JOIN to PublishRecord. Updated in
+  // publishNow() alongside the PublishRecord status flip.
+  lastPublishedViaHubAt DateTime?
+  // Total successful hub publishes across all platforms / all attempts.
+  // Distinct from publishCount above which counts schedule events.
+  hubPublishCount       Int       @default(0)
+
   lifecycle           Lifecycle @default(UNKNOWN)
   season              Season?
   lifecycleOverridden Boolean   @default(false)
@@ -164,6 +200,13 @@ model Post {
   likeCount    Int @default(0)
   commentCount Int @default(0)
 
+  // Voyage voyage-3-lite (512-dim) embedding of "Tags: {tags}\n{body}".
+  // Powers semantic post-recall in /api/chat and /api/assistant via
+  // pgvector cosine search (HNSW index post_embedding_hnsw_idx). Read/written
+  // through $queryRaw — Prisma 7 has no native vector type. Null until the
+  // backfill or the auto-embed-on-write hook populates it.
+  embedding Unsupported("vector(512)")?
+
   media      Media[]
   publishes  PublishRecord[]
   analytics  PostAnalytics[]
@@ -180,6 +223,7 @@ model Post {
   @@index([tags], type: Gin)
   @@index([readiness])
   @@index([lifecycle])
+  @@index([userId, lastPublishedViaHubAt])
 }
 
 model PostLike {
@@ -510,12 +554,18 @@ enum SlotStatus {
   SKIPPED
 }
 
+enum PlanMode {
+  AI
+  DUMB
+}
+
 model WeeklyPlan {
   id        String           @id @default(cuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   weekStart DateTime
   status    PlanStatus       @default(DRAFT)
+  mode      PlanMode         @default(AI)
   slots     WeeklyPlanSlot[]
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
@@ -637,9 +687,9 @@ model Subscriber {
   createdAt        DateTime                  @default(now())
   lastSeenAt       DateTime?
   revokedAt        DateTime?
-  // Public-facing display name shown on comments. Falls back to `name` while
-  // null. Set lazily via the first-comment composer prompt — subscribers who
-  // never comment never need to pick one.
+  // Public-facing display name shown on comments. Falls back to `name` when
+  // null (the default — there is no longer a UI to pick one). Kept nullable
+  // so admin tooling can still set a custom name per subscriber if needed.
   displayName        String?
   // Admin-set commenting disablement (without revoking the whole subscription).
   // When set, server rejects POST /comments with 403 { error: "comments_disabled" }.

@@ -7,6 +7,7 @@ vi.mock("@/lib/prisma", () => ({
     publishRecord: { count: vi.fn() },
     platformToken: { findMany: vi.fn() },
     account: { findFirst: vi.fn() },
+    googleIntegration: { findUnique: vi.fn() },
     userMemory: { findMany: vi.fn() },
     userArchiveUnderstanding: { findUnique: vi.fn() },
   },
@@ -31,6 +32,7 @@ beforeEach(() => {
   (prisma.publishRecord.count as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(0);
   (prisma.platformToken.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (prisma.account.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  (prisma.googleIntegration.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
   (prisma.userMemory.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
 

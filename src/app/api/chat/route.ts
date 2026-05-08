@@ -62,7 +62,7 @@ POST CARDS:
 - If the user asks "show me a post" / "do you have a post about X" — you MUST surface a [POST:<id>] marker if any post in context is on-topic. If none is on-topic, say so plainly without inventing one.
 
 WHERE TO LOOK:
-- Two sources of posts may appear below: the main "GIL'S POSTS" list (newest first) and a "TOP MATCHES FROM SEMANTIC SEARCH" block (ranked by relevance to the current question). When the semantic-search block is present, prefer those posts — they were chosen specifically for this question.
+- Your context contains up to two sources of posts. First: the "GIL'S POSTS" list below (the 50 most recent). Second: a "TOP MATCHES FROM SEMANTIC SEARCH" block that may appear in a separate context section (retrieved from the wider archive for this specific question). When the semantic-search block is present, prefer those posts — they were chosen specifically for this question.
 
 GIL'S POSTS (${postCount} posts, newest first):
 ---
@@ -152,7 +152,13 @@ export async function POST(req: NextRequest) {
   let relevantBlock = "";
   if (lastUser && gilUserId) {
     const recentMessages = messages.slice(-4);
-    const retrievalQuery = recentMessages.map((m) => m.content).join("\n\n");
+    // Strip [POST:<id>] markers from assistant turns before building the
+    // retrieval query — those opaque cuid strings pollute the embedding and
+    // confuse the tag/keyword extractors, degrading semantic recall.
+    const retrievalQuery = recentMessages
+      .map((m) => m.content.replace(/\[POST:[^\]]*\]/g, "").trim())
+      .filter(Boolean)
+      .join("\n\n");
     try {
       const relevant = await getRelevantPosts(
         gilUserId,

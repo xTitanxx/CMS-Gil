@@ -181,3 +181,25 @@ export function decodeIdTokenClaims(idToken: string): { sub: string; email: stri
     return null;
   }
 }
+
+// Fetch the connected Google account's id + email via the userinfo endpoint.
+// Used as the identity path when the OAuth flow doesn't request `openid`
+// (e.g. our connect flow, which omits openid because mixing it with the
+// restricted drive.readonly scope on an unverified app trips Google's
+// OAuth 2.0 policy). Requires the access token to have `email` + `profile`
+// scopes — which our connect flow grants.
+export async function fetchGoogleUserInfo(
+  accessToken: string,
+): Promise<{ sub: string; email: string } | null> {
+  try {
+    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { sub?: unknown; email?: unknown };
+    if (typeof body.sub !== "string" || typeof body.email !== "string") return null;
+    return { sub: body.sub, email: body.email };
+  } catch {
+    return null;
+  }
+}

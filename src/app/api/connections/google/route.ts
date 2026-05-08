@@ -21,9 +21,17 @@ export async function GET(req: NextRequest) {
 
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
-    prompt: "consent",
+    // `select_account` forces the Google account chooser even if only one
+    // account is signed in, so the admin can connect a Google account that
+    // differs from the one used for admin sign-in. `consent` keeps the
+    // refresh-token guarantee on subsequent re-grants.
+    prompt: "select_account consent",
+    // Identity scopes (`email profile`) let us call the userinfo endpoint
+    // in the callback to capture which Google account this is. We omit
+    // `openid` deliberately — combining it with the restricted
+    // `drive.readonly` scope on an unverified app trips Google's OAuth 2.0
+    // policy ("Access blocked: invalid_request").
     scope: [
-      "openid",
       "email",
       "profile",
       "https://www.googleapis.com/auth/drive.readonly",

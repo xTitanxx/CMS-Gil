@@ -12,12 +12,21 @@ const ALWAYS_PUBLIC_EXACT = new Set([
   "/banner.jpg",
   "/avatar.jpg",
   "/manifest.webmanifest",
+  // PWA service worker and icons must be reachable without a session so
+  // installing the app to the home screen and registering push works.
+  "/sw.js",
+  "/icon-192.png",
+  "/icon-512.png",
 ]);
 
 const ALWAYS_PUBLIC_PREFIXES = [
   "/_next",
   "/api/auth", // NextAuth callbacks (incl. /api/auth/callback/subscriber-credentials)
   "/api/public", // Public archive feed/stories
+  // Vercel + external schedulers hit /api/cron/* with a Bearer CRON_SECRET;
+  // each route validates that header itself. Without this allowlist the
+  // proxy returns NextAuth 401 before the bearer check ever runs.
+  "/api/cron",
 ];
 
 // Public archive — readable by anyone, including unauthenticated visitors.

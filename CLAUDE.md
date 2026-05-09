@@ -253,6 +253,9 @@ When you do a destructive recovery (e.g. `reset --keep` to restore a branch afte
 ## UI Testing
 The user handles browser/UI verification. Do **not** start a dev server, open Playwright, or otherwise drive the UI to validate frontend changes — just implement the change, make sure it type-checks and unit tests pass, then hand off. The user will test in the browser and report back if anything is broken.
 
+### Mobile is part of "done"
+The user reads this site on his phone. A UI change isn't done until it survives at iPhone-SE width (~375px). A `PostToolUse` hook in `.claude/settings.json` injects a mobile checklist after every `*.tsx` edit — when you see it, treat it as a blocking review of the component you just changed. Fix any item that fails before declaring the work complete. Recurring offenders are predictable: missing `min-w-0` on flex children, untruncated user strings, button rows without `flex-wrap`, fixed widths exceeding viewport, and modals without `max-h` + scroll.
+
 ## Autonomy
 Claude must work with **maximum autonomy**. Do not ask Eitan to make decisions, choose between approaches, or confirm before proceeding. When facing ambiguity, make the best judgment call and execute. Only escalate when a genuine business decision is required (e.g., "should we delete these posts or archive them?"). Batch your work — investigate fully, fix everything you find, then report results.
 

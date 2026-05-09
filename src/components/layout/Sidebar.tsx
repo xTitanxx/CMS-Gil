@@ -17,6 +17,7 @@ import {
   Settings,
   MessageSquare,
   Users,
+  Layers,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -27,6 +28,7 @@ type NavItem =
 const nav: NavItem[] = [
   { type: "section", label: "Work" },
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
+  { type: "link", href: "/admin/suggest", label: "Suggester", icon: Layers },
   { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
   { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
 

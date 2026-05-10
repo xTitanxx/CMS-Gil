@@ -1,3 +1,4 @@
+import { PageHeader } from "@/app/admin/_shared/PageHeader";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listCommentsForModeration } from "@/lib/engagement/comments";
@@ -21,13 +22,10 @@ export default async function AdminCommentsPage({
 
   return (
     <div className="px-6 py-8">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Comments</h1>
-        <p className="text-xs text-gray-500">
-          Subscriber comments on the public archive. Hide a comment to take it
-          out of public view (body retained for audit). Restore reverses.
-        </p>
-      </div>
+      <PageHeader
+        title="Comments"
+        subtitle="Subscriber comments on the public archive. Hide a comment to take it out of public view (body retained for audit). Restore reverses."
+      />
       <CommentsModerationClient initial={initial} initialStatus={filter ?? null} />
     </div>
   );

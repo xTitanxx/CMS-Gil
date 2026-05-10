@@ -13,6 +13,7 @@ import {
   type ContentCategory,
   type AudioCategory,
 } from "@/lib/posts-query";
+import { PageHeader } from "./PageHeader";
 import {
   FilterMenu,
   SortMenu,
@@ -553,13 +554,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
 
   return (
     <div className="space-y-3 md:space-y-4" ref={rootRef}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="hidden text-xl font-bold text-gray-900 md:block md:text-2xl">{title}</h1>
-          <p className="text-sm text-gray-500">{countLabel}</p>
-        </div>
-        {headerActions && <div className="flex flex-shrink-0 items-center gap-1.5">{headerActions}</div>}
-      </div>
+      <PageHeader title={title} subtitle={countLabel} actions={headerActions} />
 
       {!hideKindTabs && (
         <div className="flex flex-col gap-2.5">

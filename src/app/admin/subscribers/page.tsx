@@ -1,3 +1,4 @@
+import { PageHeader } from "@/app/admin/_shared/PageHeader";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { SubscribersListClient } from "./SubscribersListClient";
@@ -11,13 +12,10 @@ export default async function AdminSubscribersPage() {
 
   return (
     <div className="px-6 py-8">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Subscribers</h1>
-        <p className="text-xs text-gray-500">
-          Per-person paid access to the Archivist. Click a subscriber to see
-          their bookmarks, comments, and usage.
-        </p>
-      </div>
+      <PageHeader
+        title="Subscribers"
+        subtitle="Per-person paid access to the Archivist. Click a subscriber to see their bookmarks, comments, and usage."
+      />
       <SubscribersListClient />
     </div>
   );

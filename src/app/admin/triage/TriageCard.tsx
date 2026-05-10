@@ -11,6 +11,7 @@ import {
   FileX,
   Share2,
   Ban,
+  Hand,
 } from "lucide-react";
 import { MediaReplaceDrop } from "./MediaReplaceDrop";
 
@@ -69,6 +70,11 @@ const REASON_META: Record<string, { label: string; icon: React.ReactNode; color:
     label: "Don't post",
     icon: <Ban className="h-3 w-3" />,
     color: "bg-gray-100 text-gray-600",
+  },
+  "skipped-in-suggester": {
+    label: "Skipped in Suggester",
+    icon: <Hand className="h-3 w-3" />,
+    color: "bg-orange-100 text-orange-700",
   },
 };
 

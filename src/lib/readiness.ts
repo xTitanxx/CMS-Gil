@@ -37,6 +37,8 @@ export function computeReadiness(
   const reasons: string[] = [];
 
   if (post.notReadyReasons.includes("dont-post")) reasons.push("dont-post");
+  if (post.notReadyReasons.includes("skipped-in-suggester"))
+    reasons.push("skipped-in-suggester");
 
   const body = post.body.trim();
   if (body.length === 0 && media.length === 0) reasons.push("empty");

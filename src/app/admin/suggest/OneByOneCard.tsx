@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Pencil,
+  Sparkles,
   Check,
   X,
   Calendar,
@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
-import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { formatSlotHour } from "@/lib/planner/format-slot";
 import type { SuggestCandidate, SuggestedSlot } from "./types";
 
@@ -28,36 +27,42 @@ interface Props {
 }
 
 const PUBLISHABLE_PLATFORMS = [
-  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]" },
-  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]" },
-  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]" },
-  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]" },
-  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]" },
+  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]", requiresVideo: false },
+  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]", requiresVideo: false },
+  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]", requiresVideo: false },
+  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]", requiresVideo: true },
+  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]", requiresVideo: true },
 ] as const;
 
-function dayLabel(day: string): string {
+function formatAutoSlot(day: string, hour: number): string {
   const d = new Date(day + "T00:00:00Z");
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
   const weekday = d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
   const md = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  if (diff === 0) return `Today · ${weekday}`;
-  if (diff === 1) return `Tomorrow · ${weekday}`;
-  return `${weekday} · ${md}`;
+  const when = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : `${weekday} ${md}`;
+  return `${when} · ${formatSlotHour(hour)}`;
 }
+
+const SWIPE_THRESHOLD_RATIO = 0.35;
+const MAX_ROTATION_DEG = 6;
 
 export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip, onAccept }: Props) {
   const [body, setBody] = useState(candidate.body);
   const [editing, setEditing] = useState(false);
   const [platforms, setPlatforms] = useState<string[]>(initialPlatforms);
   const [reminderFb, setReminderFb] = useState(true);
-  const [slot, setSlot] = useState<SuggestedSlot>(initialSlot);
   const [mediaIdx, setMediaIdx] = useState(0);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [rewriting, setRewriting] = useState(false);
+  const [drag, setDrag] = useState({ x: 0, active: false });
+  const [exitDir, setExitDir] = useState<"left" | "right" | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const captureRef = useRef<{ pointerId: number } | null>(null);
 
   // Reset on candidate change
   useEffect(() => {
@@ -65,57 +70,161 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
     setEditing(false);
     setPlatforms(initialPlatforms);
     setReminderFb(true);
-    setSlot(initialSlot);
     setMediaIdx(0);
     setAccepted(false);
     setMuted(true);
-  }, [candidate.id, candidate.body, initialPlatforms, initialSlot]);
+    setDrag({ x: 0, active: false });
+    setExitDir(null);
+  }, [candidate.id, candidate.body, initialPlatforms]);
 
   const media = candidate.media[mediaIdx] ?? null;
   const isVideo = media?.mimeType.startsWith("video/") ?? false;
   const hasMultipleMedia = candidate.media.length > 1;
+  const candidateHasVideo = candidate.hasVideo === true;
 
-  const togglePlatform = (key: string) => {
+  const togglePlatform = (key: string, requiresVideo: boolean) => {
+    if (requiresVideo && !candidateHasVideo) return;
     setPlatforms((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
   };
 
-  const handleAccept = async () => {
+  const fireAccept = async () => {
     if (accepting || accepted) return;
     setAccepting(true);
     setAccepted(true);
-    // Run the accept animation, then commit + advance after a short beat.
-    await new Promise((r) => setTimeout(r, 350));
+    setExitDir("right");
+    await new Promise((r) => setTimeout(r, 280));
     try {
-      await onAccept({ body, platforms, slot });
+      await onAccept({ body, platforms, slot: initialSlot });
     } catch {
       setAccepted(false);
+      setExitDir(null);
     } finally {
       setAccepting(false);
     }
   };
 
-  // Generate a list of upcoming day options (next 14 days)
-  const dayOptions = useMemo(() => {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const out: string[] = [];
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(today.getTime() + i * 86400000);
-      out.push(d.toISOString().slice(0, 10));
+  const fireSkip = async () => {
+    if (accepting || accepted) return;
+    setExitDir("left");
+    await new Promise((r) => setTimeout(r, 220));
+    onSkip();
+  };
+
+  // Pointer drag handlers — attached to the media frame so the caption
+  // editor and form controls don't get hijacked.
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (accepting || accepted) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    captureRef.current = { pointerId: e.pointerId };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    setDrag({ x: 0, active: true });
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    // If the user starts a vertical scroll gesture, abort the drag so the
+    // page can scroll naturally.
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12 && Math.abs(dx) < 12) {
+      dragStartRef.current = null;
+      setDrag({ x: 0, active: false });
+      return;
     }
-    return out;
-  }, []);
+    setDrag({ x: dx, active: true });
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current) {
+      setDrag({ x: 0, active: false });
+      return;
+    }
+    const dx = e.clientX - dragStartRef.current.x;
+    dragStartRef.current = null;
+    if (captureRef.current) {
+      try {
+        (e.currentTarget as HTMLDivElement).releasePointerCapture(captureRef.current.pointerId);
+      } catch {
+        // pointer may already be released
+      }
+      captureRef.current = null;
+    }
+
+    const w = cardRef.current?.clientWidth ?? 320;
+    const threshold = w * SWIPE_THRESHOLD_RATIO;
+    if (dx > threshold && platforms.length > 0) {
+      setDrag({ x: 0, active: false });
+      void fireAccept();
+      return;
+    }
+    if (dx < -threshold) {
+      setDrag({ x: 0, active: false });
+      void fireSkip();
+      return;
+    }
+    setDrag({ x: 0, active: false });
+  };
+
+  const handleRewrite = async () => {
+    if (rewriting) return;
+    setRewriting(true);
+    try {
+      const res = await fetch(`/api/posts/${candidate.id}/caption-suggestion/generate`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      const suggestion: string | undefined = data?.suggestion;
+      if (typeof suggestion === "string" && suggestion.trim().length > 0) {
+        setBody(suggestion);
+      }
+    } finally {
+      setRewriting(false);
+    }
+  };
+
+  // Compute the visual transform. Active drag overrides exit direction.
+  const w = cardRef.current?.clientWidth ?? 320;
+  const dragX = drag.active ? drag.x : 0;
+  const exitX = exitDir === "right" ? w * 1.4 : exitDir === "left" ? -w * 1.4 : 0;
+  const tx = drag.active ? dragX : exitX;
+  const rot = drag.active
+    ? Math.max(-MAX_ROTATION_DEG, Math.min(MAX_ROTATION_DEG, (dragX / w) * MAX_ROTATION_DEG * 2))
+    : exitDir
+      ? exitDir === "right"
+        ? MAX_ROTATION_DEG
+        : -MAX_ROTATION_DEG
+      : 0;
+  const opacity = exitDir ? 0 : 1;
+  const swipeHint = drag.active
+    ? dragX > 40
+      ? "right"
+      : dragX < -40
+        ? "left"
+        : null
+    : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={cardRef}
-        className={`mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col px-3 py-3 transition-all duration-300 ${
-          accepted ? "translate-y-[-12px] opacity-0 scale-95" : "translate-y-0 opacity-100 scale-100"
-        }`}
+        className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col px-3 py-3"
+        style={{
+          transform: `translateX(${tx}px) rotate(${rot}deg)`,
+          opacity,
+          transition: drag.active ? "none" : "transform 280ms ease-out, opacity 220ms ease-out",
+          willChange: "transform, opacity",
+        }}
       >
-        {/* Media frame */}
-        <div className="relative overflow-hidden rounded-2xl bg-black shadow-lg" style={{ aspectRatio: "4 / 5" }}>
+        {/* Media frame — the swipe target */}
+        <div
+          className="relative overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
+          style={{ aspectRatio: "4 / 5" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
           {media?.url ? (
             isVideo ? (
               <video
@@ -125,11 +234,16 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
                 playsInline
                 autoPlay
                 loop
-                className="h-full w-full object-cover"
+                className="h-full w-full object-cover pointer-events-none"
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={media.url} alt="" className="h-full w-full object-cover" />
+              <img
+                src={media.url}
+                alt=""
+                draggable={false}
+                className="h-full w-full object-cover pointer-events-none"
+              />
             )
           ) : (
             <div className="flex h-full w-full items-center justify-center text-gray-500">
@@ -153,14 +267,20 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           {hasMultipleMedia && (
             <>
               <button
-                onClick={() => setMediaIdx((i) => (i === 0 ? candidate.media.length - 1 : i - 1))}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMediaIdx((i) => (i === 0 ? candidate.media.length - 1 : i - 1));
+                }}
                 className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white hover:bg-black/55"
                 aria-label="Previous"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <button
-                onClick={() => setMediaIdx((i) => (i + 1) % candidate.media.length)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMediaIdx((i) => (i + 1) % candidate.media.length);
+                }}
                 className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white hover:bg-black/55"
                 aria-label="Next"
               >
@@ -172,7 +292,10 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           {/* Mute toggle for video */}
           {isVideo && (
             <button
-              onClick={() => setMuted((m) => !m)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMuted((m) => !m);
+              }}
               className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
               aria-label={muted ? "Unmute" : "Mute"}
             >
@@ -187,7 +310,23 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
               : `From ${candidate.originalDate.slice(0, 10)}`}
           </div>
 
-          {accepted && (
+          {/* Swipe affordance overlays */}
+          {swipeHint === "right" && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-start pl-6">
+              <div className="rounded-2xl bg-emerald-500/85 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white shadow-lg ring-2 ring-white">
+                Schedule
+              </div>
+            </div>
+          )}
+          {swipeHint === "left" && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-end pr-6">
+              <div className="rounded-2xl bg-rose-500/85 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white shadow-lg ring-2 ring-white">
+                Skip
+              </div>
+            </div>
+          )}
+
+          {accepted && exitDir === "right" && (
             <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/85 backdrop-blur-sm">
               <div className="animate-[ping_400ms_ease-out] rounded-full bg-white p-4">
                 <Check className="h-10 w-10 text-emerald-600" strokeWidth={3} />
@@ -196,70 +335,48 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           )}
         </div>
 
-        {/* Body */}
+        {/* Caption — tap to edit inline, no toggle button */}
         <div className="mt-3 flex-1 min-h-0 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Caption</span>
             <button
-              onClick={() => setEditing((e) => !e)}
-              className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                editing ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+              onClick={handleRewrite}
+              disabled={rewriting}
+              className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100 disabled:opacity-60"
             >
-              <Pencil className="h-3 w-3" />
-              {editing ? "Done" : "Edit"}
+              {rewriting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {rewriting ? "Rewriting…" : "Rewrite"}
             </button>
           </div>
           {editing ? (
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onBlur={() => setEditing(false)}
               autoFocus
               className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 p-2 text-[14px] leading-snug focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100"
               rows={6}
             />
           ) : (
-            <p className="whitespace-pre-wrap text-[14px] leading-snug text-gray-800">
-              {body || <span className="italic text-gray-400">No caption — tap Edit to add one.</span>}
+            <p
+              onClick={() => setEditing(true)}
+              className="cursor-text whitespace-pre-wrap rounded-md p-1 text-[14px] leading-snug text-gray-800 hover:bg-gray-50"
+            >
+              {body || <span className="italic text-gray-400">Tap to add a caption…</span>}
             </p>
           )}
         </div>
 
-        {/* Slot picker */}
-        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            <Calendar className="h-3 w-3" />
-            <span>Schedule</span>
-          </div>
-          <div className="-mx-1 mb-2 flex gap-1.5 overflow-x-auto px-1 pb-1">
-            {dayOptions.map((d) => (
-              <button
-                key={d}
-                onClick={() => setSlot((s) => ({ ...s, day: d }))}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                  slot.day === d
-                    ? "border-purple-500 bg-purple-50 text-purple-700"
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {dayLabel(d)}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-1.5">
-            {FIXED_SLOT_HOURS.map((h) => (
-              <button
-                key={h}
-                onClick={() => setSlot((s) => ({ ...s, hour: h }))}
-                className={`flex-1 rounded-lg border py-1.5 text-[12px] font-semibold transition-colors ${
-                  slot.hour === h
-                    ? "border-purple-500 bg-purple-50 text-purple-700"
-                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {formatSlotHour(h)}
-              </button>
-            ))}
+        {/* Auto-slot info — read-only */}
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2">
+          <Calendar className="h-3.5 w-3.5 text-purple-600" />
+          <div className="flex-1 text-[12px] text-purple-900">
+            <span className="font-semibold">Next free slot:</span>{" "}
+            <span>{formatAutoSlot(initialSlot.day, initialSlot.hour)}</span>
           </div>
         </div>
 
@@ -269,20 +386,31 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
             Publish to
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
+            {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color, requiresVideo }) => {
               const active = platforms.includes(key);
+              const disabled = requiresVideo && !candidateHasVideo;
               return (
                 <button
                   key={key}
-                  onClick={() => togglePlatform(key)}
+                  onClick={() => togglePlatform(key, requiresVideo)}
+                  disabled={disabled}
+                  title={disabled ? "Video posts only" : undefined}
+                  aria-disabled={disabled}
                   className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                    active
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    disabled
+                      ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
+                      : active
+                        ? "border-gray-900 bg-gray-900 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <Icon className={`h-3.5 w-3.5 ${active ? "text-white" : color}`} />
+                  <Icon
+                    className={`h-3.5 w-3.5 ${
+                      disabled ? "text-gray-300" : active ? "text-white" : color
+                    }`}
+                  />
                   {label}
+                  {disabled && <span className="text-[10px] uppercase opacity-70">video</span>}
                 </button>
               );
             })}
@@ -313,7 +441,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 0.5rem)" }}
       >
         <button
-          onClick={onSkip}
+          onClick={() => void fireSkip()}
           disabled={accepting || accepted}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
@@ -321,12 +449,12 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           Skip
         </button>
         <button
-          onClick={handleAccept}
+          onClick={() => void fireAccept()}
           disabled={accepting || accepted || platforms.length === 0}
           className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
         >
           {accepting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
-          {accepted ? "Scheduled!" : `Schedule ${formatSlotHour(slot.hour)} ${slot.day.slice(5)}`}
+          {accepted ? "Scheduled!" : `Schedule ${formatAutoSlot(initialSlot.day, initialSlot.hour)}`}
         </button>
       </div>
     </div>

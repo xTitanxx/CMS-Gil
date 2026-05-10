@@ -57,7 +57,9 @@ export async function GET(req: NextRequest) {
         );
         const anyBroken = brokenChecks.some(Boolean);
         const brokenReasons = anyBroken ? ["broken-media"] : [];
-        const carry = post.notReadyReasons.filter((r) => r === "dont-post");
+        const carry = post.notReadyReasons.filter(
+          (r) => r === "dont-post" || r === "skipped-in-suggester"
+        );
         const notReadyReasons = [...carry, ...brokenReasons];
         const { readiness, reasons } = computeReadiness(
           {

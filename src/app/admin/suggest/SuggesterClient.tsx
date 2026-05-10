@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Layers, Recycle, Sparkles, Loader2, ArrowLeft } from "lucide-react";
+import { Layers, Recycle, Sparkles, Loader2, ArrowLeft, Undo2 } from "lucide-react";
 import { OneByOneCard } from "./OneByOneCard";
 import { BulkPlanPanel } from "./BulkPlanPanel";
-import { PushOptIn } from "@/components/PushOptIn";
 import type { NextCandidateResponse, SuggestCandidate, SuggestedSlot } from "./types";
 
 type Mode = "menu" | "one" | "bulk";
@@ -16,72 +15,166 @@ interface AcceptedSummary {
   thumbUrl: string | null;
   day: string;
   hour: number;
+  planId: string;
+  slotId: string;
+}
+
+interface SkippedSummary {
+  postId: string;
+  body: string;
+}
+
+interface UndoState {
+  kind: "accept" | "skip";
+  postId: string;
+  // For accept undo
+  planId?: string;
+  slotId?: string;
+  // For both
+  expiresAt: number;
+  label: string;
+}
+
+const UNDO_WINDOW_MS = 5000;
+
+interface PrefetchedCandidate {
+  candidate: SuggestCandidate;
+  slot: SuggestedSlot;
+  platforms: string[];
+  remaining: number;
 }
 
 export function SuggesterClient() {
   const [mode, setMode] = useState<Mode>("menu");
 
-  // One-by-one state
-  const [candidate, setCandidate] = useState<SuggestCandidate | null>(null);
-  const [slot, setSlot] = useState<SuggestedSlot | null>(null);
-  const [platforms, setPlatforms] = useState<string[]>([]);
-  const [remaining, setRemaining] = useState<number>(0);
+  const [current, setCurrent] = useState<PrefetchedCandidate | null>(null);
   const [loading, setLoading] = useState(false);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<AcceptedSummary[]>([]);
-  const seenRef = useRef<Set<string>>(new Set());
+  const [skipped, setSkipped] = useState<SkippedSummary[]>([]);
+  const [undo, setUndo] = useState<UndoState | null>(null);
 
-  const fetchNext = useCallback(async () => {
+  const seenRef = useRef<Set<string>>(new Set());
+  const nextRef = useRef<PrefetchedCandidate | null>(null);
+  const inFlightRef = useRef<boolean>(false);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchCandidate = useCallback(async (): Promise<PrefetchedCandidate | null> => {
+    const exclude = Array.from(seenRef.current).join(",");
+    const url = exclude
+      ? `/api/planner/next-candidate?exclude=${exclude}`
+      : "/api/planner/next-candidate";
+    const res = await fetch(url);
+    const data = (await res.json()) as NextCandidateResponse;
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    if (!data.candidate || !data.suggestedSlot) return null;
+    return {
+      candidate: data.candidate,
+      slot: data.suggestedSlot,
+      platforms: data.suggestedPlatforms ?? [],
+      remaining: data.remaining,
+    };
+  }, []);
+
+  const ensureCurrent = useCallback(async () => {
+    if (current || loading || inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      const exclude = Array.from(seenRef.current).join(",");
-      const url = exclude ? `/api/planner/next-candidate?exclude=${exclude}` : "/api/planner/next-candidate";
-      const res = await fetch(url);
-      const data = (await res.json()) as NextCandidateResponse;
-      if (data.error) {
-        setError(data.error);
-        setCandidate(null);
+      let next: PrefetchedCandidate | null = nextRef.current;
+      nextRef.current = null;
+      if (!next) next = await fetchCandidate();
+      if (!next) {
         setEmpty(true);
+        setCurrent(null);
         return;
       }
-      if (!data.candidate || !data.suggestedSlot) {
-        setCandidate(null);
-        setEmpty(true);
-        return;
-      }
-      setCandidate(data.candidate);
-      setSlot(data.suggestedSlot);
-      setPlatforms(data.suggestedPlatforms ?? []);
-      setRemaining(data.remaining);
+      setCurrent(next);
       setEmpty(false);
+      // Kick a background prefetch for the one *after* this.
+      void (async () => {
+        seenRef.current.add(next.candidate.id);
+        try {
+          const after = await fetchCandidate();
+          seenRef.current.delete(next.candidate.id);
+          nextRef.current = after;
+        } catch {
+          seenRef.current.delete(next.candidate.id);
+        }
+      })();
     } catch (e) {
       setError(String(e));
-      setCandidate(null);
+      setCurrent(null);
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [current, loading, fetchCandidate]);
 
   useEffect(() => {
-    if (mode === "one" && !candidate && !loading && !empty) {
-      void fetchNext();
+    if (mode === "one" && !current && !empty && !loading) {
+      void ensureCurrent();
     }
-  }, [mode, candidate, loading, empty, fetchNext]);
+  }, [mode, current, empty, loading, ensureCurrent]);
 
-  const handleSkip = useCallback(() => {
-    if (candidate) seenRef.current.add(candidate.id);
-    setCandidate(null);
-    void fetchNext();
-  }, [candidate, fetchNext]);
+  // Clear an active undo timer when a new one comes in or component unmounts
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  function startUndoTimer(state: UndoState) {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndo(state);
+    undoTimerRef.current = setTimeout(() => {
+      setUndo((u) => (u && u.expiresAt === state.expiresAt ? null : u));
+    }, UNDO_WINDOW_MS);
+  }
+
+  function dismissUndoNow() {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndo(null);
+  }
+
+  const handleSkip = useCallback(async () => {
+    if (!current) return;
+    const c = current.candidate;
+    seenRef.current.add(c.id);
+    setCurrent(null);
+
+    try {
+      await fetch("/api/planner/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: c.id }),
+      });
+    } catch {
+      // Network failure → still treat as locally skipped this session.
+    }
+
+    setSkipped((prev) => [{ postId: c.id, body: c.body.slice(0, 80) }, ...prev]);
+    startUndoTimer({
+      kind: "skip",
+      postId: c.id,
+      expiresAt: Date.now() + UNDO_WINDOW_MS,
+      label: "Skipped — sent to Triage",
+    });
+
+    void ensureCurrent();
+  }, [current, ensureCurrent]);
 
   const handleAccept = useCallback(
     async (input: { body: string; platforms: string[]; slot: SuggestedSlot }) => {
-      if (!candidate) return;
-      // Save body edits if changed
-      if (input.body !== candidate.body) {
-        await fetch(`/api/posts/${candidate.id}`, {
+      if (!current) return;
+      const c = current.candidate;
+
+      if (input.body !== c.body) {
+        await fetch(`/api/posts/${c.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: input.body }),
@@ -92,7 +185,7 @@ export function SuggesterClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          postId: candidate.id,
+          postId: c.id,
           day: input.slot.day,
           hour: input.slot.hour,
           platforms: input.platforms,
@@ -105,23 +198,69 @@ export function SuggesterClient() {
         setError(err.error ?? "Failed to schedule");
         return;
       }
+      const data = (await res.json()) as { planId?: string; slotId?: string };
+      if (!data.planId || !data.slotId) {
+        setError("Schedule succeeded but no slot returned — undo unavailable.");
+      }
 
-      seenRef.current.add(candidate.id);
+      seenRef.current.add(c.id);
       setAccepted((prev) => [
         {
-          postId: candidate.id,
+          postId: c.id,
           body: input.body.slice(0, 80),
-          thumbUrl: candidate.thumbUrl,
+          thumbUrl: c.thumbUrl,
           day: input.slot.day,
           hour: input.slot.hour,
+          planId: data.planId ?? "",
+          slotId: data.slotId ?? "",
         },
         ...prev,
       ]);
-      setCandidate(null);
-      void fetchNext();
+
+      if (data.planId && data.slotId) {
+        startUndoTimer({
+          kind: "accept",
+          postId: c.id,
+          planId: data.planId,
+          slotId: data.slotId,
+          expiresAt: Date.now() + UNDO_WINDOW_MS,
+          label: `Scheduled ${input.slot.day.slice(5)} · ${input.slot.hour}:00`,
+        });
+      }
+
+      setCurrent(null);
+      void ensureCurrent();
     },
-    [candidate, fetchNext]
+    [current, ensureCurrent]
   );
+
+  const handleUndo = useCallback(async () => {
+    if (!undo) return;
+    const state = undo;
+    dismissUndoNow();
+
+    if (state.kind === "accept" && state.planId && state.slotId) {
+      await fetch(`/api/planner/${state.planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", slotId: state.slotId }),
+      }).catch(() => {});
+      setAccepted((prev) => prev.filter((a) => a.slotId !== state.slotId));
+    } else if (state.kind === "skip") {
+      await fetch("/api/planner/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: state.postId, undo: true }),
+      }).catch(() => {});
+      setSkipped((prev) => prev.filter((s) => s.postId !== state.postId));
+    }
+
+    seenRef.current.delete(state.postId);
+    nextRef.current = null;
+    setCurrent(null);
+    setEmpty(false);
+    void ensureCurrent();
+  }, [undo, ensureCurrent]);
 
   if (mode === "menu") {
     return (
@@ -137,7 +276,6 @@ export function SuggesterClient() {
         </div>
 
         <div className="flex flex-1 flex-col gap-3 p-4 md:p-8">
-          <PushOptIn compact />
           <button
             onClick={() => setMode("one")}
             className="group relative overflow-hidden rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-5 text-left shadow-sm transition-all hover:shadow-md active:scale-[0.99]"
@@ -149,7 +287,7 @@ export function SuggesterClient() {
               <div className="flex-1">
                 <div className="text-base font-semibold text-gray-900">One by one</div>
                 <p className="mt-1 text-sm text-gray-600">
-                  Review each suggestion fullscreen. Edit, approve, or skip.
+                  Swipe through suggestions. Right to schedule, left to skip.
                 </p>
               </div>
             </div>
@@ -187,13 +325,32 @@ export function SuggesterClient() {
               </div>
               <div className="space-y-1.5">
                 {accepted.slice(0, 5).map((a) => (
-                  <div key={a.postId} className="flex items-center gap-2 text-xs text-gray-700">
+                  <div key={a.slotId || a.postId} className="flex items-center gap-2 text-xs text-gray-700">
                     <span className="text-gray-400">{a.day}</span>
                     <span className="font-medium">{a.hour}:00</span>
                     <span className="truncate text-gray-600">— {a.body}</span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {skipped.length > 0 && (
+            <div className="mt-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">
+                  Skipped this session
+                </div>
+                <Link
+                  href="/admin/triage?bucket=skipped-in-suggester"
+                  className="text-[11px] font-semibold text-orange-700 underline-offset-2 hover:underline"
+                >
+                  Open in Triage →
+                </Link>
+              </div>
+              <p className="text-[11px] text-orange-800">
+                {skipped.length} post{skipped.length === 1 ? "" : "s"} flagged for later review.
+              </p>
             </div>
           )}
         </div>
@@ -243,7 +400,7 @@ export function SuggesterClient() {
             One by one
           </span>
           <span className="text-[11px] text-gray-400">
-            {remaining > 0 ? `${remaining} candidates left` : "Reviewing"}
+            {current?.remaining ? `${current.remaining} candidates left` : "Reviewing"}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -254,7 +411,7 @@ export function SuggesterClient() {
       </div>
 
       <div className="flex flex-1 min-h-0 flex-col">
-        {loading && !candidate && (
+        {loading && !current && (
           <div className="flex flex-1 items-center justify-center gap-2 text-gray-500">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Finding the next post…</span>
@@ -270,9 +427,7 @@ export function SuggesterClient() {
             <p className="max-w-[280px] text-sm text-gray-500">
               No more candidates available right now. Come back later or open the bulk planner.
             </p>
-            {error && (
-              <p className="text-xs text-red-600">{error}</p>
-            )}
+            {error && <p className="text-xs text-red-600">{error}</p>}
             <button
               onClick={() => setMode("menu")}
               className="mt-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -282,23 +437,42 @@ export function SuggesterClient() {
           </div>
         )}
 
-        {candidate && slot && !loading && (
+        {current && !loading && (
           <OneByOneCard
-            candidate={candidate}
-            initialSlot={slot}
-            initialPlatforms={platforms}
+            candidate={current.candidate}
+            initialSlot={current.slot}
+            initialPlatforms={current.platforms}
             onSkip={handleSkip}
             onAccept={handleAccept}
           />
         )}
       </div>
 
+      {/* Undo snackbar */}
+      {undo && (
+        <div
+          className="pointer-events-none fixed left-1/2 z-40 w-[92%] max-w-md -translate-x-1/2"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
+        >
+          <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg ring-1 ring-black/10">
+            <span className="flex-1 truncate">{undo.label}</span>
+            <button
+              onClick={() => void handleUndo()}
+              className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide hover:bg-white/20"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
+
       {accepted.length > 0 && (
         <div className="shrink-0 border-t border-gray-100 bg-white px-3 py-2">
           <div className="flex items-center gap-2 overflow-x-auto">
             {accepted.slice(0, 6).map((a) => (
               <div
-                key={a.postId}
+                key={a.slotId || a.postId}
                 className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700 ring-1 ring-emerald-200"
               >
                 <span className="font-semibold">{a.day.slice(5)}</span>

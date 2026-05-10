@@ -134,7 +134,6 @@ describe("proxy decide()", () => {
       "/api/calendar",
       "/api/todo",
       "/api/tags",
-      "/api/ratings/queue",
       "/api/trash",
     ];
     for (const p of paths) {

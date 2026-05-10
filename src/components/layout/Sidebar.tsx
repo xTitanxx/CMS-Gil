@@ -12,7 +12,6 @@ import {
   Music,
   Sparkles,
   AlertCircle,
-  Star,
   X,
   Settings,
   MessageSquare,
@@ -36,7 +35,6 @@ const nav: NavItem[] = [
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
   { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
-  { type: "link", href: "/admin/rate", label: "Review Posts", icon: Star },
 
   { type: "section", label: "Audience" },
   { type: "link", href: "/admin/comments", label: "Comments", icon: MessageSquare },

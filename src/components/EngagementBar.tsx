@@ -154,6 +154,7 @@ export function EngagementBar({
         id="engagement"
         className="flex items-center justify-around border-t border-gray-200 px-1 py-0.5 text-sm font-medium text-gray-600"
       >
+        {/* Like button — hidden for now
         <button
           type="button"
           onClick={handleLike}
@@ -165,9 +166,9 @@ export function EngagementBar({
           }`}
         >
           <Heart className={`h-5 w-5 ${liked ? "fill-red-600" : ""}`} />
-          {/* Hide "0" — show count only when > 0 */}
           <span>{count > 0 ? count : "Like"}</span>
         </button>
+        */}
 
         <Link
           href={commentTarget}

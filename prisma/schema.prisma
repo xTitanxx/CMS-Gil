@@ -66,6 +66,7 @@ model User {
   assistantUsage       AssistantUsage[]
   subscribersCreated   Subscriber[]
   googleIntegration    GoogleIntegration?
+  pushSubscriptions    PushSubscription[]
 }
 
 // Google OAuth tokens for the YouTube + Drive integration. Kept SEPARATE from
@@ -587,9 +588,30 @@ model WeeklyPlanSlot {
   reasoning String?
   platforms String[]
 
+  // Set when the FB-personal manual-post reminder push has been delivered for
+  // this slot. The /api/cron/push-reminders job uses this to avoid duplicates.
+  reminderSentAt DateTime?
+
   @@unique([planId, day, postId])
   @@index([planId, day])
   @@index([postId])
+}
+
+// Web Push subscription. One row per device per user — a user can have
+// multiple (phone, laptop, etc.). Endpoint is unique globally so re-subscribe
+// from the same device replaces the old row.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model PostRating {

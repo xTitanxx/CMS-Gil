@@ -12,11 +12,11 @@ import {
   Music,
   Sparkles,
   AlertCircle,
-  Star,
   X,
   Settings,
   MessageSquare,
   Users,
+  Layers,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -27,6 +27,7 @@ type NavItem =
 const nav: NavItem[] = [
   { type: "section", label: "Work" },
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
+  { type: "link", href: "/admin/suggest", label: "Suggester", icon: Layers },
   { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
   { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
 
@@ -34,7 +35,6 @@ const nav: NavItem[] = [
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },
   { type: "link", href: "/admin/audio", label: "Audio Library", icon: Music },
-  { type: "link", href: "/admin/rate", label: "Review Posts", icon: Star },
 
   { type: "section", label: "Audience" },
   { type: "link", href: "/admin/comments", label: "Comments", icon: MessageSquare },

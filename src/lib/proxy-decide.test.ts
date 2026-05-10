@@ -15,12 +15,18 @@ describe("proxy decide()", () => {
       "/favicon.ico",
       "/banner.jpg",
       "/manifest.webmanifest",
+      "/sw.js",
+      "/icon-192.png",
+      "/icon-512.png",
       "/_next/static/chunk.js",
       "/api/auth",
       "/api/auth/callback/google",
       "/api/auth/callback/subscriber-credentials",
       "/api/public/feed",
       "/api/public/stories",
+      "/api/cron/publish",
+      "/api/cron/readiness",
+      "/api/cron/push-reminders",
     ];
     for (const p of paths) {
       it(`anon, subscriber, admin all reach ${p}`, () => {
@@ -128,10 +134,7 @@ describe("proxy decide()", () => {
       "/api/calendar",
       "/api/todo",
       "/api/tags",
-      "/api/ratings/queue",
       "/api/trash",
-      "/api/cron/publish",
-      "/api/cron/readiness",
     ];
     for (const p of paths) {
       it(`subscriber gets 403 on ${p}`, () => {

@@ -154,13 +154,14 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
               href={`/admin/posts/${post.id}?from=planner`}
               className="shrink-0 transition-opacity hover:opacity-80"
             >
-              {post.thumbUrl ? (
+              {post.thumbUrl && !posterFailed ? (
                 <div className="relative">
                   {/* thumbUrl is .poster.jpg for videos, so render as <img> in both cases. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={post.thumbUrl}
                     alt=""
+                    onError={() => setPosterFailed(true)}
                     className="h-[72px] w-[72px] rounded-[10px] object-cover md:h-[92px] md:w-[92px]"
                   />
                   {post.hasVideo && (

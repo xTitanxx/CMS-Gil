@@ -7,9 +7,9 @@ import { getMondayUTC } from "@/lib/planner/week";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/fixed-slots";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
-export const metadata = { title: "Dashboard" };
+export const metadata = { title: "Planner" };
 
-export default async function DashboardPage() {
+export default async function PlannerPage() {
   const session = await auth();
   const userId = session!.user!.id!;
 

@@ -128,8 +128,15 @@ export function PostEditor({
   const [editingDate, setEditingDate] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const CAPTION_CHAR_LIMIT = 280;
-  const isLong = body.length > CAPTION_CHAR_LIMIT;
+  const CAPTION_COLLAPSE_THRESHOLD = 500;
+  const isLong = body.length > CAPTION_COLLAPSE_THRESHOLD;
+  const PLATFORM_CHAR_LIMITS = [
+    { label: "IG", limit: 2200 },
+    { label: "TT", limit: 2200 },
+    { label: "LI", limit: 3000 },
+    { label: "YT", limit: 5000 },
+    { label: "FB", limit: 63206 },
+  ] as const;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
@@ -383,14 +390,20 @@ export function PostEditor({
             ) : (
               <span />
             )}
-            <span
-              aria-live="polite"
-              className={`text-xs tabular-nums ${
-                isLong ? "font-medium text-red-600" : "text-gray-400"
-              }`}
-            >
-              {body.length}/{CAPTION_CHAR_LIMIT}
-            </span>
+            <div aria-live="polite" className="flex items-center gap-1.5">
+              <span className="text-xs tabular-nums text-gray-400">{body.length}</span>
+              {PLATFORM_CHAR_LIMITS.map(({ label, limit }) => (
+                <span
+                  key={label}
+                  title={`${label}: ${limit.toLocaleString()} char limit`}
+                  className={`text-[10px] tabular-nums ${
+                    body.length > limit ? "font-semibold text-red-600" : "text-gray-300"
+                  }`}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 

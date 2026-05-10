@@ -12,6 +12,7 @@ const REASONS = [
   "broken-media",
   "missing-media",
   "dont-post",
+  "skipped-in-suggester",
 ];
 
 export async function GET(req: NextRequest) {

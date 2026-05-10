@@ -12,6 +12,7 @@ const BUCKETS = [
   { slug: "broken-media", label: "Broken" },
   { slug: "missing-media", label: "Missing" },
   { slug: "dont-post", label: "Don't-post" },
+  { slug: "skipped-in-suggester", label: "Skipped" },
 ] as const;
 
 type BucketSlug = (typeof BUCKETS)[number]["slug"];

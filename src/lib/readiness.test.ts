@@ -79,6 +79,15 @@ describe("computeReadiness", () => {
     expect(r.readiness).toBe("NOT_READY");
   });
 
+  it("preserves skipped-in-suggester flag across computation", () => {
+    const r = computeReadiness(
+      { ...basePost, notReadyReasons: ["skipped-in-suggester"] },
+      []
+    );
+    expect(r.reasons).toContain("skipped-in-suggester");
+    expect(r.readiness).toBe("NOT_READY");
+  });
+
   it("short-circuits on ARCHIVED", () => {
     const r = computeReadiness(
       { ...basePost, readiness: "ARCHIVED", notReadyReasons: ["silent-video"] },

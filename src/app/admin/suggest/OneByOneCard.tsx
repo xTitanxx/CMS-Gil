@@ -219,7 +219,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         {/* Media frame — the swipe target */}
         <div
           className="relative overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
-          style={{ height: "clamp(200px, 55vw, 300px)" }}
+          style={{ aspectRatio: "4 / 5" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}

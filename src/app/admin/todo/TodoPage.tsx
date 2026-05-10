@@ -54,8 +54,8 @@ export default function TodoPage() {
 
   return (
     <div className="mx-auto max-w-xl py-10 px-4">
-      <h1 className="mb-1 hidden text-2xl font-bold text-gray-900 md:block">To-Do</h1>
-      <p className="text-sm text-gray-500 mb-6">Notes for future work sessions</p>
+      <h1 className="hidden text-2xl font-bold text-gray-900 md:block">To-Do</h1>
+      <p className="mt-0.5 mb-6 text-sm text-gray-500">Notes for future work sessions</p>
 
       <div className="flex gap-2 mb-8">
         <input

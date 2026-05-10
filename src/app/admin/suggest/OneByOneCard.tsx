@@ -208,7 +208,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={cardRef}
-        className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col px-3 py-3"
+        className="mx-auto flex w-full max-w-md flex-1 min-h-0 flex-col overflow-y-auto px-3 py-3"
         style={{
           transform: `translateX(${tx}px) rotate(${rot}deg)`,
           opacity,
@@ -219,7 +219,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         {/* Media frame — the swipe target */}
         <div
           className="relative overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
-          style={{ aspectRatio: "4 / 5" }}
+          style={{ height: "clamp(200px, 55vw, 300px)" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
@@ -336,7 +336,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         </div>
 
         {/* Caption — tap to edit inline, no toggle button */}
-        <div className="mt-3 flex-1 min-h-0 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
+        <div className="mt-3 min-h-[120px] rounded-xl border border-gray-200 bg-white p-3">
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Caption</span>
             <button
@@ -358,13 +358,13 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
               onChange={(e) => setBody(e.target.value)}
               onBlur={() => setEditing(false)}
               autoFocus
-              className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 p-2 text-[14px] leading-snug focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100"
+              className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 p-2 text-[14px] leading-snug focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100 min-h-[150px]"
               rows={6}
             />
           ) : (
             <p
               onClick={() => setEditing(true)}
-              className="cursor-text whitespace-pre-wrap rounded-md p-1 text-[14px] leading-snug text-gray-800 hover:bg-gray-50"
+              className="min-h-[80px] cursor-text whitespace-pre-wrap rounded-md p-1 text-[14px] leading-snug text-gray-800 hover:bg-gray-50"
             >
               {body || <span className="italic text-gray-400">Tap to add a caption…</span>}
             </p>

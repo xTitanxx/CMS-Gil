@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { AdminsTab } from "./tabs/AdminsTab";
 import { EngagementTab } from "./tabs/EngagementTab";
+import { NotificationsTab } from "./tabs/NotificationsTab";
 import ConnectionsPage from "../connections/ConnectionsPage";
 import ImportPage from "../import/ImportPage";
 import { SubscribersListClient } from "../subscribers/SubscribersListClient";
@@ -13,6 +14,7 @@ const TABS = [
   { id: "subscribers", label: "Subscribers" },
   { id: "connections", label: "Connections" },
   { id: "import", label: "Import" },
+  { id: "notifications", label: "Notifications" },
   { id: "engagement", label: "Engagement" },
 ] as const;
 
@@ -30,7 +32,7 @@ export default function SettingsPage({ activeTab }: Props) {
           Settings
         </h1>
         <p className="text-sm text-gray-500">
-          Manage admins, subscribers, platform connections, imports, and engagement.
+          Manage admins, subscribers, platform connections, imports, notifications, and engagement.
         </p>
       </div>
 
@@ -56,6 +58,7 @@ export default function SettingsPage({ activeTab }: Props) {
         {activeTab === "subscribers" && <SubscribersListClient />}
         {activeTab === "connections" && <ConnectionsPage />}
         {activeTab === "import" && <ImportPage />}
+        {activeTab === "notifications" && <NotificationsTab />}
         {activeTab === "engagement" && <EngagementTab />}
       </div>
     </div>

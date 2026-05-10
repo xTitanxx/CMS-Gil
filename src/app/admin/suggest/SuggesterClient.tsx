@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Layers, Recycle, Sparkles, Loader2, ArrowLeft } from "lucide-react";
 import { OneByOneCard } from "./OneByOneCard";
 import { BulkPlanPanel } from "./BulkPlanPanel";
-import { PushOptIn } from "@/components/PushOptIn";
 import type { NextCandidateResponse, SuggestCandidate, SuggestedSlot } from "./types";
 
 type Mode = "menu" | "one" | "bulk";
@@ -137,7 +136,6 @@ export function SuggesterClient() {
         </div>
 
         <div className="flex flex-1 flex-col gap-3 p-4 md:p-8">
-          <PushOptIn compact />
           <button
             onClick={() => setMode("one")}
             className="group relative overflow-hidden rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-5 text-left shadow-sm transition-all hover:shadow-md active:scale-[0.99]"

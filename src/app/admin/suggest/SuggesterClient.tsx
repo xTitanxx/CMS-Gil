@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Layers, Recycle, Sparkles, Loader2, ArrowLeft, Undo2 } from "lucide-react";
 import { OneByOneCard } from "./OneByOneCard";
@@ -46,6 +47,7 @@ interface PrefetchedCandidate {
 
 export function SuggesterClient() {
   const [mode, setMode] = useState<Mode>("menu");
+  const [mounted, setMounted] = useState(false);
 
   const [current, setCurrent] = useState<PrefetchedCandidate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,10 +69,11 @@ export function SuggesterClient() {
       : "/api/planner/next-candidate";
     const res = await fetch(url);
     const data = (await res.json()) as NextCandidateResponse;
+    // Check candidate first: null candidate (including "no open slots") → empty state
+    if (!data.candidate || !data.suggestedSlot) return null;
     if (data.error) {
       throw new Error(data.error);
     }
-    if (!data.candidate || !data.suggestedSlot) return null;
     return {
       candidate: data.candidate,
       slot: data.suggestedSlot,
@@ -116,10 +119,12 @@ export function SuggesterClient() {
   }, [current, loading, fetchCandidate]);
 
   useEffect(() => {
-    if (mode === "one" && !current && !empty && !loading) {
+    if (mode === "one" && !current && !empty && !loading && !error) {
       void ensureCurrent();
     }
-  }, [mode, current, empty, loading, ensureCurrent]);
+  }, [mode, current, empty, loading, error, ensureCurrent]);
+
+  useEffect(() => { setMounted(true); }, []);
 
   // Clear an active undo timer when a new one comes in or component unmounts
   useEffect(() => {
@@ -310,14 +315,6 @@ export function SuggesterClient() {
             </div>
           </button>
 
-          <Link
-            href="/admin/dashboard"
-            className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <Sparkles className="h-4 w-4" />
-            Open the calendar
-          </Link>
-
           {accepted.length > 0 && (
             <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -382,9 +379,12 @@ export function SuggesterClient() {
   }
 
   // mode === "one"
-  return (
+  // Portal to document.body so position:fixed isn't clipped by the
+  // overflow-y-auto admin <main> on mobile Safari.
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-30 flex flex-col bg-gradient-to-b from-gray-50 to-white"
+      className="fixed inset-0 z-[60] flex flex-col bg-gradient-to-b from-gray-50 to-white"
       style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white/80 px-3 py-2 backdrop-blur">
@@ -483,6 +483,7 @@ export function SuggesterClient() {
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

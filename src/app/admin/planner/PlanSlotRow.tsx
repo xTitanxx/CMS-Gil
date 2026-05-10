@@ -68,7 +68,7 @@ export function PlanSlotRow({ day, slot, onRemove, onApprove }: PlanSlotRowProps
 
         {/* Thumbnail (clickable) */}
         <Link
-          href={`/admin/posts/${post.id}?from=dashboard`}
+          href={`/admin/posts/${post.id}?from=planner`}
           className="shrink-0 self-stretch transition-opacity hover:opacity-80"
         >
           {post.thumbUrl ? (
@@ -109,7 +109,7 @@ export function PlanSlotRow({ day, slot, onRemove, onApprove }: PlanSlotRowProps
           </div>
 
           {/* Body */}
-          <Link href={`/admin/posts/${post.id}?from=dashboard`} className="group mb-1.5 block md:mb-2">
+          <Link href={`/admin/posts/${post.id}?from=planner`} className="group mb-1.5 block md:mb-2">
             <p className="line-clamp-2 text-sm leading-relaxed text-gray-700 group-hover:text-blue-700 md:line-clamp-3">
               {post.body}
             </p>

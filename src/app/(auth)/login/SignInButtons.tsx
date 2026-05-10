@@ -7,7 +7,7 @@ export function SignInButtons() {
   return (
     <div className="flex flex-col gap-4">
       <Button
-        onClick={() => signIn("google", { callbackUrl: "/admin/dashboard" })}
+        onClick={() => signIn("google", { callbackUrl: "/admin/planner" })}
         variant="outline"
         className="w-full gap-3"
       >

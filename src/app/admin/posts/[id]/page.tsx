@@ -124,8 +124,8 @@ export default async function PostDetailPage({
     ? `/admin/posts/${next.id}${neighborQuery ? `?${neighborQuery}` : ""}`
     : null;
   const listHref =
-    fromParam === "dashboard"
-      ? "/admin/dashboard"
+    fromParam === "planner"
+      ? "/admin/planner"
       : fromParam === "assistant"
         ? "/admin/assistant"
         : `/admin/posts${listQuery ? `?${listQuery}` : ""}`;
@@ -155,8 +155,8 @@ export default async function PostDetailPage({
         nextHref={nextHref}
         listHref={listHref}
         backLabel={
-          fromParam === "dashboard"
-            ? "Back to dashboard"
+          fromParam === "planner"
+            ? "Back to planner"
             : fromParam === "assistant"
               ? "Back to assistant"
               : "Back to list"

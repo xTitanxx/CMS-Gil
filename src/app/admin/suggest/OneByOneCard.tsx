@@ -219,7 +219,6 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         {/* Media frame — the swipe target */}
         <div
           className="relative overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
-          style={{ aspectRatio: "4 / 5" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
@@ -234,7 +233,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
                 playsInline
                 autoPlay
                 loop
-                className="h-full w-full object-cover pointer-events-none"
+                className="block w-full h-auto pointer-events-none"
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
@@ -242,11 +241,11 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
                 src={media.url}
                 alt=""
                 draggable={false}
-                className="h-full w-full object-cover pointer-events-none"
+                className="block w-full h-auto pointer-events-none"
               />
             )
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-gray-500">
+            <div className="flex h-48 w-full items-center justify-center text-gray-500">
               <span className="text-xs">No media</span>
             </div>
           )}

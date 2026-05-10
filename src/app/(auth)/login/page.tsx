@@ -8,7 +8,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await auth();
-  if (session?.user?.role === "admin") redirect("/admin/dashboard");
+  if (session?.user?.role === "admin") redirect("/admin/planner");
   if (session?.user?.role === "subscriber") redirect("/");
 
   const params = await searchParams;

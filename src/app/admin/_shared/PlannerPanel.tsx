@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
-import { WeeklyPlanView } from "../../dashboard/WeeklyPlanView";
+import { WeeklyPlanView } from "../planner/WeeklyPlanView";
 import type { WeeklyPlanData } from "@/lib/planner/types";
 
 export interface PlannerPanelHandle {

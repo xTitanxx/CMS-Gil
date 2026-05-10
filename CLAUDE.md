@@ -59,10 +59,10 @@ The app splits into a **public front** and an **admin content hub**:
 - **Admin** (`/admin/*`, auth-gated):
   - `/admin` — redirects to `/admin/assistant` (the real home)
   - `/admin/assistant` — persistent AI assistant chat (primary interaction surface)
-  - `/admin/dashboard` — weekly planner view (`PlannerDashboard`)
+  - `/admin/planner` — weekly planner view (`PlannerDashboard`)
   - `/admin/posts`, `/admin/posts/[id]` — posts list + detail
   - `/admin/triage` — triage view over posts needing fixes / AI suggestions
-  - `/admin/scheduled` — upcoming `PublishRecord`s
+  - `/admin/scheduled` — upcoming `PublishRecord`s on a calendar grid; a "Planner" toggle swaps in the same weekly planner UI
   - `/admin/rate` — rating / review UI (ratings API)
   - `/admin/audio` — audio asset management
   - `/admin/import` — ZIP / Drive import
@@ -89,7 +89,7 @@ The planner still exists as a feature (see below) but is typically driven via th
 
 ## Planner
 
-Weekly planner surfaces at `/admin/dashboard`. AI tool-use generates slot recommendations. Key routes:
+Weekly planner surfaces at `/admin/planner` (also reachable as a "Planner" toggle inside `/admin/scheduled`). AI tool-use generates slot recommendations. Key routes:
 - `GET /api/planner/current` — current week's plan
 - `POST /api/planner/generate` — AI recommendation
 - `PATCH /api/planner/[planId]` — slot edits

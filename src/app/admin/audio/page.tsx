@@ -1,3 +1,4 @@
+import { PageHeader } from "@/app/admin/_shared/PageHeader";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -29,12 +30,10 @@ export default async function AudioLibraryPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6">
-        <h1 className="hidden text-2xl font-bold text-gray-900 md:block">Audio Library</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Upload music tracks (e.g. from Suno) and overlay them onto silent videos in posts.
-        </p>
-      </div>
+      <PageHeader
+        title="Audio Library"
+        subtitle="Upload music tracks (e.g. from Suno) and overlay them onto silent videos in posts."
+      />
       <AudioLibrary initialTracks={withUrls} />
     </div>
   );

@@ -81,18 +81,22 @@ export async function POST(
     contentType: mimeType,
   });
 
-  let posterKey: string | null = null;
   if (mimeType.startsWith("video/")) {
+    // Don't fail the upload if poster generation hiccups — the video itself is
+    // already in R2. But do log loudly so we can spot a regression. Posters
+    // missing from R2 cause empty thumbnails in the planner / assistant
+    // proposals; the backfill script can recover them later.
     try {
       const { extractPoster } = await import("@/lib/video-processing");
       const posterBuffer = await extractPoster(buffer);
       const posterPath = pathname.replace(/\.[^/.]+$/, "") + ".poster.jpg";
-      const posterResult = await uploadBuffer(posterPath, posterBuffer, {
-        contentType: "image/jpeg",
-      });
-      posterKey = posterResult.url;
+      await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
     } catch (err) {
-      console.error("Poster extraction failed:", err);
+      console.error(
+        `[posters] FAILED to generate poster for ${pathname}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
   }
 

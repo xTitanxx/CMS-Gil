@@ -32,7 +32,21 @@ function probeDuration(inputPath: string): Promise<number> {
   });
 }
 
-export async function extractPoster(videoBuffer: Buffer): Promise<Buffer> {
+// Strategies tried in order. The first one that yields a non-empty JPEG wins.
+// Some FB-export videos won't decode the very first frame (no I-frame at t=0)
+// or have weird audio streams that confuse ffmpeg; later strategies seek
+// further in and drop audio to recover.
+const POSTER_STRATEGIES: ReadonlyArray<{ name: string; opts: string[] }> = [
+  { name: "frame:v 1", opts: ["-frames:v 1", "-q:v 3"] },
+  { name: "seek 0.5s -an", opts: ["-ss", "0.5", "-an", "-frames:v 1", "-q:v 3"] },
+  { name: "seek 2s -an", opts: ["-ss", "2", "-an", "-frames:v 1", "-q:v 3"] },
+  { name: "seek 5s -an q5", opts: ["-ss", "5", "-an", "-frames:v 1", "-q:v 5"] },
+];
+
+async function tryStrategy(
+  videoBuffer: Buffer,
+  opts: string[]
+): Promise<Buffer> {
   return withTempDir(async (dir) => {
     const inputPath = join(dir, "input.mp4");
     const outputPath = join(dir, "poster.jpg");
@@ -40,14 +54,32 @@ export async function extractPoster(videoBuffer: Buffer): Promise<Buffer> {
 
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
-        .outputOptions(["-frames:v 1", "-q:v 3"])
+        .outputOptions(opts)
         .on("end", () => resolve())
         .on("error", reject)
         .save(outputPath);
     });
 
-    return readFileSync(outputPath);
+    const buf = readFileSync(outputPath);
+    if (buf.length === 0) throw new Error("ffmpeg produced 0-byte poster");
+    return buf;
   });
+}
+
+export async function extractPoster(videoBuffer: Buffer): Promise<Buffer> {
+  let lastErr: unknown = null;
+  for (const s of POSTER_STRATEGIES) {
+    try {
+      return await tryStrategy(videoBuffer, s.opts);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    `extractPoster: all ${POSTER_STRATEGIES.length} strategies failed: ${
+      lastErr instanceof Error ? lastErr.message : String(lastErr)
+    }`
+  );
 }
 
 export async function extractFrames(

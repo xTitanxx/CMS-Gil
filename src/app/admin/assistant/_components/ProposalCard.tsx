@@ -71,6 +71,7 @@ type ProposalState =
 export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProps) {
   const [state, setState] = useState<ProposalState>({ status: "idle" });
   const [showReason, setShowReason] = useState(false);
+  const [thumbFailed, setThumbFailed] = useState(false);
 
   const post = proposal.post;
   const ContentIcon = post.hasVideo ? Film : post.mediaCount > 0 ? ImageIcon : Type;
@@ -109,7 +110,7 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
 
   return (
     <div className={`my-2 overflow-hidden rounded-[14px] border transition-shadow hover:shadow-md ${cardBg}`}>
-      {post.thumbUrl ? (
+      {post.thumbUrl && !thumbFailed ? (
         <Link
           href={`/admin/posts/${post.id}?from=assistant`}
           className="relative block w-full overflow-hidden bg-gray-100"
@@ -118,7 +119,7 @@ export function ProposalCard({ proposal, onApprove, onCancel }: ProposalCardProp
               Natural aspect ratio (w-full h-auto) so portraits and landscapes show
               uncropped; max-h caps very tall portraits so the card doesn't dominate. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={post.thumbUrl} alt="" className="block h-auto w-full max-h-[70vh] object-contain" />
+          <img src={post.thumbUrl} alt="" onError={() => setThumbFailed(true)} className="block h-auto w-full max-h-[70vh] object-contain" />
           {post.hasVideo && (
             <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white">
               <Film className="h-4 w-4" />

@@ -62,6 +62,7 @@ export function LazyVideo({
 }: LazyVideoProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
   const posterSrc = poster ?? posterUrlFor(src);
 
   useEffect(() => {
@@ -126,6 +127,8 @@ export function LazyVideo({
           // gets "stuck" whenever the user's thumb lands on a video tile.
           style={{ touchAction: "pan-y" }}
         />
+      ) : posterFailed ? (
+        <div className={className} aria-hidden />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -133,6 +136,7 @@ export function LazyVideo({
           alt={alt}
           loading="lazy"
           decoding="async"
+          onError={() => setPosterFailed(true)}
           className={className}
         />
       )}

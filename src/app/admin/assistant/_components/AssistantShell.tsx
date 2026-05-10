@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { ThreadView } from "./ThreadView";
-import { PlannerPanel, type PlannerPanelHandle } from "./PlannerPanel";
+import { PlannerPanel, type PlannerPanelHandle } from "../../_shared/PlannerPanel";
 
 type Tab = "chat" | "plan";
 

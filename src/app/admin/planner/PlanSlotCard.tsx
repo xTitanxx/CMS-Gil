@@ -149,7 +149,7 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
           <div className="flex gap-3 md:gap-3.5">
             {/* Thumbnail */}
             <Link
-              href={`/admin/posts/${post.id}?from=dashboard`}
+              href={`/admin/posts/${post.id}?from=planner`}
               className="shrink-0 transition-opacity hover:opacity-80"
             >
               {post.thumbUrl ? (
@@ -208,7 +208,7 @@ export function PlanSlotCard({ slot, onApprove, onRemove, isLast }: PlanSlotCard
               </div>
 
               {/* Row 2: text */}
-              <Link href={`/admin/posts/${post.id}?from=dashboard`} className="mt-1.5 block">
+              <Link href={`/admin/posts/${post.id}?from=planner`} className="mt-1.5 block">
                 <p className="line-clamp-2 text-[14px] leading-[1.45] text-[#161513]">{truncated}</p>
               </Link>
 

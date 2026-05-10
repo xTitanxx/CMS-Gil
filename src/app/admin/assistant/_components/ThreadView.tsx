@@ -6,7 +6,7 @@ import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 import { HistoryPanel } from "./HistoryPanel";
 import { CostPill, type CostPillHandle } from "./CostPill";
-import { PLATFORM_META, dedupePlatforms } from "../../dashboard/PlanSlotCard";
+import { PLATFORM_META, dedupePlatforms } from "../../planner/PlanSlotCard";
 import { formatScheduledTime } from "@/lib/planner/format-slot";
 
 const PUBLISHABLE_PLATFORMS = ["INSTAGRAM", "FACEBOOK_PAGE", "LINKEDIN", "TIKTOK", "YOUTUBE"] as const;
@@ -206,7 +206,7 @@ function InlinePostRef({
   // Sync local schedule state with the API:
   //   - idle → scheduled when a planner placement appears
   //   - scheduled → idle when the planner placement disappears (e.g. user
-  //     cancelled the slot from /admin/dashboard while the chat tab was open)
+  //     cancelled the slot from /admin/planner while the chat tab was open)
   // Don't touch in-progress states (sending / error) — those are user-initiated
   // and should resolve via their own callback.
   useEffect(() => {
@@ -611,7 +611,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
   const [userPlatforms, setUserPlatforms] = useState<string[]>([]);
 
   // Re-fetch cached posts when the tab regains focus / visibility, so that
-  // cancelling a slot from /admin/dashboard (or any other route) flips the
+  // cancelling a slot from /admin/planner (or any other route) flips the
   // corresponding chat card back to its real state instead of staying green
   // until the conversation is reloaded.
   useEffect(() => {

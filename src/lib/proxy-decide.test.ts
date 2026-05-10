@@ -155,7 +155,7 @@ describe("proxy decide()", () => {
       "/admin",
       "/admin/posts",
       "/admin/posts/abc",
-      "/admin/dashboard",
+      "/admin/planner",
       "/admin/connections",
       "/admin/settings",
       "/api/admin/subscribers",

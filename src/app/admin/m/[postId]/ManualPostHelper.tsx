@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -11,6 +12,7 @@ import {
   Share2,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 
@@ -38,34 +40,63 @@ function filenameFromUrl(url: string, fallback: string): string {
   }
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older Safari / blocked clipboard fallback.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } finally {
+      document.body.removeChild(ta);
+    }
+    return ok;
+  }
+}
+
 export function ManualPostHelper({ postId, body, originalDate, platformUrl, media }: Props) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [autoCopiedBanner, setAutoCopiedBanner] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [marking, setMarking] = useState(false);
+  const [marked, setMarked] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
+  const autoCopyDoneRef = useRef(false);
 
   const active = media[activeIdx] ?? null;
   const isVideo = active?.mimeType.startsWith("video/") ?? false;
 
+  // Auto-copy the caption on mount so the user can paste in Facebook
+  // immediately — works whether they came from a push notification or
+  // opened the app cold.
+  useEffect(() => {
+    if (autoCopyDoneRef.current) return;
+    autoCopyDoneRef.current = true;
+    if (!body.trim()) return;
+    void (async () => {
+      const ok = await copyTextToClipboard(body);
+      if (ok) {
+        setAutoCopiedBanner(true);
+        setTimeout(() => setAutoCopiedBanner(false), 4000);
+      }
+    })();
+  }, [body]);
+
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(body);
+    const ok = await copyTextToClipboard(body);
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Fallback: select text manually if clipboard API fails (older Safari)
-      const ta = document.createElement("textarea");
-      ta.value = body;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
-      } finally {
-        document.body.removeChild(ta);
-      }
     }
   }
 
@@ -73,16 +104,11 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     if (!item.url) return;
     setDownloading(item.id);
     try {
-      // On iOS Safari, fetching the blob and using URL.createObjectURL gives
-      // the user a "Save Image" / "Save Video" sheet. Direct anchor with
-      // download attribute is ignored on iOS; this path is the workaround.
       const res = await fetch(item.url);
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
-
       const ext = item.mimeType.split("/")[1] ?? "bin";
       const fname = filenameFromUrl(item.url, `gil-alter-${postId}.${ext}`);
-
       const a = document.createElement("a");
       a.href = objectUrl;
       a.download = fname;
@@ -117,10 +143,31 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
         await nav.share({ files: [file], text: body });
         return;
       }
-      // Falls through to URL share (iOS may show a Save to Files / Photos option)
       await nav.share({ url: item.url, text: body });
     } catch {
-      // User cancelled or share failed — silently no-op.
+      // User cancelled or share failed — silent no-op.
+    }
+  }
+
+  async function handleMarkPosted() {
+    if (marking || marked) return;
+    setMarking(true);
+    setMarkError(null);
+    try {
+      const res = await fetch(`/api/posts/${postId}/manual-publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: "FACEBOOK" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMarkError(data?.error ?? "Couldn't mark as posted. Try again.");
+        return;
+      }
+      setMarked(true);
+      setTimeout(() => router.push("/admin/suggest"), 700);
+    } finally {
+      setMarking(false);
     }
   }
 
@@ -132,16 +179,21 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
         style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
       >
         <Link
-          href="/admin/dashboard"
+          href="/admin/suggest"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200"
-          aria-label="Back to dashboard"
+          aria-label="Back to suggester"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="text-base font-semibold text-gray-900">Post on Facebook personal</div>
           <div className="text-[11px] text-gray-500">
-            From {new Date(originalDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+            From{" "}
+            {new Date(originalDate).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })}
           </div>
         </div>
         {platformUrl && (
@@ -157,6 +209,14 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           </a>
         )}
       </div>
+
+      {/* Auto-copied banner */}
+      {autoCopiedBanner && (
+        <div className="mx-auto mt-2 flex w-full max-w-md items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
+          <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
+          <span className="flex-1">Caption copied — paste it in Facebook.</span>
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-md flex-1 space-y-4 p-4">
         {/* Step 1: Copy text */}
@@ -174,7 +234,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
               }`}
             >
               {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? "Copied" : "Copy again"}
             </button>
           </div>
           <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-3 text-[14px] leading-snug text-gray-800">
@@ -186,7 +246,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           </div>
         </section>
 
-        {/* Step 2: Download media */}
+        {/* Step 2: Save the media */}
         {media.length > 0 && (
           <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
             <div className="mb-2 flex items-center justify-between">
@@ -199,7 +259,10 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
             </div>
 
             {active?.url && (
-              <div className="relative mb-2 overflow-hidden rounded-xl bg-black" style={{ aspectRatio: "1 / 1" }}>
+              <div
+                className="relative mb-2 overflow-hidden rounded-xl bg-black"
+                style={{ aspectRatio: "1 / 1" }}
+              >
                 {isVideo ? (
                   <video src={active.url} controls playsInline className="h-full w-full object-contain" />
                 ) : (
@@ -228,24 +291,25 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => active && handleDownload(active)}
-                disabled={!active?.url || downloading === active?.id}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
-              >
-                <Download className="h-4 w-4" />
-                Download
-              </button>
-              <button
-                onClick={() => active && handleShare(active)}
-                disabled={!active?.url}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-900 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-              >
-                <Share2 className="h-4 w-4" />
-                Share / Save
-              </button>
-            </div>
+            {/* Primary CTA: Share / Save (iOS hits Photos sheet reliably) */}
+            <button
+              onClick={() => active && handleShare(active)}
+              disabled={!active?.url}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+            >
+              <Share2 className="h-4 w-4" />
+              Share / Save to Photos
+            </button>
+
+            {/* Secondary download */}
+            <button
+              onClick={() => active && handleDownload(active)}
+              disabled={!active?.url || downloading === active?.id}
+              className="mt-1.5 inline-flex w-full items-center justify-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 disabled:opacity-60"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Or download to Files
+            </button>
 
             <p className="mt-2 text-[11px] text-gray-500">
               {'On iOS, tap "Share / Save" → "Save Image" / "Save Video" to drop it into your Photos.'}
@@ -270,6 +334,37 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           </a>
           <p className="mt-1.5 text-[11px] text-blue-800/80">
             {"(If the app doesn't open, tap and hold to open in Safari instead.)"}
+          </p>
+        </section>
+
+        {/* Step 4: I posted it */}
+        <section
+          className={`rounded-2xl border p-3 shadow-sm transition-colors ${
+            marked ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"
+          }`}
+        >
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            4. Confirm
+          </div>
+          <button
+            onClick={handleMarkPosted}
+            disabled={marking || marked}
+            className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-3 text-sm font-semibold text-white shadow-sm transition-colors disabled:opacity-70 ${
+              marked ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {marking ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : marked ? (
+              <Check className="h-4 w-4" strokeWidth={2.5} />
+            ) : (
+              <Check className="h-4 w-4" strokeWidth={2.5} />
+            )}
+            {marked ? "Marked as posted" : "I posted it on Facebook"}
+          </button>
+          {markError && <p className="mt-1.5 text-[11px] text-red-700">{markError}</p>}
+          <p className="mt-1.5 text-[11px] text-gray-500">
+            Tracks the post as published so it leaves the manual-posts queue.
           </p>
         </section>
       </div>

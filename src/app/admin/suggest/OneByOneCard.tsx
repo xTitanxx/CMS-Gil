@@ -216,9 +216,11 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           willChange: "transform, opacity",
         }}
       >
-        {/* Media frame — the swipe target */}
+        {/* Media frame — the swipe target.
+            shrink-0 prevents the flex column from compressing the image's
+            natural height (overflow-hidden on this frame would otherwise clip it). */}
         <div
-          className="relative overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
+          className="relative shrink-0 overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}

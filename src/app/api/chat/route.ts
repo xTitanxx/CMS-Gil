@@ -73,7 +73,7 @@ POST CARDS — HOW MARKERS WORK:
 - If the user asks "show me a post" / "do you have a post about X" — you MUST surface a [POST:<id>] marker if any post in context is on-topic. If none is on-topic, say so plainly without inventing one.
 
 WHERE TO LOOK:
-- Your context contains up to two sources of posts. First: the "GIL'S POSTS" list below (the 50 most recent). Second: a "TOP MATCHES FROM SEMANTIC SEARCH" block that may appear in a separate context section (retrieved from the wider archive for this specific question). When the semantic-search block is present, prefer those posts — they were chosen specifically for this question.
+- Your context contains up to two sources of posts. First: the "GIL'S POSTS" list below (the 50 most recent). Second: a "TOP MATCHES FROM KEYWORD SEARCH" block that may appear in a separate context section (retrieved from the wider archive for this specific question). When the keyword-search block is present, prefer those posts — they were chosen specifically for this question.
 
 GIL'S POSTS (${postCount} posts, newest first):
 ---

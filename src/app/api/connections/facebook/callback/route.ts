@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     return NextResponse.redirect(
-      new URL("/connections?error=facebook_denied", req.url)
+      new URL("/admin/connections?error=facebook_denied", req.url)
     );
   }
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     session.user.id !== state.userId
   ) {
     return NextResponse.redirect(
-      new URL("/connections?error=facebook_state", req.url)
+      new URL("/admin/connections?error=facebook_state", req.url)
     );
   }
   const userId = state.userId;
@@ -187,13 +187,13 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.redirect(new URL("/connections?success=facebook", req.url));
+    return NextResponse.redirect(new URL("/admin/connections?success=facebook", req.url));
   } catch (err) {
     // Redact provider responses before logging — Meta occasionally embeds
     // access_token / fb_exchange_token in error_description fields.
     console.error("Facebook callback error:", redactSecrets(err));
     return NextResponse.redirect(
-      new URL("/connections?error=facebook_failed", req.url)
+      new URL("/admin/connections?error=facebook_failed", req.url)
     );
   }
 }

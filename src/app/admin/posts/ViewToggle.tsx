@@ -12,7 +12,7 @@ const OPTIONS = [
   { id: "feed" as const, label: "Feed", icon: Rows },
 ];
 
-export function ViewToggle() {
+export function ViewToggle({ className }: { className?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -32,5 +32,5 @@ export function ViewToggle() {
     [router, pathname, searchParams],
   );
 
-  return <SegmentedControl options={OPTIONS} value={current} onChange={setView} ariaLabel="View" />;
+  return <SegmentedControl options={OPTIONS} value={current} onChange={setView} ariaLabel="View" className={className} />;
 }

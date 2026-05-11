@@ -290,25 +290,29 @@ export function AllPostsView(_props: AllPostsViewProps) {
 
   const headerActions = (
     <>
-      <ViewToggle />
+      <div className="inline-flex shrink-0 items-center rounded-md border border-gray-200 bg-white">
+        <ViewToggle className="rounded-none border-0" />
+        <div className="w-px self-stretch bg-gray-200" />
+        <ActionsMenu
+          embedded
+          analyzeRunning={analyzeJob?.status === "RUNNING"}
+          analyzeProgress={analyzeJob ? `${analyzeJob.completed}/${analyzeJob.total}` : null}
+          analyzeStarting={bulkAnalyze.isLoading}
+          onStartAnalyze={startAnalyze}
+          onCancelAnalyze={cancelAnalyze}
+          captionRunning={captionJob?.status === "RUNNING"}
+          captionProgress={captionJob ? `${captionJob.completed}/${captionJob.total}` : null}
+          captionStarting={bulkCaption.isLoading}
+          onStartCaption={startCaption}
+          onCancelCaption={cancelCaption}
+        />
+      </div>
       <Link href="/admin/posts/new">
         <Button size="sm" className="h-9 px-3">
           <Plus className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">New</span>
         </Button>
       </Link>
-      <ActionsMenu
-        analyzeRunning={analyzeJob?.status === "RUNNING"}
-        analyzeProgress={analyzeJob ? `${analyzeJob.completed}/${analyzeJob.total}` : null}
-        analyzeStarting={bulkAnalyze.isLoading}
-        onStartAnalyze={startAnalyze}
-        onCancelAnalyze={cancelAnalyze}
-        captionRunning={captionJob?.status === "RUNNING"}
-        captionProgress={captionJob ? `${captionJob.completed}/${captionJob.total}` : null}
-        captionStarting={bulkCaption.isLoading}
-        onStartCaption={startCaption}
-        onCancelCaption={cancelCaption}
-      />
     </>
   );
 
@@ -485,6 +489,7 @@ export function AllPostsView(_props: AllPostsViewProps) {
 }
 
 interface ActionsMenuProps {
+  embedded?: boolean;
   analyzeRunning: boolean;
   analyzeProgress: string | null;
   analyzeStarting: boolean;
@@ -519,8 +524,10 @@ function ActionsMenu(props: ActionsMenuProps) {
         onClick={() => setOpen((v) => !v)}
         aria-label="More actions"
         title="More actions"
-        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-50 ${
-          open ? "border-gray-400 bg-gray-50" : ""
+        className={`relative inline-flex h-9 w-9 items-center justify-center text-gray-600 transition-colors hover:bg-gray-50 ${
+          props.embedded
+            ? `rounded-r-md ${open ? "bg-gray-50" : ""}`
+            : `rounded-md border border-gray-200 bg-white ${open ? "bg-gray-50" : ""}`
         }`}
       >
         <MoreHorizontal className="h-4 w-4" />

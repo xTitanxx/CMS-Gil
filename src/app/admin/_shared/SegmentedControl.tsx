@@ -49,7 +49,7 @@ export function SegmentedControl<T extends string>({
           </>
         );
         const cls = cn(
-          "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors",
+          "inline-flex items-center gap-1 px-2.5 py-2.5 text-xs font-medium transition-colors",
           i > 0 && "border-l border-gray-200",
           active ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50",
         );

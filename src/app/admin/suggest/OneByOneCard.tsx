@@ -330,7 +330,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
 
   const MediaFrame = (
     <div
-      className="relative shrink-0 overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
+      className={`relative shrink-0 overflow-hidden rounded-2xl shadow-lg select-none touch-pan-y ${candidate.media.length === 0 ? "bg-gradient-to-br from-slate-50 to-gray-100" : "bg-black"}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -357,8 +357,10 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           />
         )
       ) : (
-        <div className="flex h-48 w-full items-center justify-center text-gray-500">
-          <span className="text-xs">No media</span>
+        <div className="flex min-h-[220px] w-full items-center justify-center px-8 py-10">
+          <p className="line-clamp-6 text-center text-base leading-relaxed text-gray-500 md:text-lg">
+            {body}
+          </p>
         </div>
       )}
 

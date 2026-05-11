@@ -1,10 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, mediaKey } from "@/lib/storage";
 import { isOurBlobUrl } from "@/lib/url-allowlist";
 import { detectMimeType } from "@/lib/magic-byte";
 import { del } from "@vercel/blob";
+
+// 55-second iPhone videos run 50-150MB. The synchronous chain (blob fetch +
+// R2 PUT + ffprobe audio + ffmpeg poster) was tripping the platform default
+// timeout, surfacing as "failed to upload" in the composer. Pin the route
+// explicitly and let the long-tail work happen post-response.
+export const maxDuration = 300;
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -35,80 +41,93 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const contentType = req.headers.get("content-type") ?? "";
-  let buffer: Buffer;
-  let filename: string;
-  let mimeType: string;
+  try {
+    const contentType = req.headers.get("content-type") ?? "";
+    let buffer: Buffer;
+    let filename: string;
+    let mimeType: string;
 
-  if (contentType.includes("application/json")) {
-    // Large file: client uploaded to Vercel Blob, sends us the URL
-    const body = await req.json();
-    filename = body.filename as string;
+    if (contentType.includes("application/json")) {
+      // Large file: client uploaded to Vercel Blob, sends us the URL
+      const body = await req.json();
+      filename = body.filename as string;
 
-    const blobUrl = body.blobUrl as string;
-    if (!isOurBlobUrl(blobUrl)) {
-      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+      const blobUrl = body.blobUrl as string;
+      if (!isOurBlobUrl(blobUrl)) {
+        return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+      }
+      const response = await fetch(blobUrl);
+      if (!response.ok) {
+        return NextResponse.json({ error: "Failed to fetch file from blob storage" }, { status: 500 });
+      }
+      buffer = Buffer.from(await response.arrayBuffer());
+      await del(blobUrl).catch(() => {});
+    } else {
+      // Small file: sent directly as multipart/form-data
+      const formData = await req.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) {
+        return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      }
+      filename = file.name;
+      buffer = Buffer.from(await file.arrayBuffer());
     }
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch file from blob storage" }, { status: 500 });
+
+    // Sniff the actual content. Don't trust client-asserted Content-Type or
+    // filename extension — both are trivially spoofable. The detected type is
+    // what we record + what R2 serves back, so a mislabeled file can't be
+    // rendered with a trusted MIME later.
+    const detected = detectMimeType(buffer);
+    if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
+      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
     }
-    buffer = Buffer.from(await response.arrayBuffer());
-    await del(blobUrl).catch(() => {});
-  } else {
-    // Small file: sent directly as multipart/form-data
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    mimeType = detected;
+
+    const pathname = mediaKey(session.user.id, filename);
+    const { url: storageKey, hasAudio } = await uploadBuffer(pathname, buffer, {
+      contentType: mimeType,
+    });
+
+    const media = await prisma.media.create({
+      data: {
+        postId,
+        storageKey,
+        mimeType,
+        sizeBytes: buffer.length,
+        hasAudio,
+      },
+    });
+
+    if (mimeType.startsWith("video/")) {
+      // Poster extraction is the long pole — up to 4 ffmpeg passes, each
+      // re-writing the full video buffer to /tmp. Run it after the response
+      // so the composer doesn't time out on large videos. If it fails, the
+      // backfill script can recover posters later.
+      after(async () => {
+        try {
+          const { extractPoster } = await import("@/lib/video-processing");
+          const posterBuffer = await extractPoster(buffer);
+          const posterPath = pathname.replace(/\.[^/.]+$/, "") + ".poster.jpg";
+          await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
+        } catch (err) {
+          console.error(
+            `[posters] FAILED to generate poster for ${pathname}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+      });
     }
-    filename = file.name;
-    buffer = Buffer.from(await file.arrayBuffer());
-  }
 
-  // Sniff the actual content. Don't trust client-asserted Content-Type or
-  // filename extension — both are trivially spoofable. The detected type is
-  // what we record + what R2 serves back, so a mislabeled file can't be
-  // rendered with a trusted MIME later.
-  const detected = detectMimeType(buffer);
-  if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
-    return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
-  }
-  mimeType = detected;
-
-  const pathname = mediaKey(session.user.id, filename);
-  const { url: storageKey, hasAudio } = await uploadBuffer(pathname, buffer, {
-    contentType: mimeType,
-  });
-
-  if (mimeType.startsWith("video/")) {
-    // Don't fail the upload if poster generation hiccups — the video itself is
-    // already in R2. But do log loudly so we can spot a regression. Posters
-    // missing from R2 cause empty thumbnails in the planner / assistant
-    // proposals; the backfill script can recover them later.
-    try {
-      const { extractPoster } = await import("@/lib/video-processing");
-      const posterBuffer = await extractPoster(buffer);
-      const posterPath = pathname.replace(/\.[^/.]+$/, "") + ".poster.jpg";
-      await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
-    } catch (err) {
-      console.error(
-        `[posters] FAILED to generate poster for ${pathname}: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
-  }
-
-  const media = await prisma.media.create({
-    data: {
+    return NextResponse.json(media, { status: 201 });
+  } catch (err) {
+    console.error("[api/posts/[id]/media] upload failed", {
       postId,
-      storageKey,
-      mimeType,
-      sizeBytes: buffer.length,
-      hasAudio,
-    },
-  });
-
-  return NextResponse.json(media, { status: 201 });
+      err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Upload failed" },
+      { status: 500 }
+    );
+  }
 }

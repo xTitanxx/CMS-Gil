@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { upload } from "@vercel/blob/client";
 import { Upload, Loader2, CheckCircle } from "lucide-react";
 
 const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
@@ -53,15 +52,50 @@ export function MediaReplaceDrop({ mediaId, onDone }: Props) {
           }
           setProgress(100);
         } else {
-          // Large file — stage to Vercel Blob first, then POST blobUrl to replace route.
-          // multipart: true is required for >~100MB videos; without it the single-PUT
-          // path from @vercel/blob silently fails before the second fetch ever runs.
-          const blob = await upload(file.name, file, {
-            access: "public",
-            handleUploadUrl: "/api/blob",
-            multipart: true,
-            onUploadProgress: ({ percentage }) =>
-              setProgress(Math.round(percentage * 0.8)), // 0–80% for blob upload
+          // Large file — presign R2, PUT directly, then attach.
+          const presignRes = await fetch(
+            `/api/media/${mediaId}/replace/presign`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                filename: file.name,
+                contentType: file.type,
+                size: file.size,
+              }),
+            },
+          );
+          if (!presignRes.ok) {
+            throw new Error(await presignRes.text());
+          }
+          const { url: putUrl, key } = (await presignRes.json()) as {
+            url: string;
+            key: string;
+          };
+
+          // Direct PUT to R2 with XHR so we can drive the 0–80% segment of
+          // the progress bar from xhr.upload.onprogress.
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", putUrl);
+            xhr.setRequestHeader("Content-Type", file.type);
+            xhr.upload.onprogress = (evt) => {
+              if (!evt.lengthComputable) return;
+              setProgress(Math.round((evt.loaded / evt.total) * 80));
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) resolve();
+              else
+                reject(
+                  new Error(
+                    `R2 PUT ${xhr.status}${xhr.statusText ? `: ${xhr.statusText}` : ""}`,
+                  ),
+                );
+            };
+            xhr.onerror = () =>
+              reject(new Error("network error during upload"));
+            xhr.onabort = () => reject(new Error("upload aborted"));
+            xhr.send(file);
           });
 
           setProgress(85);
@@ -69,7 +103,7 @@ export function MediaReplaceDrop({ mediaId, onDone }: Props) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              blobUrl: blob.url,
+              key,
               filename: file.name,
               mimeType: file.type,
             }),

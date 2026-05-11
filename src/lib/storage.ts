@@ -22,6 +22,10 @@ function r2Url(key: string): string {
   return `${R2_PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
 }
 
+export function r2UrlForKey(key: string): string {
+  return r2Url(key);
+}
+
 export interface UploadResult {
   url: string;
   hasAudio: boolean | null;
@@ -116,4 +120,8 @@ export async function deleteObject(url: string): Promise<void> {
 
 export function mediaKey(userId: string, filename: string): string {
   return `media/${userId}/${Date.now()}-${filename}`;
+}
+
+export function importKey(userId: string, filename: string): string {
+  return `import/${userId}/${Date.now()}-${filename}`;
 }

@@ -2,16 +2,22 @@
 // Replaces the underlying file for an existing media record.
 // Accepts the same two upload modes as POST /api/posts/[id]/media:
 //   - multipart/form-data with a "file" field (small files, ≤4 MB)
-//   - application/json with { blobUrl, filename, mimeType } (large files via Vercel Blob staging)
+//   - application/json with { key, filename, mimeType } (large files: client
+//     PUT directly to R2 via /api/media/[id]/replace/presign)
 // On success returns { id, storageKey, mimeType, sizeBytes, hasAudio }.
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer, mediaKey } from "@/lib/storage";
+import {
+  uploadBuffer,
+  mediaKey,
+  getObject,
+  deleteObject,
+  r2UrlForKey,
+} from "@/lib/storage";
 import { refreshReadiness } from "@/lib/readiness-service";
-import { isOurBlobUrl } from "@/lib/url-allowlist";
 import { detectMimeType } from "@/lib/magic-byte";
-import { del } from "@vercel/blob";
+import { probeHasAudio } from "@/lib/video-processing";
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -46,39 +52,69 @@ export async function POST(
 
   const contentType = req.headers.get("content-type") ?? "";
   let buffer: Buffer;
-  let filename: string;
-  let mimeType: string;
+  let pathname: string;
+  let alreadyInR2 = false;
 
   if (contentType.includes("application/json")) {
     const body = await req.json();
-    filename = body.filename as string;
-    const blobUrl = body.blobUrl as string;
-    if (!isOurBlobUrl(blobUrl)) {
-      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    const key = typeof body.key === "string" ? body.key : "";
+
+    // Lock the key to this user's media prefix. Without this, the JSON body
+    // could point at any object in R2 and we'd overwrite this media row
+    // with someone else's file.
+    const userPrefix = `media/${session.user.id}/`;
+    if (!key.startsWith(userPrefix)) {
+      return NextResponse.json({ error: "Invalid storage key" }, { status: 400 });
     }
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch from blob storage" }, { status: 500 });
+
+    pathname = key;
+    alreadyInR2 = true;
+    try {
+      buffer = await getObject(r2UrlForKey(key));
+    } catch (err) {
+      console.error(
+        "[api/media/[id]/replace] failed to fetch presigned object",
+        err
+      );
+      return NextResponse.json(
+        { error: "Failed to fetch uploaded file" },
+        { status: 500 }
+      );
     }
-    buffer = Buffer.from(await response.arrayBuffer());
-    await del(blobUrl).catch(() => {});
   } else {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    filename = file.name;
     buffer = Buffer.from(await file.arrayBuffer());
+    pathname = mediaKey(session.user.id, file.name);
   }
 
   // Sniff actual content; ignore client-asserted Content-Type / extension.
   const detected = detectMimeType(buffer);
   if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
+    if (alreadyInR2) {
+      await deleteObject(r2UrlForKey(pathname));
+    }
     return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
   }
-  mimeType = detected;
+  const mimeType = detected;
 
-  const key = mediaKey(session.user.id, filename);
-  const { url: storageKey, hasAudio } = await uploadBuffer(key, buffer, { contentType: mimeType });
+  let storageKey: string;
+  let hasAudio: boolean | null = null;
+  if (alreadyInR2) {
+    storageKey = r2UrlForKey(pathname);
+    if (mimeType.startsWith("video/")) {
+      try {
+        hasAudio = await probeHasAudio(buffer);
+      } catch (err) {
+        console.warn("Audio probe failed, defaulting to null:", err);
+      }
+    }
+  } else {
+    const uploaded = await uploadBuffer(pathname, buffer, { contentType: mimeType });
+    storageKey = uploaded.url;
+    hasAudio = uploaded.hasAudio;
+  }
 
   const updated = await prisma.media.update({
     where: { id: mediaId },

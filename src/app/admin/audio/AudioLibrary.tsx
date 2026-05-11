@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { upload } from "@vercel/blob/client";
 import { useDropzone } from "react-dropzone";
 import { Trash2, Upload } from "lucide-react";
 import { AudioThumbnail } from "@/components/AudioThumbnail";
@@ -44,17 +43,51 @@ export function AudioLibrary({ initialTracks }: { initialTracks: Track[] }) {
         if (!res.ok) throw new Error(await res.text());
         track = await res.json();
       } else {
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/blob",
+        const mimeType = file.type || "audio/mpeg";
+        const presignRes = await fetch("/api/audio/presign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: mimeType,
+            size: file.size,
+          }),
         });
+        if (!presignRes.ok) throw new Error(await presignRes.text());
+        const { url: putUrl, key } = (await presignRes.json()) as {
+          url: string;
+          key: string;
+        };
+
+        // Direct PUT to R2. The Content-Type header is bound into the
+        // presigned URL, so it must match what we sent at presign time —
+        // otherwise R2 rejects the request.
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", putUrl);
+          xhr.setRequestHeader("Content-Type", mimeType);
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else
+              reject(
+                new Error(
+                  `R2 PUT ${xhr.status}${xhr.statusText ? `: ${xhr.statusText}` : ""}`,
+                ),
+              );
+          };
+          xhr.onerror = () =>
+            reject(new Error("network error during upload"));
+          xhr.onabort = () => reject(new Error("upload aborted"));
+          xhr.send(file);
+        });
+
         const res = await fetch("/api/audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            blobUrl: blob.url,
+            key,
             filename: file.name,
-            mimeType: file.type || "audio/mpeg",
+            mimeType,
           }),
         });
         if (!res.ok) throw new Error(await res.text());

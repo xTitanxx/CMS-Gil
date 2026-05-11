@@ -33,7 +33,6 @@
     "@types/pg": "^8.20.0",
     "@types/unzipper": "^0.10.11",
     "@types/web-push": "^3.6.4",
-    "@vercel/blob": "^2.3.3",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",

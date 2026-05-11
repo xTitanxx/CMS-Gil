@@ -4,8 +4,6 @@
 // services, or any host that returns sensitive data and exfiltrate via the
 // download / probe-audio / readiness routes.
 
-const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
-
 function parse(url: string): URL | null {
   try {
     const u = new URL(url);
@@ -29,14 +27,4 @@ export function isOurR2Url(url: string): boolean {
   // Path scoping: u.pathname must start with b.pathname (typically "/")
   const basePath = b.pathname === "/" ? "/" : b.pathname.replace(/\/$/, "") + "/";
   return u.pathname === b.pathname.replace(/\/$/, "") || u.pathname.startsWith(basePath);
-}
-
-// Vercel Blob: hostnames look like `<storeId>.public.blob.vercel-storage.com`.
-// Used for ZIP staging during import and the large-file upload path for
-// media/audio.
-export function isOurBlobUrl(url: string): boolean {
-  const u = parse(url);
-  if (!u) return false;
-  if (u.protocol !== "https:") return false;
-  return u.host.endsWith(BLOB_HOST_SUFFIX) && u.host.length > BLOB_HOST_SUFFIX.length;
 }

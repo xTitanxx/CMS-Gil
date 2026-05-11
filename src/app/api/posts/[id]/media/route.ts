@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer, mediaKey } from "@/lib/storage";
-import { isOurBlobUrl } from "@/lib/url-allowlist";
+import {
+  uploadBuffer,
+  mediaKey,
+  getObject,
+  deleteObject,
+  r2UrlForKey,
+} from "@/lib/storage";
 import { detectMimeType } from "@/lib/magic-byte";
-import { del } from "@vercel/blob";
+import { probeHasAudio } from "@/lib/video-processing";
 
-// 55-second iPhone videos run 50-150MB. The synchronous chain (blob fetch +
-// R2 PUT + ffprobe audio + ffmpeg poster) was tripping the platform default
-// timeout, surfacing as "failed to upload" in the composer. Pin the route
-// explicitly and let the long-tail work happen post-response.
+// 55-second iPhone videos run 50-150MB. The synchronous chain (R2 fetch +
+// ffprobe audio + ffmpeg poster) was tripping the platform default timeout,
+// surfacing as "failed to upload" in the composer. Pin the route explicitly
+// and let the long-tail work happen post-response.
 export const maxDuration = 300;
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -44,33 +49,51 @@ export async function POST(
   try {
     const contentType = req.headers.get("content-type") ?? "";
     let buffer: Buffer;
-    let filename: string;
-    let mimeType: string;
+    let pathname: string;
+    let alreadyInR2 = false;
 
     if (contentType.includes("application/json")) {
-      // Large file: client uploaded to Vercel Blob, sends us the URL
+      // Large file: client PUT directly to R2 using a presigned URL minted
+      // by /api/posts/[id]/media/presign. We get the key back and fetch the
+      // object for the same defense-in-depth sniff we'd do on a direct POST.
       const body = await req.json();
-      filename = body.filename as string;
+      const key = typeof body.key === "string" ? body.key : "";
 
-      const blobUrl = body.blobUrl as string;
-      if (!isOurBlobUrl(blobUrl)) {
-        return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+      // Lock the key to this user's media prefix. Without this, the JSON
+      // body could point at any object in R2 (e.g. another user's media,
+      // an audio file, the import staging area) and we'd happily wire it
+      // into this post's Media row.
+      const userPrefix = `media/${session.user.id}/`;
+      if (!key.startsWith(userPrefix)) {
+        return NextResponse.json(
+          { error: "Invalid storage key" },
+          { status: 400 }
+        );
       }
-      const response = await fetch(blobUrl);
-      if (!response.ok) {
-        return NextResponse.json({ error: "Failed to fetch file from blob storage" }, { status: 500 });
+
+      pathname = key;
+      alreadyInR2 = true;
+      try {
+        buffer = await getObject(r2UrlForKey(key));
+      } catch (err) {
+        console.error(
+          "[api/posts/[id]/media] failed to fetch presigned object",
+          err
+        );
+        return NextResponse.json(
+          { error: "Failed to fetch uploaded file" },
+          { status: 500 }
+        );
       }
-      buffer = Buffer.from(await response.arrayBuffer());
-      await del(blobUrl).catch(() => {});
     } else {
-      // Small file: sent directly as multipart/form-data
+      // Small file: sent directly as multipart/form-data. Server uploads to R2.
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
       if (!file) {
         return NextResponse.json({ error: "No file provided" }, { status: 400 });
       }
-      filename = file.name;
       buffer = Buffer.from(await file.arrayBuffer());
+      pathname = mediaKey(session.user.id, file.name);
     }
 
     // Sniff the actual content. Don't trust client-asserted Content-Type or
@@ -79,14 +102,33 @@ export async function POST(
     // rendered with a trusted MIME later.
     const detected = detectMimeType(buffer);
     if (!detected || !ALLOWED_MIME_TYPES.has(detected)) {
+      // If the client already pushed the file to R2, the orphan must be
+      // deleted now or it leaks. deleteObject swallows its own errors.
+      if (alreadyInR2) {
+        await deleteObject(r2UrlForKey(pathname));
+      }
       return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
     }
-    mimeType = detected;
+    const mimeType = detected;
 
-    const pathname = mediaKey(session.user.id, filename);
-    const { url: storageKey, hasAudio } = await uploadBuffer(pathname, buffer, {
-      contentType: mimeType,
-    });
+    let storageKey: string;
+    let hasAudio: boolean | null = null;
+    if (alreadyInR2) {
+      storageKey = r2UrlForKey(pathname);
+      if (mimeType.startsWith("video/")) {
+        try {
+          hasAudio = await probeHasAudio(buffer);
+        } catch (err) {
+          console.warn("Audio probe failed, defaulting to null:", err);
+        }
+      }
+    } else {
+      const uploaded = await uploadBuffer(pathname, buffer, {
+        contentType: mimeType,
+      });
+      storageKey = uploaded.url;
+      hasAudio = uploaded.hasAudio;
+    }
 
     const media = await prisma.media.create({
       data: {

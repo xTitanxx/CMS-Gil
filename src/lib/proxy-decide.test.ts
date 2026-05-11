@@ -130,7 +130,6 @@ describe("proxy decide()", () => {
       "/api/import/upload",
       "/api/import/process",
       "/api/drive/sync",
-      "/api/blob",
       "/api/calendar",
       "/api/todo",
       "/api/tags",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { PostListShell } from "@/app/admin/_shared/PostListShell";
 import { TriageBuckets } from "./TriageBuckets";
@@ -12,7 +13,7 @@ interface Toast {
   savedPost: TriagePost;
 }
 
-export function TriageView() {
+export function TriageView({ tabs }: { tabs?: ReactNode }) {
   const searchParams = useSearchParams();
   const bucket = searchParams.get("bucket") ?? undefined;
 
@@ -54,6 +55,7 @@ export function TriageView() {
         extraParams={{ bucket }}
         title="Needs fixes"
         itemNoun={{ singular: "post", plural: "posts" }}
+        headerActions={tabs}
         listClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
         beforeList={<TriageBuckets />}
         getPostId={(p) => p.id}

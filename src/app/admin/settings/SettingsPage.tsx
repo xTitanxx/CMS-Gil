@@ -26,7 +26,7 @@ interface Props {
 
 export default function SettingsPage({ activeTab }: Props) {
   return (
-    <div className="px-6 py-8">
+    <>
       <PageHeader
         title="Settings"
         subtitle="Manage admins, subscribers, platform connections, imports, notifications, and engagement."
@@ -46,6 +46,6 @@ export default function SettingsPage({ activeTab }: Props) {
         {activeTab === "notifications" && <NotificationsTab />}
         {activeTab === "engagement" && <EngagementTab />}
       </div>
-    </div>
+    </>
   );
 }

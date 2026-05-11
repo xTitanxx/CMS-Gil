@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Sparkles, Check, X, Loader2 } from "lucide-react";
 
@@ -19,7 +20,7 @@ interface Page {
   total: number;
 }
 
-export function ImprovementsFeed() {
+export function ImprovementsFeed({ tabs }: { tabs?: ReactNode }) {
   const [items, setItems] = useState<Item[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,11 +89,11 @@ export function ImprovementsFeed() {
   }
 
   const Header = (
-    <div className="mb-4">
-      <h1 className="hidden text-xl font-bold text-gray-900 md:block md:text-2xl">AI suggestions</h1>
+    <div className="mb-4 flex items-start justify-between gap-3">
       <p className="text-sm text-gray-500">
         AI-suggested caption rewrites for low-quality or non-evergreen posts.
       </p>
+      {tabs && <div className="flex flex-shrink-0 items-center gap-1.5">{tabs}</div>}
     </div>
   );
 

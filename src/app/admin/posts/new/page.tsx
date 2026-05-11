@@ -112,7 +112,7 @@ export default function NewPostPage() {
       // Phase 2: Upload media in parallel
       if (files.length > 0) {
         let completed = 0;
-        let failedCount = 0;
+        const failures: { name: string; reason: string }[] = [];
         setProgress(`Uploading (0/${files.length})…`);
 
         const uploadedMedia = await Promise.all(
@@ -121,8 +121,9 @@ export default function NewPostPage() {
               const uploaded = await uploadPostMedia(postId, selected.file);
               return uploaded;
             } catch (err) {
-              console.error("Media upload failed:", err);
-              failedCount++;
+              const reason = err instanceof Error ? err.message : String(err);
+              console.error("Media upload failed:", selected.file.name, err);
+              failures.push({ name: selected.file.name, reason });
               return null;
             } finally {
               completed++;
@@ -147,10 +148,11 @@ export default function NewPostPage() {
           );
         }
 
-        if (failedCount > 0) {
-          setError(
-            `${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload. The post was still created.`,
-          );
+        if (failures.length > 0) {
+          const summary = failures.length === 1
+            ? `${failures[0].name} failed to upload: ${failures[0].reason}`
+            : `${failures.length} files failed to upload. First error: ${failures[0].reason}`;
+          setError(`${summary} The post was still created.`);
           setSubmitting(false);
           return;
         }
@@ -227,7 +229,7 @@ export default function NewPostPage() {
 
         {/* Error message */}
         {error && (
-          <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 break-words">
             {error}
           </div>
         )}

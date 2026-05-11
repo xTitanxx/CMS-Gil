@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { buildInviteMessage } from "../inviteMessage";
 
 interface Subscriber {
   id: string;
@@ -219,29 +220,40 @@ export function SubscriberDetailHeader({
 
       {generated && (
         <div className="mt-4 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm">
-          <p>
-            New code:{" "}
-            <code className="rounded bg-white px-2 py-0.5 font-mono">
-              {generated}
-            </code>
-            <button
-              type="button"
-              className="ml-2 text-blue-600 hover:underline"
-              onClick={() => navigator.clipboard.writeText(generated)}
-            >
-              Copy
-            </button>
-            <button
-              type="button"
-              className="ml-2 text-gray-500 hover:underline"
-              onClick={() => setGenerated(null)}
-            >
-              Dismiss
-            </button>
-          </p>
-          <p className="mt-1 text-xs text-gray-600">
-            Share this with the subscriber. The old code no longer works.
-          </p>
+          <div className="flex items-start gap-4">
+            <div className="flex-1">
+              <p className="mb-2 text-xs text-gray-600">
+                New code:{" "}
+                <code className="rounded bg-white px-2 py-0.5 font-mono text-sm">
+                  {generated}
+                </code>
+                {" "}— old code no longer works.
+              </p>
+              <pre className="whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 font-mono text-xs leading-relaxed text-gray-800">
+                {buildInviteMessage(subscriber.name, generated)}
+              </pre>
+            </div>
+            <div className="flex shrink-0 flex-col gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    buildInviteMessage(subscriber.name, generated)
+                  )
+                }
+                className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"
+              >
+                Copy message
+              </button>
+              <button
+                type="button"
+                className="text-xs text-gray-500 hover:underline"
+                onClick={() => setGenerated(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

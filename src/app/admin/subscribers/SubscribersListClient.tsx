@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { buildInviteMessage } from "./inviteMessage";
 
 type Subscriber = {
   id: string;
@@ -33,6 +34,8 @@ export function SubscribersListClient() {
   const [generated, setGenerated] = useState<{ name: string; code: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [inviteBusy, setInviteBusy] = useState<Record<string, boolean>>({});
+  const [inviteCode, setInviteCode] = useState<Record<string, string>>({});
 
   async function refresh() {
     const res = await fetch("/api/admin/subscribers");
@@ -90,6 +93,34 @@ export function SubscribersListClient() {
     void refresh();
   }
 
+  async function handleInvite(s: Subscriber) {
+    if (
+      s.lastSeenAt &&
+      !confirm(`${s.name} has already signed in. Regenerating will invalidate their old code. Continue?`)
+    )
+      return;
+    setInviteBusy((prev) => ({ ...prev, [s.id]: true }));
+    try {
+      const res = await fetch(`/api/admin/subscribers/${s.id}/regenerate-code`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const { code } = await res.json();
+        setInviteCode((prev) => ({ ...prev, [s.id]: code }));
+      }
+    } finally {
+      setInviteBusy((prev) => ({ ...prev, [s.id]: false }));
+    }
+  }
+
+  function dismissInvite(id: string) {
+    setInviteCode((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       {list.length === 0 ? (
@@ -115,43 +146,83 @@ export function SubscribersListClient() {
                   s.monthlyBudgetUsd > 0
                     ? Math.min(100, Math.round((s.cycleUsedUsd / s.monthlyBudgetUsd) * 100))
                     : 100;
+                const msg = inviteCode[s.id]
+                  ? buildInviteMessage(s.name, inviteCode[s.id])
+                  : null;
                 return (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-3">
-                      <Link
-                        href={`/admin/subscribers/${s.id}`}
-                        className="font-medium text-blue-700 hover:underline"
-                      >
-                        {s.name}
-                      </Link>
-                    </td>
-                    <td className="py-3 text-gray-700">{s.email ?? "—"}</td>
-                    <td className="py-3 text-gray-700">
-                      {s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : "—"}
-                    </td>
-                    <td className="py-3 text-gray-700">
-                      ${s.cycleUsedUsd.toFixed(2)} / ${s.monthlyBudgetUsd.toFixed(2)}
-                      <span className="ml-1 text-xs text-gray-500">({pct}%)</span>
-                    </td>
-                    <td className="py-3 text-gray-700">
-                      {s.revokedAt ? (
-                        <span className="text-amber-700">Revoked</span>
-                      ) : (
-                        <span className="text-emerald-700">Active</span>
-                      )}
-                      {s.commentsDisabledAt && (
-                        <span className="ml-1 text-xs text-amber-600">· comments off</span>
-                      )}
-                    </td>
-                    <td className="space-x-2 px-6 py-3 text-right whitespace-nowrap">
-                      <Link
-                        href={`/admin/subscribers/${s.id}`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Open
-                      </Link>
-                    </td>
-                  </tr>
+                  <Fragment key={s.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-6 py-3">
+                        <Link
+                          href={`/admin/subscribers/${s.id}`}
+                          className="font-medium text-blue-700 hover:underline"
+                        >
+                          {s.name}
+                        </Link>
+                      </td>
+                      <td className="py-3 text-gray-700">{s.email ?? "—"}</td>
+                      <td className="py-3 text-gray-700">
+                        {s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="py-3 text-gray-700">
+                        ${s.cycleUsedUsd.toFixed(2)} / ${s.monthlyBudgetUsd.toFixed(2)}
+                        <span className="ml-1 text-xs text-gray-500">({pct}%)</span>
+                      </td>
+                      <td className="py-3 text-gray-700">
+                        {s.revokedAt ? (
+                          <span className="text-amber-700">Revoked</span>
+                        ) : (
+                          <span className="text-emerald-700">Active</span>
+                        )}
+                        {s.commentsDisabledAt && (
+                          <span className="ml-1 text-xs text-amber-600">· comments off</span>
+                        )}
+                      </td>
+                      <td className="space-x-3 px-6 py-3 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => (msg ? dismissInvite(s.id) : handleInvite(s))}
+                          disabled={inviteBusy[s.id]}
+                          className="text-emerald-600 hover:underline disabled:opacity-40"
+                        >
+                          {inviteBusy[s.id] ? "…" : msg ? "Hide" : "Invite"}
+                        </button>
+                        <Link
+                          href={`/admin/subscribers/${s.id}`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Open
+                        </Link>
+                      </td>
+                    </tr>
+                    {msg && (
+                      <tr className="bg-emerald-50">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="flex items-start gap-4">
+                            <pre className="flex-1 whitespace-pre-wrap font-mono text-xs leading-relaxed text-gray-800">
+                              {msg}
+                            </pre>
+                            <div className="flex shrink-0 flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => navigator.clipboard.writeText(msg)}
+                                className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"
+                              >
+                                Copy message
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => dismissInvite(s.id)}
+                                className="text-xs text-gray-500 hover:underline"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

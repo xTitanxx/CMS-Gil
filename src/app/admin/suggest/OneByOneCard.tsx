@@ -330,7 +330,7 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
 
   const MediaFrame = (
     <div
-      className="relative shrink-0 overflow-hidden rounded-2xl bg-black shadow-lg select-none touch-pan-y"
+      className={`relative shrink-0 overflow-hidden rounded-2xl shadow-lg select-none touch-pan-y ${candidate.media.length === 0 ? "bg-gradient-to-br from-slate-50 to-gray-100" : "bg-black"}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -357,8 +357,10 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           />
         )
       ) : (
-        <div className="flex h-48 w-full items-center justify-center text-gray-500">
-          <span className="text-xs">No media</span>
+        <div className="flex min-h-[220px] w-full items-center justify-center px-8 py-10">
+          <p className="line-clamp-6 text-center text-base leading-relaxed text-gray-500 md:text-lg">
+            {body}
+          </p>
         </div>
       )}
 
@@ -444,13 +446,13 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
 
   const ActionBar = (
     <div
-      className="sticky bottom-0 mt-auto flex shrink-0 items-stretch gap-2 border-t border-gray-200 bg-white/95 px-3 py-2 backdrop-blur md:px-6 md:py-3"
+      className="flex shrink-0 items-stretch gap-2 border-t border-gray-200 bg-white/95 px-3 py-2 backdrop-blur md:px-6 md:py-3"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 0.5rem)" }}
     >
       <button
         onClick={() => void fireSkip()}
         disabled={accepting || accepted}
-        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 md:py-3.5 md:text-base"
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-200 disabled:opacity-50 md:py-3.5 md:text-base"
       >
         <X className="h-4 w-4 md:h-5 md:w-5" />
         Skip
@@ -480,19 +482,15 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           willChange: "transform, opacity",
         }}
       >
-        {/* Mobile: single column. Desktop: media left, details right. */}
+        {/* Mobile: single column (media → caption → slot → platforms).
+            Desktop: left = content (media + caption), right = scheduling (slot + platforms). */}
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-6">
           <div className="flex min-w-0 flex-col gap-3 md:gap-4">
             {MediaFrame}
-            {/* Mobile-only slot pill — sits right under media so it's near the
-                Schedule button visually. Desktop renders it in the right column. */}
-            <div className="md:hidden">{SlotPill}</div>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-3 md:gap-4">
-            {/* Desktop-only slot pill */}
-            <div className="hidden md:block">{SlotPill}</div>
             {CaptionBlock}
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 md:gap-4">
+            {SlotPill}
             {PlatformsBlock}
           </div>
         </div>

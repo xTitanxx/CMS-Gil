@@ -74,8 +74,14 @@ async function vectorCandidates(
   // and shared posts at the SQL level. We stay loose on lifecycle/season/etc
   // here and apply those in app code after fetching the full row — keeps the
   // raw query simple at our corpus size (~5k rows).
+  // Cast the column to text — comparing the PostType enum directly against a
+  // text[] param errors with `operator does not exist: "PostType" = text` and
+  // takes down the entire hybridSearch (vector branch throws, the chat catches,
+  // Archivist silently falls back to newest-50 baseline with no semantic
+  // retrieval). Archivist passes postTypes=["POST"] every turn, so any topic
+  // outside the baseline window stays invisible until this cast is right.
   const postTypeClause = postTypes
-    ? Prisma.sql`AND "postType" = ANY(${postTypes}::text[])`
+    ? Prisma.sql`AND "postType"::text = ANY(${postTypes}::text[])`
     : Prisma.empty;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id

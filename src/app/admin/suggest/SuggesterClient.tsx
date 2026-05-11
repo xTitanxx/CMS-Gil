@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Sparkles, Loader2, Undo2 } from "lucide-react";
+import { Sparkles, Loader2, Undo2, AlertCircle, RotateCw } from "lucide-react";
 import { OneByOneCard } from "./OneByOneCard";
 import type { NextCandidateResponse, SuggestCandidate, SuggestedSlot } from "./types";
 
@@ -39,33 +39,42 @@ interface LoadedCandidate {
   remaining: number;
 }
 
+/**
+ * Suggester state machine — kept deliberately simple after the previous
+ * design's prefetch caused slot double-booking (a stale prefetched slot was
+ * promoted to "current" without re-checking which hour the server now
+ * considered free). No prefetch here: every candidate is fetched fresh after
+ * the previous one is decided. The ~300ms loading is acceptable; the user
+ * pauses to look at the next card anyway.
+ */
 export function SuggesterClient() {
   const [current, setCurrent] = useState<LoadedCandidate | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<AcceptedSummary[]>([]);
   const [skipped, setSkipped] = useState<SkippedSummary[]>([]);
   const [undo, setUndo] = useState<UndoState | null>(null);
 
+  // IDs whose decision is already recorded this session (accept or skip).
+  // Sent as `exclude` so the server doesn't re-offer them.
   const seenRef = useRef<Set<string>>(new Set());
-  // Prefetched *candidate* (without slot). Slot is always refetched at promotion
-  // time because an accept consumes the suggester's current slot and the
-  // server-side "next free slot" advances by one — a stale prefetched slot
-  // caused the suggester to suggest the same hour to two consecutive posts,
-  // and propose silently overwrote the earlier one.
-  const nextCandidateRef = useRef<LoadedCandidate | null>(null);
-  const inFlightRef = useRef<boolean>(false);
+  // Guards against overlapping fetches when multiple effects/handlers race.
+  const fetchingRef = useRef(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchCandidate = useCallback(async (): Promise<LoadedCandidate | null> => {
+  const fetchOne = useCallback(async (): Promise<LoadedCandidate | "empty"> => {
     const exclude = Array.from(seenRef.current).join(",");
     const url = exclude
       ? `/api/planner/next-candidate?exclude=${exclude}`
       : "/api/planner/next-candidate";
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`next-candidate ${res.status}`);
     const data = (await res.json()) as NextCandidateResponse;
-    if (!data.candidate || !data.suggestedSlot) return null;
+    // "No open slots in the next 8 weeks" is a soft empty state — show the
+    // empty screen instead of treating it as an error so the user gets a
+    // sensible CTA.
+    if (!data.candidate || !data.suggestedSlot) return "empty";
     if (data.error) throw new Error(data.error);
     return {
       candidate: data.candidate,
@@ -75,76 +84,36 @@ export function SuggesterClient() {
     };
   }, []);
 
-  // Refresh just the slot for an already-loaded candidate. Used after an accept
-  // (which consumed the previous slot) so the prefetched candidate gets a fresh
-  // slot before being shown to the user.
-  const refreshSlotFor = useCallback(
-    async (cand: LoadedCandidate): Promise<LoadedCandidate | null> => {
-      const fresh = await fetchCandidate();
-      if (!fresh) return null;
-      // If the server now returns a different earliest candidate (e.g. the
-      // previously seen exclusion list shifted), trust the server — just use
-      // its candidate too.
-      return fresh;
-    },
-    [fetchCandidate],
-  );
-
-  const ensureCurrent = useCallback(
-    async (opts: { stale?: boolean } = {}) => {
-      if (current || loading || inFlightRef.current) return;
-      inFlightRef.current = true;
-      setLoading(true);
-      setError(null);
-      try {
-        let next: LoadedCandidate | null = null;
-        const prefetched = nextCandidateRef.current;
-        nextCandidateRef.current = null;
-        if (prefetched && !opts.stale) {
-          next = prefetched;
-        } else if (prefetched && opts.stale) {
-          next = await refreshSlotFor(prefetched);
-        } else {
-          next = await fetchCandidate();
-        }
-        if (!next) {
-          setEmpty(true);
-          setCurrent(null);
-          return;
-        }
+  const loadNext = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await fetchOne();
+      if (next === "empty") {
+        setCurrent(null);
+        setEmpty(true);
+      } else {
         setCurrent(next);
         setEmpty(false);
-        // Background prefetch for the *next* candidate (after this one). We
-        // tentatively add this candidate's id to seenRef so the prefetch
-        // returns a different one; we restore seenRef afterwards because the
-        // user hasn't actually decided yet.
-        void (async () => {
-          seenRef.current.add(next!.candidate.id);
-          try {
-            const after = await fetchCandidate();
-            nextCandidateRef.current = after;
-          } catch {
-            // swallow — prefetch failures aren't user-visible
-          } finally {
-            seenRef.current.delete(next!.candidate.id);
-          }
-        })();
-      } catch (e) {
-        setError(String(e));
-        setCurrent(null);
-      } finally {
-        inFlightRef.current = false;
-        setLoading(false);
       }
-    },
-    [current, loading, fetchCandidate, refreshSlotFor],
-  );
-
-  useEffect(() => {
-    if (!current && !empty && !loading && !error) {
-      void ensureCurrent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setCurrent(null);
+    } finally {
+      fetchingRef.current = false;
+      setLoading(false);
     }
-  }, [current, empty, loading, error, ensureCurrent]);
+  }, [fetchOne]);
+
+  // Initial load only — every subsequent load is triggered explicitly by a
+  // handler (accept / skip / undo / retry). No effect-based auto-retry so we
+  // can't get into a render → fetch → render → fetch loop on transient errors.
+  useEffect(() => {
+    void loadNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -169,7 +138,6 @@ export function SuggesterClient() {
     if (!current) return;
     const c = current.candidate;
     seenRef.current.add(c.id);
-    setCurrent(null);
 
     try {
       await fetch("/api/planner/skip", {
@@ -178,7 +146,7 @@ export function SuggesterClient() {
         body: JSON.stringify({ postId: c.id }),
       });
     } catch {
-      // Network failure → still locally skipped this session.
+      // Network failure — still locally skipped this session.
     }
 
     setSkipped((prev) => [{ postId: c.id, body: c.body.slice(0, 80) }, ...prev]);
@@ -189,14 +157,15 @@ export function SuggesterClient() {
       label: "Skipped — sent to Triage",
     });
 
-    // Slot wasn't consumed; prefetched candidate's slot is still valid.
-    void ensureCurrent();
-  }, [current, ensureCurrent]);
+    setCurrent(null);
+    void loadNext();
+  }, [current, loadNext]);
 
   const handleAccept = useCallback(
     async (input: { body: string; platforms: string[]; slot: SuggestedSlot }) => {
       if (!current) return;
       const c = current.candidate;
+      setError(null);
 
       if (input.body !== c.body) {
         await fetch(`/api/posts/${c.id}`, {
@@ -220,24 +189,23 @@ export function SuggesterClient() {
       });
 
       if (res.status === 409) {
-        // Slot got taken between display and accept (e.g. parallel tab).
-        // Drop the prefetched next (its slot may also be stale) and refetch
-        // fresh so the user sees a new free slot for the same candidate.
-        nextCandidateRef.current = null;
+        // Race: slot taken between display and accept. Drop the current card
+        // (don't mark seen — same post can be rescheduled) and fetch fresh.
         setError("That slot was just taken — picked a fresh one.");
         setCurrent(null);
-        void ensureCurrent({ stale: true });
-        return;
+        void loadNext();
+        throw new Error("slot taken");
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setError(err.error ?? "Failed to schedule");
-        return;
+        const message = err?.error ?? `propose failed (${res.status})`;
+        setError(message);
+        // Throw so OneByOneCard.fireAccept resets its local state and the
+        // user can retry on the same card.
+        throw new Error(message);
       }
+
       const data = (await res.json()) as { planId?: string; slotId?: string };
-      if (!data.planId || !data.slotId) {
-        setError("Schedule succeeded but no slot returned — undo unavailable.");
-      }
 
       seenRef.current.add(c.id);
       setAccepted((prev) => [
@@ -265,11 +233,9 @@ export function SuggesterClient() {
       }
 
       setCurrent(null);
-      // The slot we just used is no longer free → refresh the prefetched
-      // candidate's slot before showing it.
-      void ensureCurrent({ stale: true });
+      void loadNext();
     },
-    [current, ensureCurrent],
+    [current, loadNext],
   );
 
   const handleUndo = useCallback(async () => {
@@ -294,29 +260,29 @@ export function SuggesterClient() {
     }
 
     seenRef.current.delete(state.postId);
-    nextCandidateRef.current = null;
     setCurrent(null);
     setEmpty(false);
-    // Undo freed a slot; refetch fresh.
-    void ensureCurrent({ stale: true });
-  }, [undo, ensureCurrent]);
+    void loadNext();
+  }, [undo, loadNext]);
+
+  const headerSubtext = error
+    ? error
+    : current
+      ? `${current.remaining} candidates left`
+      : loading
+        ? "Loading…"
+        : empty
+          ? "All caught up"
+          : "Loading…";
 
   return (
-    <div className="-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col md:-m-8 md:min-h-[calc(100dvh-0px)]">
+    <div className="-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col md:-m-8 md:min-h-screen">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white/90 px-4 py-2 pl-14 backdrop-blur md:px-8 md:pl-8 md:py-3">
         <div className="min-w-0">
           <h1 className="truncate text-base font-semibold text-gray-900 md:text-lg">
             Suggester
           </h1>
-          <p className="text-[11px] text-gray-500 md:text-xs">
-            {current?.remaining
-              ? `${current.remaining} candidates left`
-              : loading
-                ? "Loading…"
-                : empty
-                  ? "All caught up"
-                  : "Reviewing"}
-          </p>
+          <p className="text-[11px] text-gray-500 md:text-xs">{headerSubtext}</p>
         </div>
         <div className="flex items-center gap-2">
           {accepted.length > 0 && (
@@ -343,7 +309,24 @@ export function SuggesterClient() {
           </div>
         )}
 
-        {empty && !loading && (
+        {!loading && error && !current && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="rounded-full bg-red-50 p-3 ring-1 ring-red-200">
+              <AlertCircle className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="text-base font-semibold text-gray-900">Couldn&apos;t load the next post</div>
+            <p className="max-w-[320px] text-sm text-gray-500">{error}</p>
+            <button
+              onClick={() => void loadNext()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              <RotateCw className="h-4 w-4" />
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && empty && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="rounded-full bg-emerald-50 p-3 ring-1 ring-emerald-200">
               <Sparkles className="h-6 w-6 text-emerald-600" />
@@ -353,7 +336,6 @@ export function SuggesterClient() {
               No more candidates to schedule right now. Come back later, or open the
               planner to review what&apos;s queued.
             </p>
-            {error && <p className="text-xs text-red-600">{error}</p>}
             <Link
               href="/admin/planner"
               className="mt-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -363,8 +345,9 @@ export function SuggesterClient() {
           </div>
         )}
 
-        {current && !loading && (
+        {current && (
           <OneByOneCard
+            key={current.candidate.id}
             candidate={current.candidate}
             initialSlot={current.slot}
             initialPlatforms={current.platforms}

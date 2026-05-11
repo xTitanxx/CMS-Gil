@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCandidatePosts } from "@/lib/planner/candidates";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
 import { getConnectedPlatforms } from "@/lib/connected-platforms";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
 type PlanStatus = "DRAFT" | "PARTIAL" | "APPROVED";
 
@@ -199,8 +200,59 @@ export async function PATCH(
     }
 
     case "clear": {
+      // "Clear all" sweeps the user's entire pipeline, not just this week.
+      // The planner UI shows slots from past/current/future plans merged
+      // together, so a button labelled "Clear" but scoped to one planId
+      // silently left other weeks' slots in place. Operate user-wide:
+      //   1. cancel any still-PENDING PublishRecords for this user
+      //   2. undo the optimistic publishCount bump that schedule:true
+      //      applied when those records were created
+      //   3. delete every PROPOSED/APPROVED/SCHEDULED slot across all of
+      //      the user's plans
+      // Past PUBLISHED records and slots from already-fired schedules are
+      // left untouched — we can't un-publish.
+      const userScheduled = await prisma.weeklyPlanSlot.findMany({
+        where: { plan: { userId }, status: "SCHEDULED" },
+        select: { id: true, postId: true, day: true, hour: true },
+      });
+
+      for (const s of userScheduled) {
+        if (s.hour == null) continue;
+        const scheduledAt = buildSlotDate(s.day, s.hour);
+        const cancelled = await prisma.publishRecord.updateMany({
+          where: {
+            postId: s.postId,
+            status: "PENDING",
+            scheduledAt,
+          },
+          data: { status: "CANCELLED" },
+        });
+        if (cancelled.count > 0) {
+          await prisma.post.update({
+            where: { id: s.postId },
+            data: { publishCount: { decrement: 1 } },
+          });
+        }
+      }
+
+      // Catch any orphan PENDING records this user has whose matching slot
+      // was deleted by an earlier buggy overwrite — these would otherwise
+      // fire at the cron tick and silently publish posts the user thinks
+      // they cancelled.
+      await prisma.publishRecord.updateMany({
+        where: {
+          status: "PENDING",
+          post: { userId },
+          scheduledAt: { gte: new Date() },
+        },
+        data: { status: "CANCELLED" },
+      });
+
       await prisma.weeklyPlanSlot.deleteMany({
-        where: { planId, status: { in: ["PROPOSED", "APPROVED"] } },
+        where: {
+          plan: { userId },
+          status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+        },
       });
       break;
     }

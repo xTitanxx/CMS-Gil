@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer, audioKey, getSignedDownloadUrl } from "@/lib/storage";
-import { isOurBlobUrl } from "@/lib/url-allowlist";
+import {
+  uploadBuffer,
+  audioKey,
+  getSignedDownloadUrl,
+  getObject,
+  deleteObject,
+  r2UrlForKey,
+} from "@/lib/storage";
 import { detectMimeType } from "@/lib/magic-byte";
-import { del } from "@vercel/blob";
 
 // Detected types (after magic-byte sniff) we'll accept. The client may have
 // asserted "audio/mp3" or "audio/x-wav"; the magic-byte detector normalizes
@@ -53,23 +58,40 @@ export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") ?? "";
   let buffer: Buffer;
   let filename: string;
-  let mimeType: string;
   let title: string;
+  let storageKey: string;
+  let alreadyInR2 = false;
+  let presignedKey = "";
 
   if (contentType.includes("application/json")) {
+    // Large file: client PUT directly to R2 via /api/audio/presign. We get
+    // the key back and fetch the object for the same magic-byte sniff a
+    // direct POST would get.
     const body = await req.json();
-    filename = body.filename as string;
+    filename = (body.filename as string) ?? "";
     title = (body.title as string) || filename.replace(/\.[^/.]+$/, "");
-    const blobUrl = body.blobUrl as string;
-    if (!isOurBlobUrl(blobUrl)) {
-      return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    const key = typeof body.key === "string" ? body.key : "";
+
+    // Lock the key to this user's audio prefix. Without this, the JSON body
+    // could point at any object in R2 (another user's audio, someone's
+    // media file, the import staging area) and we'd happily wire it into
+    // this user's AudioTrack row.
+    const userPrefix = `audio/${session.user.id}/`;
+    if (!key.startsWith(userPrefix)) {
+      return NextResponse.json({ error: "Invalid storage key" }, { status: 400 });
     }
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch blob" }, { status: 500 });
+
+    presignedKey = key;
+    alreadyInR2 = true;
+    try {
+      buffer = await getObject(r2UrlForKey(key));
+    } catch (err) {
+      console.error("[api/audio] failed to fetch presigned object", err);
+      return NextResponse.json(
+        { error: "Failed to fetch uploaded file" },
+        { status: 500 }
+      );
     }
-    buffer = Buffer.from(await response.arrayBuffer());
-    await del(blobUrl).catch(() => {});
   } else {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -86,12 +108,22 @@ export async function POST(req: NextRequest) {
   // and what R2 will serve back.
   const detected = detectMimeType(buffer);
   if (!detected || !ALLOWED_DETECTED.has(detected)) {
+    // If the client already pushed the file to R2, delete the orphan now
+    // or it leaks. deleteObject swallows its own errors.
+    if (alreadyInR2) {
+      await deleteObject(r2UrlForKey(presignedKey));
+    }
     return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
   }
-  mimeType = detected;
+  const mimeType = detected;
 
-  const key = audioKey(session.user.id, filename);
-  const { url: storageKey } = await uploadBuffer(key, buffer, { contentType: mimeType });
+  if (alreadyInR2) {
+    storageKey = r2UrlForKey(presignedKey);
+  } else {
+    const key = audioKey(session.user.id, filename);
+    const uploaded = await uploadBuffer(key, buffer, { contentType: mimeType });
+    storageKey = uploaded.url;
+  }
 
   const track = await prisma.audioTrack.create({
     data: {

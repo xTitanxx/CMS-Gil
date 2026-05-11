@@ -71,8 +71,11 @@ export function SuggesterClient() {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`next-candidate ${res.status}`);
     const data = (await res.json()) as NextCandidateResponse;
-    if (data.error) throw new Error(data.error);
+    // "No open slots in the next 8 weeks" is a soft empty state — show the
+    // empty screen instead of treating it as an error so the user gets a
+    // sensible CTA.
     if (!data.candidate || !data.suggestedSlot) return "empty";
+    if (data.error) throw new Error(data.error);
     return {
       candidate: data.candidate,
       slot: data.suggestedSlot,

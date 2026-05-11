@@ -53,10 +53,13 @@ export function MediaReplaceDrop({ mediaId, onDone }: Props) {
           }
           setProgress(100);
         } else {
-          // Large file — stage to Vercel Blob first, then POST blobUrl to replace route
+          // Large file — stage to Vercel Blob first, then POST blobUrl to replace route.
+          // multipart: true is required for >~100MB videos; without it the single-PUT
+          // path from @vercel/blob silently fails before the second fetch ever runs.
           const blob = await upload(file.name, file, {
             access: "public",
             handleUploadUrl: "/api/blob",
+            multipart: true,
             onUploadProgress: ({ percentage }) =>
               setProgress(Math.round(percentage * 0.8)), // 0–80% for blob upload
           });

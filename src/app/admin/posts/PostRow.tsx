@@ -6,7 +6,6 @@ import { useCallback } from "react";
 import {
   Image as ImageIcon,
   Trash2,
-  Send,
   Music,
   VolumeX,
   Link as LinkIcon,
@@ -44,15 +43,6 @@ export interface PostRowData {
   captionEvergreen: boolean | null;
   captionSuggestion: string | null;
 }
-
-const ALL_PLATFORMS = [
-  "INSTAGRAM",
-  "LINKEDIN",
-  "YOUTUBE",
-  "TIKTOK",
-  "FACEBOOK_PAGE",
-] as const;
-const VIDEO_ONLY = new Set(["YOUTUBE", "TIKTOK"]);
 
 function RowDeleteButton({
   postId,
@@ -99,57 +89,6 @@ function RowDeleteButton({
   );
 }
 
-function RowPublishAllButton({ post }: { post: PostRowData }) {
-  const { isLoading, status, message, run } = useAsync();
-  const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
-  const targets = ALL_PLATFORMS.filter((p) => hasVideo || !VIDEO_ONLY.has(p));
-
-  const handlePublish = useCallback(async () => {
-    await run(async () => {
-      const res = await fetch(`/api/posts/${post.id}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platforms: targets }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Publish failed");
-      }
-    }, `Publishing to ${targets.length} platform${targets.length === 1 ? "" : "s"}`);
-  }, [post.id, targets, run]);
-  const { confirming, trigger } = useConfirm(handlePublish);
-
-  const tone =
-    status === "error"
-      ? "text-red-500"
-      : status === "success"
-      ? "text-green-600"
-      : confirming
-      ? "text-amber-500"
-      : "text-gray-300 hover:text-blue-600";
-
-  return (
-    <button
-      className={`flex-shrink-0 self-center p-1 transition-colors ${tone}`}
-      onClick={(e) => {
-        e.preventDefault();
-        trigger();
-      }}
-      title={
-        status === "error"
-          ? `Error: ${message}`
-          : status === "success"
-          ? "Publishing started"
-          : confirming
-          ? `Publish to ${targets.join(", ")}?`
-          : `Publish to all (${targets.length})`
-      }
-    >
-      {isLoading ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-    </button>
-  );
-}
-
 export interface PostRowProps {
   post: PostRowData;
   index: number;
@@ -162,11 +101,13 @@ export interface PostRowProps {
 export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDeleted }: PostRowProps) {
   return (
     <div
-      className={`flex items-start gap-2 rounded-lg border bg-white p-3 transition-shadow hover:shadow-sm md:items-center md:gap-3 md:p-4 ${
-        isSelected ? "border-blue-300 bg-blue-50" : "border-gray-200"
+      className={`flex items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm ring-1 ring-black/[0.02] transition-all hover:shadow-md md:gap-4 md:p-4 ${
+        isSelected
+          ? "border-blue-300 bg-blue-50/60 ring-blue-200"
+          : "border-gray-100 hover:border-gray-200"
       }`}
     >
-      <div className="flex-shrink-0 pt-1 md:pt-0">
+      <label className="flex flex-shrink-0 cursor-pointer items-center justify-center self-center">
         <input
           type="checkbox"
           checked={isSelected}
@@ -174,9 +115,9 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
           onChange={() => {}}
           className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
         />
-      </div>
+      </label>
 
-      <Link href={href} className="flex min-w-0 flex-1 items-start gap-3 md:items-center md:gap-4">
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28">
           {post.thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -233,29 +174,15 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
             >
               #{index + 1}
             </button>
-            <span className="text-xs text-gray-400">
+            <span
+              className="text-sm font-medium text-gray-600"
+              title={format(new Date(post.originalDate), "MMM d, yyyy · h:mm a")}
+            >
               {format(new Date(post.originalDate), "MMM d, yyyy")}
-              <span className="hidden sm:inline"> · {format(new Date(post.originalDate), "h:mm a")}</span>
             </span>
             {post.rating && (
               <span className="text-yellow-500 text-xs" title={`${post.rating.stars}/5`}>
                 {"★".repeat(post.rating.stars)}
-              </span>
-            )}
-            {post.captionQuality != null && (
-              <span
-                className={`text-xs rounded-full px-2 py-0.5 ${
-                  post.captionQuality >= 4
-                    ? "bg-green-100 text-green-700"
-                    : post.captionQuality <= 2
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-gray-100 text-gray-600"
-                }`}
-                title={`Caption quality: ${post.captionQuality}/5${post.captionEvergreen === false ? " · non-evergreen caption" : ""}${post.captionSuggestion ? " · AI rewrite available" : ""}`}
-              >
-                {post.captionQuality >= 4 ? "Good" : post.captionQuality === 3 ? "OK" : "Weak"} caption
-                {post.captionEvergreen === false ? " · dated" : ""}
-                {post.captionSuggestion ? " · rewrite" : ""}
               </span>
             )}
             {post.platformUrl && (
@@ -376,7 +303,6 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
         />
       </Link>
 
-      <RowPublishAllButton post={post} />
       <RowDeleteButton postId={post.id} onDeleted={() => onDeleted(post.id)} />
     </div>
   );

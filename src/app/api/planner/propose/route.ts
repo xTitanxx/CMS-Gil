@@ -75,6 +75,46 @@ export async function POST(req: NextRequest) {
     select: { id: true },
   });
 
+  // schedule:true is the suggester's commit path — refuse to silently overwrite
+  // another post that already lives in (planId, day, hour) or in the matching
+  // PublishRecord. Without this, racing/stale clients overwrote prior accepts
+  // (same slot got reused, prior PublishRecord left orphan PENDING). The
+  // planner/assistant flow (schedule:false) keeps the original overwrite
+  // semantics because it's user-driven editing of a plan, not a commit.
+  if (scheduleNow && hour != null) {
+    const scheduledAt = buildSlotDate(dayDate, hour);
+    const [slotConflict, publishConflict] = await Promise.all([
+      prisma.weeklyPlanSlot.findFirst({
+        where: {
+          planId: plan.id,
+          day: dayDate,
+          hour,
+          postId: { not: postId },
+          status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+        },
+        select: { id: true, postId: true },
+      }),
+      prisma.publishRecord.findFirst({
+        where: {
+          status: "PENDING",
+          scheduledAt,
+          postId: { not: postId },
+          post: { userId },
+        },
+        select: { id: true, postId: true },
+      }),
+    ]);
+    if (slotConflict || publishConflict) {
+      return NextResponse.json(
+        {
+          error: "slot already taken",
+          conflict: slotConflict ?? publishConflict,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   // Replace at the precise (day, hour) — keeps other slots on the same day
   // intact so the suggester can stack multiple posts per day. Also clear any
   // prior slot for this same post on this day so the

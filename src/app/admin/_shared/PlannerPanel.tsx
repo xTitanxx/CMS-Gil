@@ -37,12 +37,9 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
     }
   }, [refreshPlan]);
 
-  const handleApproveSlot = useCallback(
+  const handleScheduleSlot = useCallback(
     async (slotId: string) => {
       if (!plan) return;
-      // Per-slot Schedule must actually schedule (create PublishRecord). The
-      // PATCH approve action only flipped status to APPROVED which the UI
-      // renders identically to PROPOSED — looked like a no-op.
       await fetch(`/api/planner/${plan.id}/schedule`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,10 +47,10 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
       });
       await refreshPlan();
     },
-    [plan, refreshPlan]
+    [plan, refreshPlan],
   );
 
-  const handleRemoveSlot = useCallback(
+  const handleUnscheduleSlot = useCallback(
     async (slotId: string) => {
       if (!plan) return;
       await fetch(`/api/planner/${plan.id}`, {
@@ -63,14 +60,7 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
       });
       await refreshPlan();
     },
-    [plan, refreshPlan]
-  );
-
-  const handleSwapSlot = useCallback(
-    (_day: string) => {
-      void refreshPlan();
-    },
-    [refreshPlan]
+    [plan, refreshPlan],
   );
 
   const handleClearAll = useCallback(async () => {
@@ -99,16 +89,28 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
     }
   }, [plan, refreshPlan]);
 
+  const handleBodyChange = useCallback((postId: string, body: string) => {
+    setPlan((p) => {
+      if (!p) return p;
+      return {
+        ...p,
+        slots: p.slots.map((s) =>
+          s.post.id === postId ? { ...s, post: { ...s.post, body } } : s,
+        ),
+      };
+    });
+  }, []);
+
   return (
     <WeeklyPlanView
       plan={plan}
       loading={loading}
       onGenerate={handleGenerate}
-      onApproveSlot={handleApproveSlot}
-      onRemoveSlot={handleRemoveSlot}
-      onSwapSlot={handleSwapSlot}
+      onScheduleSlot={handleScheduleSlot}
+      onUnscheduleSlot={handleUnscheduleSlot}
       onClearAll={handleClearAll}
       onScheduleAll={handleScheduleAll}
+      onBodyChange={handleBodyChange}
     />
   );
 });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Film, ImageIcon, Type, Leaf, Check, X, Loader2, Sparkles, AlertTriangle } from "lucide-react";
-import { PLATFORM_META, dedupePlatforms } from "../../planner/PlanSlotCard";
+import { PLATFORM_META, dedupePlatforms } from "@/lib/planner/platforms";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { formatSlotHour } from "@/lib/planner/format-slot";
 

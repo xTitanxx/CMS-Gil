@@ -33,6 +33,9 @@ export default function NewPostPage() {
   const [selectedAudioTrackId, setSelectedAudioTrackId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  // Per-file upload percentages keyed by index in `files`. Drives the
+  // progress bar overlaid on each media tile during phase 2.
+  const [uploadPct, setUploadPct] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -114,11 +117,15 @@ export default function NewPostPage() {
         let completed = 0;
         const failures: { name: string; reason: string }[] = [];
         setProgress(`Uploading (0/${files.length})…`);
+        setUploadPct({});
 
         const uploadedMedia = await Promise.all(
-          files.map(async (selected) => {
+          files.map(async (selected, index) => {
             try {
-              const uploaded = await uploadPostMedia(postId, selected.file);
+              const uploaded = await uploadPostMedia(postId, selected.file, {
+                onProgress: (pct) =>
+                  setUploadPct((prev) => ({ ...prev, [index]: pct })),
+              });
               return uploaded;
             } catch (err) {
               const reason = err instanceof Error ? err.message : String(err);
@@ -212,7 +219,12 @@ export default function NewPostPage() {
         {/* Media preview — inline below text */}
         {files.length > 0 && (
           <div className="relative border-t border-gray-100">
-            <MediaGrid files={files} onRemove={removeFile} />
+            <MediaGrid
+              files={files}
+              onRemove={removeFile}
+              uploadPct={uploadPct}
+              isUploading={submitting}
+            />
             <button
               type="button"
               onClick={(e) => {
@@ -308,20 +320,28 @@ export default function NewPostPage() {
 interface MediaGridProps {
   files: SelectedFile[];
   onRemove: (index: number) => void;
+  uploadPct: Record<number, number>;
+  isUploading: boolean;
 }
 
-function MediaGrid({ files, onRemove }: MediaGridProps) {
+function MediaGrid({ files, onRemove, uploadPct, isUploading }: MediaGridProps) {
   const count = files.length;
+  const itemPropsAt = (i: number) => ({
+    file: files[i],
+    onRemove: () => onRemove(i),
+    pct: uploadPct[i],
+    isUploading,
+  });
 
   if (count === 1) {
-    return <MediaItem file={files[0]} onRemove={() => onRemove(0)} variant="single" />;
+    return <MediaItem {...itemPropsAt(0)} variant="single" />;
   }
 
   if (count === 2) {
     return (
       <div className="grid grid-cols-2 gap-0.5">
-        {files.map((f, i) => (
-          <MediaItem key={i} file={f} onRemove={() => onRemove(i)} variant="grid" />
+        {files.map((_, i) => (
+          <MediaItem key={i} {...itemPropsAt(i)} variant="grid" />
         ))}
       </div>
     );
@@ -332,10 +352,10 @@ function MediaGrid({ files, onRemove }: MediaGridProps) {
     return (
       <div className="grid gap-0.5" style={{ gridTemplateColumns: "2fr 1fr" }}>
         <div className="row-span-2">
-          <MediaItem file={files[0]} onRemove={() => onRemove(0)} variant="tall" />
+          <MediaItem {...itemPropsAt(0)} variant="tall" />
         </div>
-        <MediaItem file={files[1]} onRemove={() => onRemove(1)} variant="grid" />
-        <MediaItem file={files[2]} onRemove={() => onRemove(2)} variant="grid" />
+        <MediaItem {...itemPropsAt(1)} variant="grid" />
+        <MediaItem {...itemPropsAt(2)} variant="grid" />
       </div>
     );
   }
@@ -343,8 +363,8 @@ function MediaGrid({ files, onRemove }: MediaGridProps) {
   // 4+ items: 2-column grid, first row wider if odd count
   return (
     <div className="grid grid-cols-2 gap-0.5">
-      {files.map((f, i) => (
-        <MediaItem key={i} file={f} onRemove={() => onRemove(i)} variant="grid" />
+      {files.map((_, i) => (
+        <MediaItem key={i} {...itemPropsAt(i)} variant="grid" />
       ))}
     </div>
   );
@@ -358,6 +378,8 @@ interface MediaItemProps {
   file: SelectedFile;
   onRemove: () => void;
   variant: MediaVariant;
+  pct: number | undefined;
+  isUploading: boolean;
 }
 
 const VARIANT_CLASS: Record<MediaVariant, string> = {
@@ -366,11 +388,18 @@ const VARIANT_CLASS: Record<MediaVariant, string> = {
   tall: "h-full w-full min-h-[11rem]",
 };
 
-function MediaItem({ file, onRemove, variant }: MediaItemProps) {
+function MediaItem({ file, onRemove, variant, pct, isUploading }: MediaItemProps) {
   const isVideo = file.file.type.startsWith("video/");
   const containerClass = VARIANT_CLASS[variant];
   // Videos: contain (no cropping), images: cover (fill cell)
   const fitClass = isVideo ? "object-contain" : "object-cover";
+  // While the upload is running, show an overlay even before the first
+  // progress event lands so the user gets immediate feedback. Once a
+  // percentage arrives it drives the bar fill; otherwise we render an
+  // indeterminate pulsing strip at 5%.
+  const showOverlay = isUploading;
+  const fillPct = pct ?? 0;
+  const indeterminate = isUploading && pct === undefined;
 
   return (
     <div className={`relative overflow-hidden bg-black ${containerClass}`}>
@@ -391,10 +420,29 @@ function MediaItem({ file, onRemove, variant }: MediaItemProps) {
           e.stopPropagation();
           onRemove();
         }}
-        className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+        disabled={isUploading}
+        className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <X className="h-4 w-4" />
       </button>
+      {showOverlay && (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-black/40" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 p-2">
+            <div className="text-xs font-semibold tabular-nums text-white drop-shadow">
+              {pct === 100 ? "Finishing…" : indeterminate ? "Starting…" : `${fillPct}%`}
+            </div>
+            <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/30">
+              <div
+                className={`h-full bg-white transition-[width] duration-200 ease-out ${
+                  indeterminate ? "animate-pulse" : ""
+                }`}
+                style={{ width: `${indeterminate ? 5 : fillPct}%` }}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

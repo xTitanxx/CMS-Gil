@@ -11,12 +11,12 @@ export default async function AdminSubscribersPage() {
   if (session?.user?.role !== "admin") redirect("/login");
 
   return (
-    <div className="px-6 py-8">
+    <>
       <PageHeader
         title="Subscribers"
         subtitle="Per-person paid access to the Archivist. Click a subscriber to see their bookmarks, comments, and usage."
       />
       <SubscribersListClient />
-    </div>
+    </>
   );
 }

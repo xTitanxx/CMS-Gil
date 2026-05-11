@@ -29,12 +29,12 @@ export default async function AudioLibraryPage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <>
       <PageHeader
         title="Audio Library"
         subtitle="Upload music tracks (e.g. from Suno) and overlay them onto silent videos in posts."
       />
       <AudioLibrary initialTracks={withUrls} />
-    </div>
+    </>
   );
 }

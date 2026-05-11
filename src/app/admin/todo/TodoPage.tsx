@@ -54,7 +54,7 @@ export default function TodoPage() {
   const done = todos.filter((t) => t.done);
 
   return (
-    <div className="mx-auto max-w-xl py-10 px-4">
+    <div>
       <PageHeader title="To-Do" subtitle="Notes for future work sessions" className="mb-6" />
 
       <div className="flex gap-2 mb-8">

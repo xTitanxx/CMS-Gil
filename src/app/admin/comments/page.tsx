@@ -21,12 +21,12 @@ export default async function AdminCommentsPage({
   const initial = await listCommentsForModeration({ status: filter });
 
   return (
-    <div className="px-6 py-8">
+    <>
       <PageHeader
         title="Comments"
         subtitle="Subscriber comments on the public archive. Hide a comment to take it out of public view (body retained for audit). Restore reverses."
       />
       <CommentsModerationClient initial={initial} initialStatus={filter ?? null} />
-    </div>
+    </>
   );
 }

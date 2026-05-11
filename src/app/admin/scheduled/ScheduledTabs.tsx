@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CalendarDays, LayoutList } from "lucide-react";
 import { ContentCalendar } from "./ContentCalendar";
 import { PlannerPanel } from "../_shared/PlannerPanel";
+import { SegmentedControl } from "../_shared/SegmentedControl";
 
 type Mode = "calendar" | "planner";
 
 const STORAGE_KEY = "scheduledTabMode";
+
+const MODE_OPTIONS = [
+  { id: "calendar" as const, label: "Calendar", icon: CalendarDays },
+  { id: "planner" as const, label: "Planner", icon: LayoutList },
+];
 
 export function ScheduledTabs() {
   const [mode, setMode] = useState<Mode>("calendar");
@@ -43,32 +50,13 @@ export function ScheduledTabs() {
             <p className="text-sm text-gray-500">Plan and approve upcoming posts</p>
           </div>
         )}
-        <div className="ml-auto flex shrink-0 overflow-hidden rounded-lg border border-gray-200">
-          <button
-            type="button"
-            onClick={() => setModeAndPersist("calendar")}
-            aria-pressed={mode === "calendar"}
-            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-              mode === "calendar"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Calendar
-          </button>
-          <button
-            type="button"
-            onClick={() => setModeAndPersist("planner")}
-            aria-pressed={mode === "planner"}
-            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-              mode === "planner"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Planner
-          </button>
-        </div>
+        <SegmentedControl
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={setModeAndPersist}
+          ariaLabel="View mode"
+          className="ml-auto"
+        />
       </div>
       <div className="min-h-0 flex-1">
         {mode === "calendar" ? <ContentCalendar /> : <PlannerPanel />}

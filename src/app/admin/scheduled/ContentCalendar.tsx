@@ -172,23 +172,30 @@ export function ContentCalendar() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex shrink-0 rounded-lg border border-gray-200 overflow-hidden">
+          {/* Secondary, ghost-style sub-toggle — visually distinct from the
+              page-level SegmentedControl above so the two switchers don't
+              read as peers. */}
+          <div className="flex shrink-0 items-center gap-3 text-sm">
             <button
+              type="button"
               onClick={() => setView("month")}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              aria-pressed={view === "month"}
+              className={`border-b-2 pb-0.5 font-medium transition-colors ${
                 view === "month"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-400 hover:text-gray-700"
               }`}
             >
               Month
             </button>
             <button
+              type="button"
               onClick={() => setView("week")}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+              aria-pressed={view === "week"}
+              className={`border-b-2 pb-0.5 font-medium transition-colors ${
                 view === "week"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-400 hover:text-gray-700"
               }`}
             >
               Week

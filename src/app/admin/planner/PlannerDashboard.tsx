@@ -48,10 +48,14 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
 
   const handleApproveSlot = useCallback(async (slotId: string) => {
     if (!plan) return;
-    const res = await fetch(`/api/planner/${plan.id}`, {
-      method: "PATCH",
+    // Per-slot Schedule must actually schedule — create the PublishRecord and
+    // flip the slot to SCHEDULED. The PATCH "approve" action only flipped
+    // PROPOSED→APPROVED, which the UI renders identically to PROPOSED, so the
+    // button looked like a no-op.
+    const res = await fetch(`/api/planner/${plan.id}/schedule`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve", slotId }),
+      body: JSON.stringify({ slotIds: [slotId] }),
     });
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);

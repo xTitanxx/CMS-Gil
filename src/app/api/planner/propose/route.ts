@@ -64,10 +64,25 @@ export async function POST(req: NextRequest) {
     select: { id: true },
   });
 
-  // Match `pin` semantics: one slot per day. Replace any existing.
-  await prisma.weeklyPlanSlot.deleteMany({
-    where: { planId: plan.id, day: dayDate },
-  });
+  // Replace at the precise (day, hour) — keeps other slots on the same day
+  // intact so the suggester can stack multiple posts per day. Also clear any
+  // prior slot for this same post on this day so the
+  // @@unique([planId, day, postId]) constraint doesn't fire when a post is
+  // being moved to a different hour.
+  if (hour != null) {
+    await prisma.weeklyPlanSlot.deleteMany({
+      where: {
+        planId: plan.id,
+        day: dayDate,
+        OR: [{ hour }, { postId }],
+      },
+    });
+  } else {
+    // Legacy hour=null path (chat planner): one slot per day.
+    await prisma.weeklyPlanSlot.deleteMany({
+      where: { planId: plan.id, day: dayDate },
+    });
+  }
 
   const slot = await prisma.weeklyPlanSlot.create({
     data: {

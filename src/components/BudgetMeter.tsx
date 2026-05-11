@@ -38,13 +38,11 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
 
   if (budget.role === "admin") {
     return (
-      <div className="border-b border-gray-200 bg-white px-4 py-2 text-xs text-gray-600">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <span>API spend this month ({budget.monthLabel}):</span>
-          <span className="font-mono font-semibold text-gray-800">
-            ${budget.monthSpentUsd.toFixed(2)}
-          </span>
-        </div>
+      <div className="mx-auto flex items-center justify-center gap-2 self-center rounded-full border border-black/5 bg-white/70 px-3 py-1 text-[11px] text-gray-600 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/55">
+        <span>API spend ({budget.monthLabel})</span>
+        <span className="font-mono font-semibold text-gray-800">
+          ${budget.monthSpentUsd.toFixed(2)}
+        </span>
       </div>
     );
   }
@@ -60,14 +58,14 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
   const warn = !danger && pct >= 75;
 
   return (
-    <div className="px-3 pt-2.5 pb-1">
+    <div className="rounded-full border border-black/5 bg-white/70 px-3 py-1.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/55">
       <div className="flex items-center justify-between text-[11px] font-medium text-gray-500">
         <span className="uppercase tracking-wide">Monthly allowance</span>
         <span className={danger ? "text-red-600" : warn ? "text-amber-600" : "text-gray-500"}>
           {pct}% · renews {reset}
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100/80">
         <div
           className={`h-full rounded-full transition-[width] duration-500 ease-out ${
             danger

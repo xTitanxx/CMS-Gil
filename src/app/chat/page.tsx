@@ -403,16 +403,18 @@ export default function GilChatPage() {
         </div>
       </div>
 
-      {/* Scrollable message region */}
+      {/* Scrollable message region — Assistant pattern: no h-full on inner div,
+          generous pb that includes the iOS safe-area inset so the composer
+          can never overlap the last message on any device. */}
       <div
         ref={scrollRef}
         className="absolute inset-0 overflow-y-auto px-3 md:px-4"
         style={{
           paddingTop: "calc(env(safe-area-inset-top, 0px) + 4.25rem)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 9.5rem)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 9rem)",
         }}
       >
-        <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-3">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
           {messages.length === 0 ? (
             <EmptyIntro onPick={(s) => { setInput(s); textareaRef.current?.focus(); }} />
           ) : (
@@ -428,12 +430,12 @@ export default function GilChatPage() {
                   </div>
                 )}
                 {msg.role === "user" ? (
-                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap bg-blue-600 text-white rounded-br-sm shadow-sm">
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words bg-blue-600 text-white rounded-br-sm shadow-sm">
                     {msg.content}
                   </div>
                 ) : (
                   <div
-                    className={`text-sm whitespace-pre-wrap text-gray-800 ${
+                    className={`text-sm whitespace-pre-wrap break-words text-gray-800 ${
                       msg.posts && msg.posts.length > 0
                         ? "max-w-[88%]"
                         : "max-w-[80%] rounded-2xl px-4 py-2.5 bg-white border border-gray-200 rounded-bl-sm shadow-sm"
@@ -462,14 +464,15 @@ export default function GilChatPage() {
         </div>
       </div>
 
-      {/* Floating composer card — budget bar + textarea + send */}
+      {/* Floating composer — glass pill matching Assistant chat, with the budget
+          meter sitting as a thin caption above it. */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 md:px-4"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}
       >
-        <div className="pointer-events-auto mx-auto w-full max-w-3xl rounded-2xl border border-gray-200 bg-white shadow-lg">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-3xl flex-col gap-1.5">
           <BudgetMeter refreshKey={budgetRefreshKey} />
-          <div className="flex items-end gap-2 px-2 pb-2 pt-1">
+          <div className="flex items-center rounded-3xl border border-black/5 bg-white/85 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
             <textarea
               ref={textareaRef}
               value={input}
@@ -493,14 +496,15 @@ export default function GilChatPage() {
               data-form-type="other"
               data-1p-ignore
               data-lpignore="true"
-              className="flex-1 resize-none self-center rounded-xl bg-transparent px-3 py-2.5 text-base leading-5 text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
+              aria-label="Message the Archivist"
+              className="flex-1 resize-none self-center bg-transparent px-3 py-2 text-base leading-5 text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:opacity-50"
               style={{ height: "auto", maxHeight: "120px", overflowY: "auto" }}
             />
             <button
               onClick={sendMessage}
               disabled={!input.trim() || streaming || inputDisabled}
               aria-label="Send"
-              className="mb-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow disabled:opacity-40 hover:bg-blue-700 transition-colors"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow transition-colors hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
             >
               <Send className="h-4 w-4" />
             </button>

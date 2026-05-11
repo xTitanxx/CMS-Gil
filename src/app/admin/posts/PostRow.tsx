@@ -8,17 +8,12 @@ import {
   Trash2,
   Music,
   VolumeX,
-  Link as LinkIcon,
   Video,
-  Images,
-  FileText,
-  BarChart3,
   ExternalLink,
 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
-import { PlatformIcons } from "../scheduled/PlatformIcons";
 import { displayBody } from "@/lib/post-body";
 
 export interface PostRowData {
@@ -180,11 +175,6 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
             >
               {format(new Date(post.originalDate), "MMM d, yyyy")}
             </span>
-            {post.rating && (
-              <span className="text-yellow-500 text-xs" title={`${post.rating.stars}/5`}>
-                {"★".repeat(post.rating.stars)}
-              </span>
-            )}
             {post.platformUrl && (
               <button
                 type="button"
@@ -193,114 +183,21 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
                   e.stopPropagation();
                   window.open(post.platformUrl!, "_blank", "noopener,noreferrer");
                 }}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-blue-600 hover:bg-blue-50"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                 title="Open original on Facebook"
                 aria-label="Open original on Facebook"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                Facebook
               </button>
             )}
-            {(() => {
-              const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
-              const count = post.media.length;
-              if (count === 0) {
-                return (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-                    <FileText className="h-3 w-3 shrink-0" />
-                    <span className="hidden sm:inline">Text only</span>
-                  </span>
-                );
-              }
-              if (hasVideo) {
-                return (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                    <Video className="h-3 w-3 shrink-0" />
-                    Video{count > 1 ? ` +${count - 1}` : ""}
-                  </span>
-                );
-              }
-              if (count > 1) {
-                return (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                    <Images className="h-3 w-3 shrink-0" />
-                    {count} images
-                  </span>
-                );
-              }
-              return (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                  <ImageIcon className="h-3 w-3 shrink-0" />
-                  Image
-                </span>
-              );
-            })()}
-            {post.share && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                title={
-                  post.share.url
-                    ? `Quoted post: ${post.share.url}`
-                    : "Quoted a Facebook post (share card not preserved by export)"
-                }
-              >
-                <LinkIcon className="h-3 w-3 shrink-0" />
-                <span className="hidden sm:inline">{post.share.url ? "Shared link" : "Quoted FB post"}</span>
-              </span>
-            )}
-            {(() => {
-              const fbAnalytics = post.analytics?.find((a) => a.platform === "FACEBOOK");
-              if (!fbAnalytics) return null;
-              const total = (fbAnalytics.reactions ?? 0) + (fbAnalytics.comments ?? 0) + (fbAnalytics.shares ?? 0);
-              return (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
-                  title={`FB Analytics: ${fbAnalytics.reactions ?? 0} reactions, ${fbAnalytics.comments ?? 0} comments, ${fbAnalytics.shares ?? 0} shares`}
-                >
-                  <BarChart3 className="h-3 w-3 shrink-0" />
-                  <span className="hidden sm:inline">{total > 0 ? total.toLocaleString() : "FB"}</span>
-                </span>
-              );
-            })()}
           </div>
           {displayBody(post.body) ? (
             <p className="mt-1 line-clamp-2 text-sm text-gray-700">{displayBody(post.body)}</p>
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}
-          {(() => {
-            const visibleTags = post.tags;
-            return visibleTags.length > 0 ? (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {visibleTags.slice(0, 3).map((tag) => (
-                  <span
-                    key={tag}
-                    className="hidden rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 sm:inline-block"
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {visibleTags.length > 0 && (
-                  <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 sm:hidden">
-                    {visibleTags.length} tags
-                  </span>
-                )}
-                {visibleTags.length > 3 && (
-                  <span className="hidden text-xs text-gray-400 sm:inline">+{visibleTags.length - 3} more</span>
-                )}
-              </div>
-            ) : null;
-          })()}
         </div>
-
-        <PlatformIcons
-          platforms={[
-            ...new Set(
-              post.publishes.filter((p) => p.status === "PUBLISHED").map((p) => p.platform),
-            ),
-          ]}
-          size={16}
-          className="hidden flex-shrink-0 gap-1.5 md:flex"
-        />
       </Link>
 
       <RowDeleteButton postId={post.id} onDeleted={() => onDeleted(post.id)} />

@@ -4,8 +4,7 @@ import { google } from "googleapis";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { redactSecrets } from "@/lib/redact";
 import {
-  decodeIdTokenClaims,
-  fetchGoogleUserInfo,
+  fetchConnectedGoogleIdentity,
   upsertGoogleIntegration,
 } from "@/lib/google-integration";
 
@@ -48,21 +47,24 @@ export async function GET(req: NextRequest) {
       throw new Error("No access token returned from Google");
     }
 
-    // Identify the Google account that consented. We don't request `openid`
-    // here (mixing it with `drive.readonly` trips Google's policy on
-    // unverified apps), so we use the userinfo endpoint via the access
-    // token instead. Fall back to id_token if Google ever sends one.
-    const claims =
-      (tokens.id_token ? decodeIdTokenClaims(tokens.id_token) : null) ??
-      (await fetchGoogleUserInfo(tokens.access_token));
-    if (!claims) {
-      throw new Error("Google did not return identifying claims");
-    }
+    oauth2Client.setCredentials(tokens);
+
+    // We deliberately don't request identity scopes (`openid`/`email`/`profile`)
+    // because mixing them with restricted scopes (`drive.readonly`,
+    // `youtube.upload`) trips Google's OAuth 2.0 policy on unverified apps
+    // ("Access blocked: invalid_request" before the account chooser even
+    // renders). Instead, identify the connected account from the granted
+    // scopes themselves: Drive's about.get returns the user's email+name
+    // under `drive.readonly`; YouTube's channels.list returns the channel
+    // under `youtube.readonly`.
+    const identity = await fetchConnectedGoogleIdentity(oauth2Client);
 
     await upsertGoogleIntegration({
       userId,
-      googleSub: claims.sub,
-      email: claims.email,
+      googleSub: identity.permissionId,
+      email: identity.email,
+      youtubeChannelId: identity.youtubeChannelId,
+      youtubeChannelTitle: identity.youtubeChannelTitle,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
       expiresAt: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : null,

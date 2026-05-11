@@ -26,14 +26,17 @@ export async function GET(req: NextRequest) {
     // differs from the one used for admin sign-in. `consent` keeps the
     // refresh-token guarantee on subsequent re-grants.
     prompt: "select_account consent",
-    // Identity scopes (`email profile`) let us call the userinfo endpoint
-    // in the callback to capture which Google account this is. We omit
-    // `openid` deliberately — combining it with the restricted
-    // `drive.readonly` scope on an unverified app trips Google's OAuth 2.0
-    // policy ("Access blocked: invalid_request").
+    // No identity scopes (no `openid`, `email`, or `profile`). Google's
+    // OAuth 2.0 policy blocks unverified apps from mixing identity scopes
+    // with restricted scopes like `drive.readonly` / `youtube.upload`
+    // — the symptom is "Access blocked: invalid_request" rendered before
+    // the account chooser, so the user can't even pick which account to
+    // connect. We identify the connected account in the callback via
+    // `drive.about.get` (allowed under `drive.readonly`) and
+    // `youtube.channels.list` (allowed under `youtube.readonly`), which
+    // give us email + display name + channel info without an identity
+    // scope grant.
     scope: [
-      "email",
-      "profile",
       "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",

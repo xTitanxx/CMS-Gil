@@ -130,6 +130,8 @@ interface UpsertInput {
   refreshToken?: string | null;
   expiresAt?: number | null;
   scope?: string | null;
+  youtubeChannelId?: string | null;
+  youtubeChannelTitle?: string | null;
 }
 
 export async function upsertGoogleIntegration(input: UpsertInput): Promise<void> {
@@ -149,6 +151,8 @@ export async function upsertGoogleIntegration(input: UpsertInput): Promise<void>
       refreshToken: refreshTokenEnc ?? null,
       expiresAt: input.expiresAt ?? null,
       scope: input.scope ?? null,
+      youtubeChannelId: input.youtubeChannelId ?? null,
+      youtubeChannelTitle: input.youtubeChannelTitle ?? null,
     },
     update: {
       googleSub: input.googleSub,
@@ -159,6 +163,12 @@ export async function upsertGoogleIntegration(input: UpsertInput): Promise<void>
       ...(refreshTokenEnc ? { refreshToken: refreshTokenEnc } : {}),
       ...(input.expiresAt != null ? { expiresAt: input.expiresAt } : {}),
       ...(input.scope != null ? { scope: input.scope } : {}),
+      ...(input.youtubeChannelId !== undefined
+        ? { youtubeChannelId: input.youtubeChannelId }
+        : {}),
+      ...(input.youtubeChannelTitle !== undefined
+        ? { youtubeChannelTitle: input.youtubeChannelTitle }
+        : {}),
     },
   });
 }
@@ -167,39 +177,56 @@ export async function deleteGoogleIntegration(userId: string): Promise<void> {
   await prisma.googleIntegration.deleteMany({ where: { userId } });
 }
 
-// Decode a Google id_token JWT to read `sub` and `email`. We don't verify
-// the signature — the token was just received over TLS in the OAuth code
-// exchange, so its provenance is already authenticated.
-export function decodeIdTokenClaims(idToken: string): { sub: string; email: string } | null {
-  const parts = idToken.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    if (typeof payload?.sub !== "string" || typeof payload?.email !== "string") return null;
-    return { sub: payload.sub, email: payload.email };
-  } catch {
-    return null;
-  }
+export interface ConnectedGoogleIdentity {
+  permissionId: string;
+  email: string;
+  displayName: string | null;
+  youtubeChannelId: string | null;
+  youtubeChannelTitle: string | null;
 }
 
-// Fetch the connected Google account's id + email via the userinfo endpoint.
-// Used as the identity path when the OAuth flow doesn't request `openid`
-// (e.g. our connect flow, which omits openid because mixing it with the
-// restricted drive.readonly scope on an unverified app trips Google's
-// OAuth 2.0 policy). Requires the access token to have `email` + `profile`
-// scopes — which our connect flow grants.
-export async function fetchGoogleUserInfo(
-  accessToken: string,
-): Promise<{ sub: string; email: string } | null> {
-  try {
-    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { sub?: unknown; email?: unknown };
-    if (typeof body.sub !== "string" || typeof body.email !== "string") return null;
-    return { sub: body.sub, email: body.email };
-  } catch {
-    return null;
+// Identify the Google account that just consented, using only the granted
+// non-identity scopes. Drive's about.get returns the user's email + display
+// name under `drive.readonly`; YouTube's channels.list returns the channel
+// under `youtube.readonly`. This avoids requesting `openid`/`email`/`profile`,
+// which Google's OAuth 2.0 policy blocks for unverified apps when combined
+// with restricted scopes like `drive.readonly` / `youtube.upload`.
+export async function fetchConnectedGoogleIdentity(
+  oauth2Client: Auth.OAuth2Client,
+): Promise<ConnectedGoogleIdentity> {
+  const drive = google.drive({ version: "v3", auth: oauth2Client });
+  const about = await drive.about.get({
+    fields: "user(permissionId,emailAddress,displayName)",
+  });
+  const user = about.data.user;
+  if (!user?.permissionId || !user?.emailAddress) {
+    throw new Error("Google Drive did not return user identity");
   }
+
+  let youtubeChannelId: string | null = null;
+  let youtubeChannelTitle: string | null = null;
+  try {
+    const youtube = google.youtube({ version: "v3", auth: oauth2Client });
+    const res = await youtube.channels.list({ mine: true, part: ["snippet"] });
+    const channel = res.data.items?.[0];
+    if (channel?.id) {
+      youtubeChannelId = channel.id;
+      youtubeChannelTitle = channel.snippet?.title ?? null;
+    }
+  } catch (err) {
+    // Some Google accounts have no YouTube channel — that's fine, the Drive
+    // half of the integration still works.
+    console.warn(
+      "[google-integration] channels.list failed; continuing without channel info:",
+      redactSecrets(err),
+    );
+  }
+
+  return {
+    permissionId: user.permissionId,
+    email: user.emailAddress,
+    displayName: user.displayName ?? null,
+    youtubeChannelId,
+    youtubeChannelTitle,
+  };
 }

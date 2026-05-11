@@ -14,9 +14,9 @@ describe("getEligiblePlatforms", () => {
     expect(result).toEqual(["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN"]);
   });
 
-  it("only includes LinkedIn for text-only posts", () => {
+  it("includes Facebook Page and LinkedIn for text-only posts", () => {
     const result = getEligiblePlatforms([], allConnected);
-    expect(result).toEqual(["LINKEDIN"]);
+    expect(result).toEqual(["FACEBOOK_PAGE", "LINKEDIN"]);
   });
 
   it("only includes connected platforms", () => {

@@ -1,6 +1,6 @@
 const VIDEO_ONLY_PLATFORMS = new Set(["YOUTUBE", "TIKTOK"]);
 const PHOTO_OR_VIDEO_PLATFORMS = new Set(["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK"]);
-const TEXT_PLATFORMS = new Set(["LINKEDIN"]);
+const TEXT_PLATFORMS = new Set(["FACEBOOK_PAGE", "LINKEDIN"]);
 
 export function getEligiblePlatforms(
   mediaTypes: string[],

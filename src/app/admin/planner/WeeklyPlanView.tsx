@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, CalendarCheck, Loader2, Trash2, Recycle } from "lucide-react";
-import { format } from "date-fns";
+import { CalendarCheck, Loader2, Trash2 } from "lucide-react";
 import { utcDateString } from "@/lib/planner/week";
 import { DayGroup } from "./DayGroup";
 import { EmptyDayPill } from "./EmptyDayPill";
@@ -72,16 +71,30 @@ export function WeeklyPlanView({
   const activeSlots = plan?.slots.filter(
     (s) => s.status === "PROPOSED" || s.status === "APPROVED",
   ) ?? [];
+  // Anything still in the pipeline — proposed, approved, OR already scheduled
+  // (PENDING PublishRecord). Once everything is SCHEDULED, activeSlots empties
+  // out but the user still needs a way to wipe the queue, so the Clear button
+  // keys off this wider set. Published slots are excluded — we can't un-publish.
+  const clearableSlots = plan?.slots.filter(
+    (s) => !s.published && (s.status === "PROPOSED" || s.status === "APPROVED" || s.status === "SCHEDULED"),
+  ) ?? [];
 
-  // Scroll to today on mount
+  // Scroll today into view on mount. useLayoutEffect runs synchronously before
+  // paint, so the user never sees the initial scrollTop=0 flash before we jump
+  // down. Setting scrollTop on the scroll container directly (rather than
+  // scrollIntoView) keeps the scroll scoped to the planner column and won't
+  // bubble up to scroll the page itself.
+  const scrollRef = useRef<HTMLDivElement>(null);
   const todayRef = useRef<HTMLDivElement>(null);
   const didScroll = useRef(false);
-  useEffect(() => {
-    if (!didScroll.current && todayRef.current) {
-      todayRef.current.scrollIntoView({ block: "start" });
-      didScroll.current = true;
-    }
-  });
+  useLayoutEffect(() => {
+    if (didScroll.current) return;
+    const container = scrollRef.current;
+    const target = todayRef.current;
+    if (!container || !target) return;
+    container.scrollTop = target.offsetTop - container.offsetTop;
+    didScroll.current = true;
+  }, [plan]);
 
   // Infinite scroll sentinel
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -102,44 +115,27 @@ export function WeeklyPlanView({
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
-      {/* Header */}
-      <div className="border-b border-gray-100 px-3 py-3 sm:px-4">
-        <div className="mb-2.5 flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 shrink-0 text-gray-500" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-gray-900">Planner</h2>
-              {plan?.mode === "DUMB" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                  <Recycle className="h-3 w-3" />
-                  Recycle queue
-                </span>
-              )}
-            </div>
-            <p className="truncate text-[11px] text-gray-400">
-              {format(days[0], "MMM d")} – {format(days[days.length - 1], "MMM d")}
-            </p>
-          </div>
-        </div>
-
-        {/* Plan generation lives in the Assistant; this toolbar only exposes
-            clear/schedule actions on the existing plan. */}
-        {activeSlots.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={async () => {
-                setActiveAction("clear");
-                await onClearAll();
-                setActiveAction(null);
-              }}
-              disabled={loading}
-              size="sm"
-              variant="outline"
-              className="h-10 min-w-0 justify-center gap-1.5 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 sm:h-9"
-            >
-              {activeAction === "clear" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              <span className="truncate">Clear all</span>
-            </Button>
+      {/* Toolbar — only renders when there's something to act on. The page
+          header above ("Planner / Plan and approve upcoming posts") already
+          identifies this surface; an inner title + date range was duplicate
+          chrome, and the date range fought the infinite-scroll model. */}
+      {clearableSlots.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-3 py-3 sm:px-4">
+          <Button
+            onClick={async () => {
+              setActiveAction("clear");
+              await onClearAll();
+              setActiveAction(null);
+            }}
+            disabled={loading}
+            size="sm"
+            variant="outline"
+            className="h-10 min-w-0 justify-center gap-1.5 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 sm:h-9"
+          >
+            {activeAction === "clear" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            <span className="truncate">Clear all ({clearableSlots.length})</span>
+          </Button>
+          {activeSlots.length > 0 && (
             <Button
               onClick={async () => {
                 setActiveAction("schedule");
@@ -153,12 +149,12 @@ export function WeeklyPlanView({
               {activeAction === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
               <span className="truncate">Schedule all ({activeSlots.length})</span>
             </Button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Day list */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2">
         {loading && !plan ? (
           <div className="flex h-40 items-center justify-center gap-2 text-gray-500">
             <Loader2 className="h-5 w-5 animate-spin" />

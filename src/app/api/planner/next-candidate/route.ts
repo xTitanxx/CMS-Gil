@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
-import { subWeeks } from "date-fns";
 import { getMondayUTC, utcDateString } from "@/lib/planner/week";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
 import { getConnectedPlatforms } from "@/lib/connected-platforms";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
+import {
+  getSuggesterCandidateWhere,
+  SUGGESTER_ORDER_BY,
+} from "@/lib/planner/suggester-filter";
 
-const RECENCY_WEEKS = 4;
 const DAY_MS = 86_400_000;
 const MAX_LOOK_AHEAD_DAYS = 56;
 
@@ -96,30 +97,16 @@ export async function GET(req: NextRequest) {
   const excludeRaw = url.searchParams.get("exclude") ?? "";
   const exclude = excludeRaw ? excludeRaw.split(",").filter(Boolean) : [];
 
-  const cutoff = subWeeks(new Date(), RECENCY_WEEKS);
+  // Shared with the "Suggester queue" sort on /admin/posts. Only excludes
+  // NOT_READY/ARCHIVED posts; everything else flows through and is ordered by
+  // publishCount asc then originalDate asc.
+  const baseWhere = {
+    ...getSuggesterCandidateWhere(userId),
+    id: { notIn: exclude },
+  };
 
-  // Same gating as the bulk Recycle path: only original posts, with media,
-  // not recently published or already pending elsewhere.
   const candidate = await prisma.post.findFirst({
-    where: {
-      userId,
-      id: { notIn: exclude },
-      media: { some: {} },
-      share: { equals: Prisma.DbNull },
-      originalDate: { lt: cutoff },
-      publishes: {
-        none: {
-          OR: [
-            { status: "PUBLISHED", publishedAt: { gte: cutoff } },
-            { status: "PENDING", scheduledAt: { gte: new Date() } },
-          ],
-        },
-      },
-      // Exclude posts already pinned in any active plan slot
-      planSlots: {
-        none: { status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] } },
-      },
-    },
+    where: baseWhere,
     select: {
       id: true,
       body: true,
@@ -142,34 +129,14 @@ export async function GET(req: NextRequest) {
         select: { publishedAt: true },
       },
     },
-    orderBy: [{ publishCount: "asc" }, { originalDate: "asc" }],
+    orderBy: SUGGESTER_ORDER_BY,
   });
 
   if (!candidate) {
     return NextResponse.json({ candidate: null, remaining: 0 });
   }
 
-  // Approximate remaining count for the queue indicator
-  const remaining = await prisma.post.count({
-    where: {
-      userId,
-      id: { notIn: exclude },
-      media: { some: {} },
-      share: { equals: Prisma.DbNull },
-      originalDate: { lt: cutoff },
-      publishes: {
-        none: {
-          OR: [
-            { status: "PUBLISHED", publishedAt: { gte: cutoff } },
-            { status: "PENDING", scheduledAt: { gte: new Date() } },
-          ],
-        },
-      },
-      planSlots: {
-        none: { status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] } },
-      },
-    },
-  });
+  const remaining = await prisma.post.count({ where: baseWhere });
 
   const slot = await findNextOpenSlot(userId);
   if (!slot) {

@@ -215,8 +215,10 @@ export function PostEditor({
       const newMedia = await uploadPostMedia(postId, file);
       const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
       setMedia((prev) => [...prev, { ...newMedia, url: previewUrl }]);
-    } catch {
-      setMediaError("Failed to upload file. Please try again.");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("uploadFile failed:", file.name, err);
+      setMediaError(`${file.name}: ${reason}`);
     }
   }
 
@@ -462,7 +464,7 @@ export function PostEditor({
       </article>
 
       {mediaError && (
-        <div className="mt-1.5 px-1 text-[11px] text-red-600">{mediaError}</div>
+        <div className="mt-1.5 px-1 text-[11px] text-red-600 break-words">{mediaError}</div>
       )}
 
       {/* Collapsible details — secondary metadata */}

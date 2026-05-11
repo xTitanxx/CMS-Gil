@@ -213,8 +213,10 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
               url: newMedia.url ?? previewUrl,
             },
           ]);
-        } catch {
-          setUploadError("Failed to upload file. Please try again.");
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          console.error("upload failed:", file.name, err);
+          setUploadError(`${file.name}: ${reason}`);
         }
       }
     } finally {
@@ -320,7 +322,7 @@ export function PostEditorModal({ postId, onClose, onSaved }: PostEditorModalPro
                 {uploadError && (
                   <div className="mt-2 flex items-start gap-1.5 text-xs text-red-600">
                     <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    {uploadError}
+                    <span className="min-w-0 break-words">{uploadError}</span>
                   </div>
                 )}
 

@@ -3,7 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { useDropzone } from "react-dropzone";
-import { Music, Trash2, Upload } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
+import { AudioThumbnail } from "@/components/AudioThumbnail";
 
 const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024;
 
@@ -155,9 +156,8 @@ export function AudioLibrary({ initialTracks }: { initialTracks: Track[] }) {
             key={t.id}
             className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
           >
-            <div className="rounded-md bg-purple-100 p-2">
-              <Music className="h-4 w-4 text-purple-600" />
-            </div>
+            <AudioThumbnail seed={`${t.id}:${t.title}`} size={48} />
+
             <div className="min-w-0 flex-1">
               <input
                 defaultValue={t.title}

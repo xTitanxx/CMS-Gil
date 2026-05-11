@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { subWeeks } from "date-fns";
 import { getMondayUTC, utcDateString } from "@/lib/planner/week";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
 import { getConnectedPlatforms } from "@/lib/connected-platforms";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
@@ -19,6 +20,7 @@ function todayUTC(): Date {
 }
 
 async function findNextOpenSlot(userId: string): Promise<{ day: Date; dayKey: string; hour: number; weekStart: Date } | null> {
+  const now = new Date();
   const start = todayUTC();
   const horizon = new Date(start.getTime() + MAX_LOOK_AHEAD_DAYS * DAY_MS);
 
@@ -39,6 +41,10 @@ async function findNextOpenSlot(userId: string): Promise<{ day: Date; dayKey: st
     const day = new Date(start.getTime() + offset * DAY_MS);
     const dayKey = utcDateString(day);
     for (const hour of FIXED_SLOT_HOURS) {
+      // Slots are wall-clock in Asia/Jerusalem; never suggest one whose
+      // moment has already passed (otherwise today's earlier hours keep
+      // showing up after they're effectively unschedulable).
+      if (buildSlotDate(day, hour).getTime() <= now.getTime()) continue;
       if (!occupied.has(`${dayKey}:${hour}`)) {
         return { day, dayKey, hour, weekStart: getMondayUTC(day) };
       }

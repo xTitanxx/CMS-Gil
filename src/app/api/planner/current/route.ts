@@ -145,7 +145,11 @@ export async function GET() {
       const dayKey = format(s.day, "yyyy-MM-dd");
       const daySlots = byDay.get(dayKey) ?? [s];
       const idx = daySlots.indexOf(s);
-      let hour: number | null = FIXED_SLOT_HOURS[idx] ?? null;
+      // Prefer the explicit hour stored on the slot (set by the suggester /
+      // assistant when proposing). Fall back to FIXED_SLOT_HOURS-by-index for
+      // legacy slots saved before `hour` existed — otherwise a single slot at
+      // 18:00 would render as 12:00 because index 0 was always mapped to 12.
+      let hour: number | null = s.hour ?? FIXED_SLOT_HOURS[idx] ?? null;
       if (s.status === "SCHEDULED") {
         const at = scheduledByPostDay.get(`${s.postId}|${dayKey}`);
         if (at) {

@@ -40,10 +40,13 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
   const handleApproveSlot = useCallback(
     async (slotId: string) => {
       if (!plan) return;
-      await fetch(`/api/planner/${plan.id}`, {
-        method: "PATCH",
+      // Per-slot Schedule must actually schedule (create PublishRecord). The
+      // PATCH approve action only flipped status to APPROVED which the UI
+      // renders identically to PROPOSED — looked like a no-op.
+      await fetch(`/api/planner/${plan.id}/schedule`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", slotId }),
+        body: JSON.stringify({ slotIds: [slotId] }),
       });
       await refreshPlan();
     },

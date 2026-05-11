@@ -11,8 +11,22 @@ export interface UploadedMedia {
   hasAudio?: boolean | null;
 }
 
-export async function uploadPostMedia(postId: string, file: File): Promise<UploadedMedia> {
+export interface UploadOptions {
+  // Called repeatedly with percent 0-100. Note: the small-file direct-POST
+  // path can't measure browser fetch progress, so it just jumps 0 → 100.
+  // The blob multipart path emits real percentages from @vercel/blob.
+  onProgress?: (percent: number) => void;
+}
+
+export async function uploadPostMedia(
+  postId: string,
+  file: File,
+  opts: UploadOptions = {},
+): Promise<UploadedMedia> {
+  const onProgress = opts.onProgress;
+
   if (file.size < DIRECT_UPLOAD_LIMIT) {
+    onProgress?.(0);
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch(`/api/posts/${postId}/media`, {
@@ -20,6 +34,7 @@ export async function uploadPostMedia(postId: string, file: File): Promise<Uploa
       body: formData,
     });
     if (!res.ok) throw new Error(await res.text());
+    onProgress?.(100);
     return (await res.json()) as UploadedMedia;
   }
 
@@ -35,6 +50,10 @@ export async function uploadPostMedia(postId: string, file: File): Promise<Uploa
       access: "public",
       handleUploadUrl: "/api/blob",
       multipart: true,
+      // Reserve the last 5% for the server-side attach step so the bar
+      // doesn't sit at 100% while we're still waiting on R2 + DB write.
+      onUploadProgress: ({ percentage }) =>
+        onProgress?.(Math.round(percentage * 0.95)),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -51,5 +70,6 @@ export async function uploadPostMedia(postId: string, file: File): Promise<Uploa
     }),
   });
   if (!res.ok) throw new Error(`Media attach failed: ${await res.text()}`);
+  onProgress?.(100);
   return (await res.json()) as UploadedMedia;
 }

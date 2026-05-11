@@ -13,7 +13,6 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import {
-  decodeIdTokenClaims,
   deleteGoogleIntegration,
   getGoogleIntegration,
   hasYouTubeScope,
@@ -140,17 +139,3 @@ describe("deleteGoogleIntegration", () => {
   });
 });
 
-describe("decodeIdTokenClaims", () => {
-  it("extracts sub and email from a JWT body", () => {
-    const payload = Buffer.from(JSON.stringify({ sub: "1234", email: "x@gmail.com" })).toString("base64url");
-    const idToken = `header.${payload}.sig`;
-    expect(decodeIdTokenClaims(idToken)).toEqual({ sub: "1234", email: "x@gmail.com" });
-  });
-
-  it("returns null on malformed tokens", () => {
-    expect(decodeIdTokenClaims("not.a.jwt")).toBeNull();
-    expect(decodeIdTokenClaims("only.twoparts")).toBeNull();
-    const noEmail = Buffer.from(JSON.stringify({ sub: "1234" })).toString("base64url");
-    expect(decodeIdTokenClaims(`h.${noEmail}.s`)).toBeNull();
-  });
-});

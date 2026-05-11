@@ -1,13 +1,20 @@
 // Per-turn retrieval for /api/chat (the Archivist). Surfaces posts from the
 // wider archive that fall outside the cached newest-N baseline.
 //
-// Backed by the unified hybridSearch (vector + tag + phrase + Haiku rerank)
-// in src/lib/retrieval/hybrid-search.ts. Chat-specific concerns kept here:
+// The Archivist behaves as a librarian, not an interpreter, so the retrieval
+// behaves as a plain keyword search — the user types words, we hand back
+// posts that contain those words, ranked by coverage. No vector embeddings,
+// no Haiku synonym expansion, no Haiku rerank: those layers had a habit of
+// boosting topically-adjacent posts over posts containing the user's literal
+// words (the trekinetic case — 13 brand-name mentions in the corpus, yet
+// rerank surfaced only 4 because wheelchair-themed posts crowded the pool).
+//
+// Chat-specific concerns kept here:
 //   - Date-aware shape (RelevantPost) for the prompt formatter.
 //   - excludeIds dedup against the baseline cache.
-//   - The "ADDITIONAL POSTS POSSIBLY RELEVANT" prompt block.
+//   - The "TOP MATCHES" prompt block.
 
-import { hybridSearch } from "@/lib/retrieval/hybrid-search";
+import { keywordSearch } from "@/lib/chat/keyword-search";
 
 export type RelevantPost = {
   id: string;
@@ -20,23 +27,23 @@ export async function getRelevantPosts(
   userId: string,
   query: string,
   excludeIds: Set<string>,
-  limit = 12,
+  limit = 25,
 ): Promise<RelevantPost[]> {
   if (!query.trim()) return [];
-  const hits = await hybridSearch({
+  const hits = await keywordSearch({
     userId,
     query,
-    limit,
     excludeIds,
+    limit,
     // The public Archivist only surfaces original POSTs — STORY and REEL are
     // excluded from the public feed per the project's content rules.
     postTypes: ["POST"],
   });
   return hits.map((h) => ({
-    id: h.postId,
+    id: h.id,
     body: h.body,
     tags: h.tags,
-    originalDate: h.originalDate ?? new Date(0),
+    originalDate: h.originalDate,
   }));
 }
 
@@ -52,14 +59,11 @@ export function formatRelevantPostsForPrompt(posts: RelevantPost[]): string {
     const body = p.body?.trim() ?? "(no text)";
     return `[ID: ${p.id}] ${date}${tags}\n${body}`;
   });
-  // Heading is intentionally directive — these posts came back from semantic
-  // search ranked against the recent conversation, not a vague keyword sweep.
-  // Soft language ("POSSIBLY") was making the model dismiss them too readily.
-  // "beyond the newest-N baseline" is clearer than "NOT in the main list above"
-  // because the two sources arrive in separate system blocks — the model must
-  // not assume "above" refers to the same block.
+  // Heading is intentionally directive — these posts came back ranked by how
+  // many of the user's literal words they contain, drawn from the wider
+  // archive beyond the cached newest-N baseline.
   return [
-    `TOP MATCHES FROM SEMANTIC SEARCH (ranked by relevance to the current question; retrieved from the wider archive beyond the newest-50 baseline):`,
+    `TOP MATCHES FROM KEYWORD SEARCH (ranked by how many of the user's words appear in each post; retrieved from the wider archive beyond the newest-50 baseline):`,
     `These are the most relevant posts available — when discussing topics related to the user's question, prefer citing posts from THIS list.`,
     `---`,
     lines.join("\n---\n"),

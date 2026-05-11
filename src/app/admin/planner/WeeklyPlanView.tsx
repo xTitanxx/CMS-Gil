@@ -6,6 +6,7 @@ import { CalendarDays, CalendarCheck, Loader2, Trash2, Recycle } from "lucide-re
 import { format } from "date-fns";
 import { utcDateString } from "@/lib/planner/week";
 import { DayGroup } from "./DayGroup";
+import { EmptyDayPill } from "./EmptyDayPill";
 import type { WeeklyPlanData, PlanSlotData } from "@/lib/planner/types";
 
 const DAY_MS = 86400000;
@@ -17,12 +18,14 @@ type LoadingAction = "clear" | "schedule" | null;
 interface WeeklyPlanViewProps {
   plan: WeeklyPlanData | null;
   loading: boolean;
-  onApproveSlot: (slotId: string) => Promise<void>;
-  onRemoveSlot: (slotId: string) => Promise<void>;
+  /** Per-slot Schedule action (flips PROPOSED → SCHEDULED via /schedule endpoint). */
+  onScheduleSlot: (slotId: string) => Promise<void>;
+  /** Per-slot Unschedule action (cancels publish + removes from plan). */
+  onUnscheduleSlot: (slotId: string) => Promise<void>;
   onClearAll: () => Promise<void>;
   onScheduleAll: () => Promise<void>;
-  /** @deprecated unused — retained for compatibility */
-  onSwapSlot?: (slotId: string) => void;
+  /** Inline caption editor calls this so the parent can update its cached plan state. */
+  onBodyChange: (postId: string, body: string) => void;
 }
 
 function todayUTC(): Date {
@@ -42,20 +45,24 @@ function buildDayRange(futureDays: number): Date[] {
 export function WeeklyPlanView({
   plan,
   loading,
-  onApproveSlot,
-  onRemoveSlot,
+  onScheduleSlot,
+  onUnscheduleSlot,
   onClearAll,
   onScheduleAll,
+  onBodyChange,
 }: WeeklyPlanViewProps) {
   const [activeAction, setActiveAction] = useState<LoadingAction>(null);
   const [futureDays, setFutureDays] = useState(INITIAL_FUTURE);
   const days = buildDayRange(futureDays);
   const todayKey = utcDateString(todayUTC());
 
-  // Build slot lookup — multiple slots per day
+  // Slots grouped by UTC day-string. Past days (yesterday and earlier) are
+  // dropped entirely — the post-first view is for "what's going public", not
+  // history.
   const slotsByDay = new Map<string, PlanSlotData[]>();
   if (plan) {
     for (const slot of plan.slots) {
+      if (slot.day < todayKey) continue;
       const arr = slotsByDay.get(slot.day) ?? [];
       arr.push(slot);
       slotsByDay.set(slot.day, arr);
@@ -63,7 +70,7 @@ export function WeeklyPlanView({
   }
 
   const activeSlots = plan?.slots.filter(
-    (s) => s.status === "PROPOSED" || s.status === "APPROVED"
+    (s) => s.status === "PROPOSED" || s.status === "APPROVED",
   ) ?? [];
 
   // Scroll to today on mount
@@ -87,7 +94,7 @@ export function WeeklyPlanView({
           setFutureDays((d) => d + LOAD_MORE);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -116,8 +123,8 @@ export function WeeklyPlanView({
         </div>
 
         {/* Plan generation lives in the Assistant; this toolbar only exposes
-            clear/approve actions on the existing plan. */}
-        {(activeSlots.length > 0) && (
+            clear/schedule actions on the existing plan. */}
+        {activeSlots.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={async () => {
@@ -144,7 +151,7 @@ export function WeeklyPlanView({
               className="h-10 min-w-0 justify-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 sm:ml-auto sm:h-9"
             >
               {activeAction === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
-              <span className="truncate">Approve all ({activeSlots.length})</span>
+              <span className="truncate">Schedule all ({activeSlots.length})</span>
             </Button>
           </div>
         )}
@@ -158,23 +165,29 @@ export function WeeklyPlanView({
             <span className="text-sm">Generating plan…</span>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {days.map((day) => {
               const dayKey = utcDateString(day);
               const isToday = dayKey === todayKey;
+              const daySlots = slotsByDay.get(dayKey) ?? [];
+              const hasContent = daySlots.length > 0;
               return (
                 <div key={dayKey} ref={isToday ? todayRef : undefined}>
-                  <DayGroup
-                    day={day}
-                    isToday={isToday}
-                    slots={slotsByDay.get(dayKey) ?? []}
-                    onApprove={onApproveSlot}
-                    onRemove={onRemoveSlot}
-                  />
+                  {hasContent ? (
+                    <DayGroup
+                      day={day}
+                      isToday={isToday}
+                      slots={daySlots}
+                      onUnschedule={(id) => void onUnscheduleSlot(id)}
+                      onSchedule={(id) => void onScheduleSlot(id)}
+                      onBodyChange={onBodyChange}
+                    />
+                  ) : (
+                    <EmptyDayPill day={day} isToday={isToday} />
+                  )}
                 </div>
               );
             })}
-            {/* Infinite scroll sentinel */}
             <div ref={sentinelRef} className="h-4" />
           </div>
         )}

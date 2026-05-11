@@ -30,12 +30,8 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     }
   }, []);
 
-  const handleApproveSlot = useCallback(async (slotId: string) => {
+  const handleScheduleSlot = useCallback(async (slotId: string) => {
     if (!plan) return;
-    // Per-slot Schedule must actually schedule — create the PublishRecord and
-    // flip the slot to SCHEDULED. The PATCH "approve" action only flipped
-    // PROPOSED→APPROVED, which the UI renders identically to PROPOSED, so the
-    // button looked like a no-op.
     const res = await fetch(`/api/planner/${plan.id}/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -44,7 +40,7 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);
 
-  const handleRemoveSlot = useCallback(async (slotId: string) => {
+  const handleUnscheduleSlot = useCallback(async (slotId: string) => {
     if (!plan) return;
     const res = await fetch(`/api/planner/${plan.id}`, {
       method: "PATCH",
@@ -53,6 +49,20 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     });
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);
+
+  // Inline caption edits hit /api/posts directly via useAutoSavePost. Echo the
+  // new body back into the cached plan so re-renders don't show the stale body.
+  const handleBodyChange = useCallback((postId: string, body: string) => {
+    setPlan((p) => {
+      if (!p) return p;
+      return {
+        ...p,
+        slots: p.slots.map((s) =>
+          s.post.id === postId ? { ...s, post: { ...s.post, body } } : s,
+        ),
+      };
+    });
+  }, []);
 
   const handleClearAll = useCallback(async () => {
     if (!plan) return;
@@ -109,10 +119,11 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
           <WeeklyPlanView
             plan={plan}
             loading={loading}
-            onApproveSlot={handleApproveSlot}
-            onRemoveSlot={handleRemoveSlot}
+            onScheduleSlot={handleScheduleSlot}
+            onUnscheduleSlot={handleUnscheduleSlot}
             onClearAll={handleClearAll}
             onScheduleAll={handleScheduleAll}
+            onBodyChange={handleBodyChange}
           />
         </div>
 

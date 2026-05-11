@@ -1,14 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Layers, Recycle, Sparkles, Loader2, ArrowLeft, Undo2 } from "lucide-react";
+import { Sparkles, Loader2, Undo2, AlertCircle, RotateCw } from "lucide-react";
 import { OneByOneCard } from "./OneByOneCard";
-import { BulkPlanPanel } from "./BulkPlanPanel";
 import type { NextCandidateResponse, SuggestCandidate, SuggestedSlot } from "./types";
-
-type Mode = "menu" | "one" | "bulk";
 
 interface AcceptedSummary {
   postId: string;
@@ -28,52 +24,58 @@ interface SkippedSummary {
 interface UndoState {
   kind: "accept" | "skip";
   postId: string;
-  // For accept undo
   planId?: string;
   slotId?: string;
-  // For both
   expiresAt: number;
   label: string;
 }
 
 const UNDO_WINDOW_MS = 5000;
 
-interface PrefetchedCandidate {
+interface LoadedCandidate {
   candidate: SuggestCandidate;
   slot: SuggestedSlot;
   platforms: string[];
   remaining: number;
 }
 
+/**
+ * Suggester state machine — kept deliberately simple after the previous
+ * design's prefetch caused slot double-booking (a stale prefetched slot was
+ * promoted to "current" without re-checking which hour the server now
+ * considered free). No prefetch here: every candidate is fetched fresh after
+ * the previous one is decided. The ~300ms loading is acceptable; the user
+ * pauses to look at the next card anyway.
+ */
 export function SuggesterClient() {
-  const [mode, setMode] = useState<Mode>("menu");
-  const [mounted, setMounted] = useState(false);
-
-  const [current, setCurrent] = useState<PrefetchedCandidate | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [current, setCurrent] = useState<LoadedCandidate | null>(null);
+  const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<AcceptedSummary[]>([]);
   const [skipped, setSkipped] = useState<SkippedSummary[]>([]);
   const [undo, setUndo] = useState<UndoState | null>(null);
 
+  // IDs whose decision is already recorded this session (accept or skip).
+  // Sent as `exclude` so the server doesn't re-offer them.
   const seenRef = useRef<Set<string>>(new Set());
-  const nextRef = useRef<PrefetchedCandidate | null>(null);
-  const inFlightRef = useRef<boolean>(false);
+  // Guards against overlapping fetches when multiple effects/handlers race.
+  const fetchingRef = useRef(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchCandidate = useCallback(async (): Promise<PrefetchedCandidate | null> => {
+  const fetchOne = useCallback(async (): Promise<LoadedCandidate | "empty"> => {
     const exclude = Array.from(seenRef.current).join(",");
     const url = exclude
       ? `/api/planner/next-candidate?exclude=${exclude}`
       : "/api/planner/next-candidate";
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`next-candidate ${res.status}`);
     const data = (await res.json()) as NextCandidateResponse;
-    // Check candidate first: null candidate (including "no open slots") → empty state
-    if (!data.candidate || !data.suggestedSlot) return null;
-    if (data.error) {
-      throw new Error(data.error);
-    }
+    // "No open slots in the next 8 weeks" is a soft empty state — show the
+    // empty screen instead of treating it as an error so the user gets a
+    // sensible CTA.
+    if (!data.candidate || !data.suggestedSlot) return "empty";
+    if (data.error) throw new Error(data.error);
     return {
       candidate: data.candidate,
       slot: data.suggestedSlot,
@@ -82,51 +84,37 @@ export function SuggesterClient() {
     };
   }, []);
 
-  const ensureCurrent = useCallback(async () => {
-    if (current || loading || inFlightRef.current) return;
-    inFlightRef.current = true;
+  const loadNext = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      let next: PrefetchedCandidate | null = nextRef.current;
-      nextRef.current = null;
-      if (!next) next = await fetchCandidate();
-      if (!next) {
-        setEmpty(true);
+      const next = await fetchOne();
+      if (next === "empty") {
         setCurrent(null);
-        return;
+        setEmpty(true);
+      } else {
+        setCurrent(next);
+        setEmpty(false);
       }
-      setCurrent(next);
-      setEmpty(false);
-      // Kick a background prefetch for the one *after* this.
-      void (async () => {
-        seenRef.current.add(next.candidate.id);
-        try {
-          const after = await fetchCandidate();
-          seenRef.current.delete(next.candidate.id);
-          nextRef.current = after;
-        } catch {
-          seenRef.current.delete(next.candidate.id);
-        }
-      })();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
       setCurrent(null);
     } finally {
-      inFlightRef.current = false;
+      fetchingRef.current = false;
       setLoading(false);
     }
-  }, [current, loading, fetchCandidate]);
+  }, [fetchOne]);
 
+  // Initial load only — every subsequent load is triggered explicitly by a
+  // handler (accept / skip / undo / retry). No effect-based auto-retry so we
+  // can't get into a render → fetch → render → fetch loop on transient errors.
   useEffect(() => {
-    if (mode === "one" && !current && !empty && !loading && !error) {
-      void ensureCurrent();
-    }
-  }, [mode, current, empty, loading, error, ensureCurrent]);
+    void loadNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { setMounted(true); }, []);
-
-  // Clear an active undo timer when a new one comes in or component unmounts
   useEffect(() => {
     return () => {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -150,7 +138,6 @@ export function SuggesterClient() {
     if (!current) return;
     const c = current.candidate;
     seenRef.current.add(c.id);
-    setCurrent(null);
 
     try {
       await fetch("/api/planner/skip", {
@@ -159,7 +146,7 @@ export function SuggesterClient() {
         body: JSON.stringify({ postId: c.id }),
       });
     } catch {
-      // Network failure → still treat as locally skipped this session.
+      // Network failure — still locally skipped this session.
     }
 
     setSkipped((prev) => [{ postId: c.id, body: c.body.slice(0, 80) }, ...prev]);
@@ -170,13 +157,15 @@ export function SuggesterClient() {
       label: "Skipped — sent to Triage",
     });
 
-    void ensureCurrent();
-  }, [current, ensureCurrent]);
+    setCurrent(null);
+    void loadNext();
+  }, [current, loadNext]);
 
   const handleAccept = useCallback(
     async (input: { body: string; platforms: string[]; slot: SuggestedSlot }) => {
       if (!current) return;
       const c = current.candidate;
+      setError(null);
 
       if (input.body !== c.body) {
         await fetch(`/api/posts/${c.id}`, {
@@ -195,18 +184,28 @@ export function SuggesterClient() {
           hour: input.slot.hour,
           platforms: input.platforms,
           reasoning: "Approved via one-by-one suggester",
+          schedule: true,
         }),
       });
 
+      if (res.status === 409) {
+        // Race: slot taken between display and accept. Drop the current card
+        // (don't mark seen — same post can be rescheduled) and fetch fresh.
+        setError("That slot was just taken — picked a fresh one.");
+        setCurrent(null);
+        void loadNext();
+        throw new Error("slot taken");
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setError(err.error ?? "Failed to schedule");
-        return;
+        const message = err?.error ?? `propose failed (${res.status})`;
+        setError(message);
+        // Throw so OneByOneCard.fireAccept resets its local state and the
+        // user can retry on the same card.
+        throw new Error(message);
       }
+
       const data = (await res.json()) as { planId?: string; slotId?: string };
-      if (!data.planId || !data.slotId) {
-        setError("Schedule succeeded but no slot returned — undo unavailable.");
-      }
 
       seenRef.current.add(c.id);
       setAccepted((prev) => [
@@ -234,9 +233,9 @@ export function SuggesterClient() {
       }
 
       setCurrent(null);
-      void ensureCurrent();
+      void loadNext();
     },
-    [current, ensureCurrent]
+    [current, loadNext],
   );
 
   const handleUndo = useCallback(async () => {
@@ -261,152 +260,44 @@ export function SuggesterClient() {
     }
 
     seenRef.current.delete(state.postId);
-    nextRef.current = null;
     setCurrent(null);
     setEmpty(false);
-    void ensureCurrent();
-  }, [undo, ensureCurrent]);
+    void loadNext();
+  }, [undo, loadNext]);
 
-  if (mode === "menu") {
-    return (
-      <div className="-m-4 flex min-h-[calc(100vh-3.5rem)] flex-col bg-gradient-to-b from-gray-50 to-white md:-m-8">
-        <div
-          className="px-4 pt-3 pb-2 pl-14 md:pl-8"
-          style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.75rem)" }}
-        >
-          <h1 className="text-lg font-bold text-gray-900 md:text-xl">Suggester</h1>
-          <p className="mt-0.5 text-[13px] text-gray-500">
-            Plan posts, one swipe at a time or in bulk.
-          </p>
+  const headerSubtext = error
+    ? error
+    : current
+      ? `${current.remaining} candidates left`
+      : loading
+        ? "Loading…"
+        : empty
+          ? "All caught up"
+          : "Loading…";
+
+  return (
+    <div className="-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col md:-m-8 md:min-h-screen">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white/90 px-4 py-2 pl-14 backdrop-blur md:px-8 md:pl-8 md:py-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold text-gray-900 md:text-lg">
+            Suggester
+          </h1>
+          <p className="text-[11px] text-gray-500 md:text-xs">{headerSubtext}</p>
         </div>
-
-        <div className="flex flex-1 flex-col gap-3 p-4 md:p-8">
-          <button
-            onClick={() => setMode("one")}
-            className="group relative overflow-hidden rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-5 text-left shadow-sm transition-all hover:shadow-md active:scale-[0.99]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-purple-600 p-2.5 text-white shadow-sm">
-                <Layers className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <div className="text-base font-semibold text-gray-900">One by one</div>
-                <p className="mt-1 text-sm text-gray-600">
-                  Swipe through suggestions. Right to schedule, left to skip.
-                </p>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setMode("bulk")}
-            className="group relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 text-left shadow-sm transition-all hover:shadow-md active:scale-[0.99]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-emerald-600 p-2.5 text-white shadow-sm">
-                <Recycle className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <div className="text-base font-semibold text-gray-900">Bulk plan</div>
-                <p className="mt-1 text-sm text-gray-600">
-                  Fill many slots at once with the recycle queue or AI.
-                </p>
-              </div>
-            </div>
-          </button>
-
+        <div className="flex items-center gap-2">
           {accepted.length > 0 && (
-            <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                Just scheduled
-              </div>
-              <div className="space-y-1.5">
-                {accepted.slice(0, 5).map((a) => (
-                  <div key={a.slotId || a.postId} className="flex items-center gap-2 text-xs text-gray-700">
-                    <span className="text-gray-400">{a.day}</span>
-                    <span className="font-medium">{a.hour}:00</span>
-                    <span className="truncate text-gray-600">— {a.body}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Link
+              href="/admin/planner"
+              className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100 sm:inline-flex"
+            >
+              {accepted.length} scheduled →
+            </Link>
           )}
-
-          {skipped.length > 0 && (
-            <div className="mt-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
-              <div className="mb-1 flex items-center justify-between">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                  Skipped this session
-                </div>
-                <Link
-                  href="/admin/triage?bucket=skipped-in-suggester"
-                  className="text-[11px] font-semibold text-orange-700 underline-offset-2 hover:underline"
-                >
-                  Open in Triage →
-                </Link>
-              </div>
-              <p className="text-[11px] text-orange-800">
-                {skipped.length} post{skipped.length === 1 ? "" : "s"} flagged for later review.
-              </p>
-            </div>
+          {accepted.length > 0 && (
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 sm:hidden">
+              {accepted.length}
+            </span>
           )}
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === "bulk") {
-    return (
-      <div className="-m-4 flex min-h-[calc(100vh-3.5rem)] flex-col bg-white md:-m-8">
-        <div
-          className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 pl-14 md:pl-8"
-          style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.75rem)" }}
-        >
-          <button
-            onClick={() => setMode("menu")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="text-base font-semibold text-gray-900">Bulk plan</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <BulkPlanPanel />
-        </div>
-      </div>
-    );
-  }
-
-  // mode === "one"
-  // Portal to document.body so position:fixed isn't clipped by the
-  // overflow-y-auto admin <main> on mobile Safari.
-  if (!mounted) return null;
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[60] flex flex-col bg-gradient-to-b from-gray-50 to-white"
-      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-    >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white/80 px-3 py-2 backdrop-blur">
-        <button
-          onClick={() => setMode("menu")}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200"
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div className="flex flex-col items-center text-center">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            One by one
-          </span>
-          <span className="text-[11px] text-gray-400">
-            {current?.remaining ? `${current.remaining} candidates left` : "Reviewing"}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700 ring-1 ring-purple-200">
-            {accepted.length} scheduled
-          </span>
         </div>
       </div>
 
@@ -418,27 +309,45 @@ export function SuggesterClient() {
           </div>
         )}
 
-        {empty && !loading && (
+        {!loading && error && !current && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="rounded-full bg-red-50 p-3 ring-1 ring-red-200">
+              <AlertCircle className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="text-base font-semibold text-gray-900">Couldn&apos;t load the next post</div>
+            <p className="max-w-[320px] text-sm text-gray-500">{error}</p>
+            <button
+              onClick={() => void loadNext()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              <RotateCw className="h-4 w-4" />
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && empty && (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="rounded-full bg-emerald-50 p-3 ring-1 ring-emerald-200">
               <Sparkles className="h-6 w-6 text-emerald-600" />
             </div>
             <div className="text-base font-semibold text-gray-900">All caught up</div>
-            <p className="max-w-[280px] text-sm text-gray-500">
-              No more candidates available right now. Come back later or open the bulk planner.
+            <p className="max-w-[320px] text-sm text-gray-500">
+              No more candidates to schedule right now. Come back later, or open the
+              planner to review what&apos;s queued.
             </p>
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            <button
-              onClick={() => setMode("menu")}
+            <Link
+              href="/admin/planner"
               className="mt-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
             >
-              Done
-            </button>
+              Open planner
+            </Link>
           </div>
         )}
 
-        {current && !loading && (
+        {current && (
           <OneByOneCard
+            key={current.candidate.id}
             candidate={current.candidate}
             initialSlot={current.slot}
             initialPlatforms={current.platforms}
@@ -448,7 +357,6 @@ export function SuggesterClient() {
         )}
       </div>
 
-      {/* Undo snackbar */}
       {undo && (
         <div
           className="pointer-events-none fixed left-1/2 z-40 w-[92%] max-w-md -translate-x-1/2"
@@ -467,23 +375,21 @@ export function SuggesterClient() {
         </div>
       )}
 
-      {accepted.length > 0 && (
-        <div className="shrink-0 border-t border-gray-100 bg-white px-3 py-2">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {accepted.slice(0, 6).map((a) => (
-              <div
-                key={a.slotId || a.postId}
-                className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700 ring-1 ring-emerald-200"
-              >
-                <span className="font-semibold">{a.day.slice(5)}</span>
-                <span>·</span>
-                <span>{a.hour}:00</span>
-              </div>
-            ))}
+      {skipped.length > 0 && (
+        <div className="shrink-0 border-t border-orange-100 bg-orange-50 px-4 py-2 md:px-8">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-orange-800">
+              <span className="font-semibold">{skipped.length}</span> skipped this session
+            </span>
+            <Link
+              href="/admin/triage?bucket=skipped-in-suggester"
+              className="font-semibold text-orange-700 underline-offset-2 hover:underline"
+            >
+              Open in Triage →
+            </Link>
           </div>
         </div>
       )}
-    </div>,
-    document.body
+    </div>
   );
 }

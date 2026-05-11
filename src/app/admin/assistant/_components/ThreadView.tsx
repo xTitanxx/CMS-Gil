@@ -6,7 +6,7 @@ import { PostEditorModal } from "./PostEditorModal";
 import { ProposalCard, type ProposalData } from "./ProposalCard";
 import { HistoryPanel } from "./HistoryPanel";
 import { CostPill, type CostPillHandle } from "./CostPill";
-import { PLATFORM_META, dedupePlatforms } from "../../planner/PlanSlotCard";
+import { PLATFORM_META, dedupePlatforms } from "@/lib/planner/platforms";
 import { formatScheduledTime } from "@/lib/planner/format-slot";
 
 const PUBLISHABLE_PLATFORMS = ["INSTAGRAM", "FACEBOOK_PAGE", "LINKEDIN", "TIKTOK", "YOUTUBE"] as const;

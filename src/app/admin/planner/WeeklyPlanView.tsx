@@ -114,7 +114,7 @@ export function WeeklyPlanView({
   }, []);
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="flex h-full flex-col bg-white">
       {/* Toolbar — only renders when there's something to act on. The page
           header above ("Planner / Plan and approve upcoming posts") already
           identifies this surface; an inner title + date range was duplicate

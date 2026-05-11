@@ -265,41 +265,17 @@ export function SuggesterClient() {
     void loadNext();
   }, [undo, loadNext]);
 
-  const headerSubtext = error
-    ? error
-    : current
-      ? `${current.remaining} candidates left`
-      : loading
-        ? "Loading…"
-        : empty
-          ? "All caught up"
-          : "Loading…";
-
   return (
     <div className="-m-4 flex min-h-[calc(100dvh-3.5rem)] flex-col md:-m-8 md:min-h-screen">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white/90 px-4 py-2 pl-14 backdrop-blur md:px-8 md:pl-8 md:py-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold text-gray-900 md:text-lg">
-            Suggester
-          </h1>
-          <p className="text-[11px] text-gray-500 md:text-xs">{headerSubtext}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {accepted.length > 0 && (
-            <Link
-              href="/admin/planner"
-              className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100 sm:inline-flex"
-            >
-              {accepted.length} scheduled →
-            </Link>
-          )}
-          {accepted.length > 0 && (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 sm:hidden">
-              {accepted.length}
-            </span>
-          )}
-        </div>
-      </div>
+      {accepted.length > 0 && (
+        <Link
+          href="/admin/planner"
+          className="fixed right-3 z-30 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+          style={{ top: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
+        >
+          {accepted.length} scheduled →
+        </Link>
+      )}
 
       <div className="flex flex-1 min-h-0 flex-col">
         {loading && !current && (

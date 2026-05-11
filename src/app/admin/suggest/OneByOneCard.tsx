@@ -259,13 +259,13 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
           onChange={(e) => setBody(e.target.value)}
           onBlur={() => setEditing(false)}
           autoFocus
-          className="w-full resize-y rounded-md border border-gray-200 bg-gray-50 p-2 text-[14px] leading-snug focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100 min-h-[150px] md:min-h-[200px]"
+          className="w-full resize-y rounded-md border border-gray-200 bg-gray-50 p-2 text-base leading-snug focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100 min-h-[150px] md:min-h-[200px]"
           rows={8}
         />
       ) : (
         <p
           onClick={() => setEditing(true)}
-          className="min-h-[80px] cursor-text whitespace-pre-wrap rounded-md p-1 text-[14px] leading-snug text-gray-800 hover:bg-gray-50 md:min-h-[120px]"
+          className="min-h-[80px] cursor-text whitespace-pre-wrap rounded-md p-1 text-base leading-snug text-gray-800 hover:bg-gray-50 md:min-h-[120px]"
         >
           {body || <span className="italic text-gray-400">Tap to add a caption…</span>}
         </p>

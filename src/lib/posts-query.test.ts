@@ -153,6 +153,52 @@ describe("buildCursorClause", () => {
   });
 });
 
+describe("queue sort", () => {
+  it("buildPostsQuery uses publishCount + originalDate ordering and excludes NOT_READY/ARCHIVED", () => {
+    const { where, orderBy } = buildPostsQuery({ sort: "queue_asc" }, "user_1");
+    expect(orderBy).toEqual([
+      { publishCount: "asc" },
+      { originalDate: "asc" },
+      { id: "asc" },
+    ]);
+    const ands = (where.AND ?? []) as Array<Record<string, unknown>>;
+    expect(ands).toEqual(
+      expect.arrayContaining([
+        { readiness: { notIn: ["NOT_READY", "ARCHIVED"] } },
+      ]),
+    );
+  });
+  it("cursorFromRow encodes publishCount + originalDate", () => {
+    const row = {
+      id: "p1",
+      originalDate: new Date("2024-01-01T00:00:00.000Z"),
+      createdAt: new Date("2024-02-02"),
+      publishCount: 3,
+    };
+    expect(cursorFromRow("queue_asc", row).value).toBe(
+      "3|2024-01-01T00:00:00.000Z",
+    );
+  });
+  it("buildCursorClause builds composite > tuple for queue sort", () => {
+    const clause = buildCursorClause("queue_asc", {
+      value: "3|2024-01-01T00:00:00.000Z",
+      id: "abc",
+    });
+    const or = (clause as { OR: Array<Record<string, unknown>> }).OR;
+    expect(or).toHaveLength(3);
+    expect(or[0]).toEqual({ publishCount: { gt: 3 } });
+    expect(or[1]).toEqual({
+      publishCount: 3,
+      originalDate: { gt: new Date("2024-01-01T00:00:00.000Z") },
+    });
+    expect(or[2]).toEqual({
+      publishCount: 3,
+      originalDate: new Date("2024-01-01T00:00:00.000Z"),
+      id: { gt: "abc" },
+    });
+  });
+});
+
 describe("buildNeighborQueries", () => {
   const current = {
     id: "p1",

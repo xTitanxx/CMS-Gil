@@ -1,5 +1,18 @@
 import { Prisma } from "@prisma/client";
 import { normalizeForSearch } from "@/lib/search-normalize";
+import {
+  getSuggesterCandidateWhere,
+  SUGGESTER_ORDER_BY,
+} from "@/lib/planner/suggester-filter";
+
+/**
+ * Suggester-queue sort: matches the one-card suggester at /admin/suggest, so
+ * Eitan can see and triage the full queue from the All Posts page.
+ */
+export const QUEUE_SORT = "queue_asc";
+export function isQueueSort(sort: string | undefined): boolean {
+  return sort === QUEUE_SORT;
+}
 
 export interface PostsFilters {
   search?: string;
@@ -412,6 +425,13 @@ export function buildPostsQuery(
     extraAnds.push(...opts.extraWhere);
   }
 
+  // Queue sort: layer in the suggester's eligibility filter so the All Posts
+  // page mirrors what the one-card suggester would serve.
+  if (isQueueSort(filters.sort)) {
+    const suggesterWhere = getSuggesterCandidateWhere(userId);
+    if (suggesterWhere.readiness) extraAnds.push({ readiness: suggesterWhere.readiness });
+  }
+
   const where: Prisma.PostWhereInput = {
     userId,
     ...(filters.search
@@ -443,10 +463,12 @@ export function buildPostsQuery(
     ...(extraAnds.length > 0 ? { AND: extraAnds } : {}),
   };
 
-  const orderBy: Prisma.PostOrderByWithRelationInput[] = [
-    { [field]: dir } as Prisma.PostOrderByWithRelationInput,
-    { id: dir },
-  ];
+  const orderBy: Prisma.PostOrderByWithRelationInput[] = isQueueSort(filters.sort)
+    ? SUGGESTER_ORDER_BY
+    : [
+        { [field]: dir } as Prisma.PostOrderByWithRelationInput,
+        { id: dir },
+      ];
 
   return { where, orderBy };
 }
@@ -473,10 +495,45 @@ export function decodeCursor(s: string | null | undefined): PostCursor | null {
   return null;
 }
 
+/**
+ * Queue-sort cursor value is `${publishCount}|${originalDateISO}` — a composite
+ * over the two-key ordering (publishCount asc, originalDate asc). The id from
+ * the cursor envelope serves as the third tie-breaker.
+ */
+function parseQueueCursorValue(value: string): { publishCount: number; originalDate: Date } | null {
+  const sep = value.indexOf("|");
+  if (sep < 0) return null;
+  const pc = Number(value.slice(0, sep));
+  const od = new Date(value.slice(sep + 1));
+  if (!Number.isFinite(pc) || Number.isNaN(od.getTime())) return null;
+  return { publishCount: pc, originalDate: od };
+}
+
 export function buildCursorClause(
   sort: string | undefined,
   cursor: PostCursor,
 ): Prisma.PostWhereInput {
+  if (isQueueSort(sort)) {
+    const parsed = parseQueueCursorValue(cursor.value);
+    if (!parsed) return {};
+    const { publishCount, originalDate } = parsed;
+    // Lexicographic > on the (publishCount, originalDate, id) tuple
+    return {
+      OR: [
+        { publishCount: { gt: publishCount } },
+        {
+          publishCount,
+          originalDate: { gt: originalDate },
+        },
+        {
+          publishCount,
+          originalDate,
+          id: { gt: cursor.id },
+        },
+      ],
+    };
+  }
+
   const { field, dir } = parseSort(sort);
   const op = dir === "desc" ? "lt" : "gt";
   const value = new Date(cursor.value);
@@ -493,8 +550,20 @@ export function buildCursorClause(
 
 export function cursorFromRow(
   sort: string | undefined,
-  row: { id: string; originalDate: Date; createdAt: Date; lastPublishedViaHubAt?: Date | null },
+  row: {
+    id: string;
+    originalDate: Date;
+    createdAt: Date;
+    lastPublishedViaHubAt?: Date | null;
+    publishCount?: number;
+  },
 ): PostCursor {
+  if (isQueueSort(sort)) {
+    return {
+      value: `${row.publishCount ?? 0}|${row.originalDate.toISOString()}`,
+      id: row.id,
+    };
+  }
   const { field } = parseSort(sort);
   const v = row[field];
   return {

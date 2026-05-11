@@ -136,6 +136,7 @@ export const SORT_OPTIONS = [
   { value: "originalDate_asc", label: "Post date (oldest)" },
   { value: "createdAt_desc", label: "Import date (newest)" },
   { value: "createdAt_asc", label: "Import date (oldest)" },
+  { value: "queue_asc", label: "Suggester queue" },
 ];
 
 /* ------------------------------------------------------------------ */

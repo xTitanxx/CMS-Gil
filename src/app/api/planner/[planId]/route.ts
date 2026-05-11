@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCandidatePosts } from "@/lib/planner/candidates";
 import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
 import { getConnectedPlatforms } from "@/lib/connected-platforms";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
 type PlanStatus = "DRAFT" | "PARTIAL" | "APPROVED";
 
@@ -199,8 +200,40 @@ export async function PATCH(
     }
 
     case "clear": {
+      // Clear PROPOSED/APPROVED plan slots. Also undo SCHEDULED slots whose
+      // matching PublishRecord is still PENDING (i.e. nothing has actually
+      // gone out yet) — the suggester writes SCHEDULED directly, so without
+      // this the button silently leaves committed-but-unpublished slots in
+      // place.
+      const scheduledSlots = await prisma.weeklyPlanSlot.findMany({
+        where: { planId, status: "SCHEDULED" },
+        select: { id: true, postId: true, day: true, hour: true },
+      });
+
+      for (const s of scheduledSlots) {
+        if (s.hour == null) continue;
+        const scheduledAt = buildSlotDate(s.day, s.hour);
+        const cancelled = await prisma.publishRecord.updateMany({
+          where: {
+            postId: s.postId,
+            status: "PENDING",
+            scheduledAt,
+          },
+          data: { status: "CANCELLED" },
+        });
+        // Undo the optimistic publishCount bump that schedule:true did up
+        // front, so the suggester's `orderBy: publishCount asc` doesn't push
+        // cleared-but-never-sent posts to the back of the queue.
+        if (cancelled.count > 0) {
+          await prisma.post.update({
+            where: { id: s.postId },
+            data: { publishCount: { decrement: 1 } },
+          });
+        }
+      }
+
       await prisma.weeklyPlanSlot.deleteMany({
-        where: { planId, status: { in: ["PROPOSED", "APPROVED"] } },
+        where: { planId, status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] } },
       });
       break;
     }

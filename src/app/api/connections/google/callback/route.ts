@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const error = searchParams.get("error");
 
   if (error || !code || !stateParam) {
-    return NextResponse.redirect(new URL("/import?error=google_denied", req.url));
+    return NextResponse.redirect(new URL("/admin/import?error=google_denied", req.url));
   }
 
   const state = verifyOAuthState(stateParam);
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     session.user.role !== "admin" ||
     session.user.id !== state.userId
   ) {
-    return NextResponse.redirect(new URL("/import?error=google_state", req.url));
+    return NextResponse.redirect(new URL("/admin/import?error=google_state", req.url));
   }
 
   const userId = state.userId;
@@ -72,10 +72,12 @@ export async function GET(req: NextRequest) {
     });
 
     const successUrl =
-      from === "connections" ? "/connections?success=youtube" : "/import?success=google";
+      from === "connections"
+        ? "/admin/connections?success=youtube"
+        : "/admin/import?success=google";
     return NextResponse.redirect(new URL(successUrl, req.url));
   } catch (err) {
     console.error("Google callback error:", redactSecrets(err));
-    return NextResponse.redirect(new URL(`/import?error=google_failed`, req.url));
+    return NextResponse.redirect(new URL(`/admin/import?error=google_failed`, req.url));
   }
 }

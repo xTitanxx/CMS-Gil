@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     return NextResponse.redirect(
-      new URL(`/connections?error=instagram_denied`, req.url)
+      new URL(`/admin/connections?error=instagram_denied`, req.url)
     );
   }
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     session.user.id !== state.userId
   ) {
     return NextResponse.redirect(
-      new URL(`/connections?error=instagram_state`, req.url)
+      new URL(`/admin/connections?error=instagram_state`, req.url)
     );
   }
   const userId = state.userId;
@@ -96,11 +96,11 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.redirect(new URL("/connections?success=instagram", req.url));
+    return NextResponse.redirect(new URL("/admin/connections?success=instagram", req.url));
   } catch (err) {
     console.error("Instagram callback error:", redactSecrets(err));
     return NextResponse.redirect(
-      new URL(`/connections?error=instagram_failed`, req.url)
+      new URL(`/admin/connections?error=instagram_failed`, req.url)
     );
   }
 }

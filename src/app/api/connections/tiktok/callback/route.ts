@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     return NextResponse.redirect(
-      new URL("/connections?error=tiktok_denied", req.url)
+      new URL("/admin/connections?error=tiktok_denied", req.url)
     );
   }
 
@@ -30,14 +30,14 @@ export async function GET(req: NextRequest) {
     session.user.id !== state.userId
   ) {
     return NextResponse.redirect(
-      new URL("/connections?error=tiktok_state", req.url)
+      new URL("/admin/connections?error=tiktok_state", req.url)
     );
   }
   const userId = state.userId;
   const codeVerifier = req.cookies.get("tiktok_cv")?.value;
   if (!codeVerifier) {
     return NextResponse.redirect(
-      new URL("/connections?error=tiktok_state", req.url)
+      new URL("/admin/connections?error=tiktok_state", req.url)
     );
   }
 
@@ -101,14 +101,14 @@ export async function GET(req: NextRequest) {
     });
 
     const response = NextResponse.redirect(
-      new URL("/connections?success=tiktok", req.url)
+      new URL("/admin/connections?success=tiktok", req.url)
     );
     response.cookies.delete("tiktok_cv");
     return response;
   } catch (err) {
     console.error("TikTok callback error:", redactSecrets(err));
     return NextResponse.redirect(
-      new URL("/connections?error=tiktok_failed", req.url)
+      new URL("/admin/connections?error=tiktok_failed", req.url)
     );
   }
 }

@@ -30,22 +30,6 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     }
   }, []);
 
-  const handleGenerate = useCallback(async (preferences?: string, mode?: "AI" | "DUMB", numSlots?: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/planner/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferences, mode: mode ?? "AI", numSlots: numSlots ?? 7 }),
-      });
-      if (res.ok) {
-        await refreshPlan();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshPlan]);
-
   const handleApproveSlot = useCallback(async (slotId: string) => {
     if (!plan) return;
     // Per-slot Schedule must actually schedule — create the PublishRecord and
@@ -125,7 +109,6 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
           <WeeklyPlanView
             plan={plan}
             loading={loading}
-            onGenerate={handleGenerate}
             onApproveSlot={handleApproveSlot}
             onRemoveSlot={handleRemoveSlot}
             onClearAll={handleClearAll}

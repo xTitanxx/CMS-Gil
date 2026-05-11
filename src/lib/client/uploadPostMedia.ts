@@ -1,7 +1,5 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
-
 const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024;
 
 export interface UploadedMedia {
@@ -12,9 +10,10 @@ export interface UploadedMedia {
 }
 
 export interface UploadOptions {
-  // Called repeatedly with percent 0-100. Note: the small-file direct-POST
-  // path can't measure browser fetch progress, so it just jumps 0 → 100.
-  // The blob multipart path emits real percentages from @vercel/blob.
+  // Called repeatedly with percent 0-100. The small-file direct-POST path
+  // can't measure browser fetch progress, so it just jumps 0 → 100. The
+  // direct-to-R2 path streams real percentages via XHR upload.onprogress,
+  // capped at 95% so the bar reserves room for the server-side attach step.
   onProgress?: (percent: number) => void;
 }
 
@@ -38,33 +37,73 @@ export async function uploadPostMedia(
     return (await res.json()) as UploadedMedia;
   }
 
-  // Use multipart for large files. A 55s iPhone video runs 50–150MB; the
-  // default single-PUT path from @vercel/blob fails for files past ~100MB
-  // (Vercel themselves recommend multipart above that). When the single PUT
-  // rejected, the second fetch below never fired — the client just saw a
-  // generic "failed to upload" with no server-side log because the request
-  // never reached our function.
-  let blob;
+  // Step 1: Mint a presigned PUT URL pointing at R2.
+  let presignBody: { url: string; key: string };
   try {
-    blob = await upload(file.name, file, {
-      access: "public",
-      handleUploadUrl: "/api/blob",
-      multipart: true,
-      // Reserve the last 5% for the server-side attach step so the bar
-      // doesn't sit at 100% while we're still waiting on R2 + DB write.
-      onUploadProgress: ({ percentage }) =>
-        onProgress?.(Math.round(percentage * 0.95)),
+    const presignRes = await fetch(`/api/posts/${postId}/media/presign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+      }),
+    });
+    if (!presignRes.ok) {
+      const msg = await presignRes.text().catch(() => "");
+      throw new Error(msg || `presign HTTP ${presignRes.status}`);
+    }
+    presignBody = (await presignRes.json()) as { url: string; key: string };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Upload failed: ${msg}`);
+  }
+
+  // Step 2: PUT the file directly to R2 with XHR so we can wire upload
+  // progress. The Content-Type header is bound into the presigned URL and
+  // MUST match what the server signed — otherwise R2 rejects the PUT.
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", presignBody.url);
+      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.upload.onprogress = (evt) => {
+        if (!evt.lengthComputable) return;
+        const pct = (evt.loaded / evt.total) * 100;
+        // Reserve the last 5% for the server-side attach step (R2 fetch +
+        // sniff + DB write) so the bar doesn't sit at 100% while we're
+        // still waiting on the second request.
+        onProgress?.(Math.round(pct * 0.95));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(
+            new Error(
+              `R2 PUT ${xhr.status}${xhr.statusText ? `: ${xhr.statusText}` : ""}`,
+            ),
+          );
+        }
+      };
+      xhr.onerror = () =>
+        reject(new Error("network error during upload"));
+      xhr.onabort = () => reject(new Error("upload aborted"));
+      xhr.send(file);
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Blob upload failed: ${msg}`);
+    throw new Error(`Upload failed: ${msg}`);
   }
 
+  // Step 3: Tell the server the upload is complete. The server fetches the
+  // file back from R2 to sniff its MIME (defense in depth) and kicks off
+  // poster extraction + audio probe.
   const res = await fetch(`/api/posts/${postId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      blobUrl: blob.url,
+      key: presignBody.key,
       filename: file.name,
       mimeType: file.type,
     }),

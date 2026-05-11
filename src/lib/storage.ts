@@ -22,6 +22,10 @@ function r2Url(key: string): string {
   return `${R2_PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
 }
 
+export function r2UrlForKey(key: string): string {
+  return r2Url(key);
+}
+
 export interface UploadResult {
   url: string;
   hasAudio: boolean | null;

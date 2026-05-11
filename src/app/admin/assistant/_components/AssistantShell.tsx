@@ -32,7 +32,7 @@ export function AssistantShell() {
           tab === "plan" ? "flex" : "hidden"
         } md:flex relative w-full min-h-0 flex-1 flex-col overflow-hidden border-r border-gray-200 bg-white md:w-[440px] md:flex-none md:shrink-0`}
       >
-        <div className="flex-1 overflow-hidden p-3">
+        <div className="flex-1 overflow-hidden">
           <PlannerPanel ref={plannerRef} />
         </div>
 

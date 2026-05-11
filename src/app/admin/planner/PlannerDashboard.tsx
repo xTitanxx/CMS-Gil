@@ -115,7 +115,7 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
       {/* Two-pane layout — stacked on mobile, side-by-side on md+ */}
       <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto md:flex-row md:overflow-hidden">
         {/* Left: Weekly plan (full on mobile, 3/5 on md+) */}
-        <div className="shrink-0 overflow-hidden p-4 md:w-3/5 md:shrink md:overflow-hidden md:p-6 md:pr-3">
+        <div className="shrink-0 overflow-hidden md:w-3/5 md:shrink md:overflow-hidden">
           <WeeklyPlanView
             plan={plan}
             loading={loading}
@@ -128,7 +128,7 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
         </div>
 
         {/* Right: Link to the new assistant (replaces the old planner chat) */}
-        <div className="min-h-[200px] shrink-0 overflow-hidden p-4 md:w-2/5 md:min-h-0 md:shrink md:overflow-hidden md:p-6 md:pl-3">
+        <div className="min-h-[200px] shrink-0 overflow-hidden p-4 md:w-2/5 md:min-h-0 md:shrink md:overflow-hidden md:p-4">
           <Link
             href="/admin/assistant"
             className="flex h-full min-h-[200px] items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:bg-white hover:text-gray-900"

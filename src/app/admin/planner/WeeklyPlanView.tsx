@@ -7,6 +7,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { utcDateString } from "@/lib/planner/week";
 import { DayGroup } from "./DayGroup";
+import { EmptyDayPill } from "./EmptyDayPill";
 import type { WeeklyPlanData, PlanSlotData } from "@/lib/planner/types";
 
 const DAY_MS = 86400000;
@@ -19,12 +20,14 @@ interface WeeklyPlanViewProps {
   plan: WeeklyPlanData | null;
   loading: boolean;
   onGenerate: (preferences?: string, mode?: "AI" | "DUMB", numSlots?: number) => Promise<void>;
-  onApproveSlot: (slotId: string) => Promise<void>;
-  onRemoveSlot: (slotId: string) => Promise<void>;
+  /** Per-slot Schedule action (flips PROPOSED → SCHEDULED via /schedule endpoint). */
+  onScheduleSlot: (slotId: string) => Promise<void>;
+  /** Per-slot Unschedule action (cancels publish + removes from plan). */
+  onUnscheduleSlot: (slotId: string) => Promise<void>;
   onClearAll: () => Promise<void>;
   onScheduleAll: () => Promise<void>;
-  /** @deprecated unused — retained for compatibility */
-  onSwapSlot?: (slotId: string) => void;
+  /** Inline caption editor calls this so the parent can update its cached plan state. */
+  onBodyChange: (postId: string, body: string) => void;
 }
 
 function todayUTC(): Date {
@@ -45,10 +48,11 @@ export function WeeklyPlanView({
   plan,
   loading,
   onGenerate,
-  onApproveSlot,
-  onRemoveSlot,
+  onScheduleSlot,
+  onUnscheduleSlot,
   onClearAll,
   onScheduleAll,
+  onBodyChange,
 }: WeeklyPlanViewProps) {
   const [activeAction, setActiveAction] = useState<LoadingAction>(null);
   const [futureDays, setFutureDays] = useState(INITIAL_FUTURE);
@@ -59,10 +63,13 @@ export function WeeklyPlanView({
   const [pendingMode, setPendingMode] = useState<"AI" | "DUMB" | null>(null);
   const [slotCount, setSlotCount] = useState(7);
 
-  // Build slot lookup — multiple slots per day
+  // Slots grouped by UTC day-string. Past days (yesterday and earlier) are
+  // dropped entirely — the post-first view is for "what's going public", not
+  // history.
   const slotsByDay = new Map<string, PlanSlotData[]>();
   if (plan) {
     for (const slot of plan.slots) {
+      if (slot.day < todayKey) continue;
       const arr = slotsByDay.get(slot.day) ?? [];
       arr.push(slot);
       slotsByDay.set(slot.day, arr);
@@ -71,7 +78,7 @@ export function WeeklyPlanView({
 
   const proposedSlots = plan?.slots.filter((s) => s.status === "PROPOSED") ?? [];
   const activeSlots = plan?.slots.filter(
-    (s) => s.status === "PROPOSED" || s.status === "APPROVED"
+    (s) => s.status === "PROPOSED" || s.status === "APPROVED",
   ) ?? [];
 
   // Scroll to today on mount
@@ -95,7 +102,7 @@ export function WeeklyPlanView({
           setFutureDays((d) => d + LOAD_MORE);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -133,9 +140,6 @@ export function WeeklyPlanView({
           </div>
         </div>
 
-        {/* Action grid — two equal-width buttons fit cleanly on narrow screens.
-            For deeper planning flows (one-by-one, presets), the dedicated
-            Suggester tab handles the cramped UI better. */}
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <Button
             onClick={() => { setPendingMode("DUMB"); setSlotCount(7); }}
@@ -192,18 +196,17 @@ export function WeeklyPlanView({
               className="col-span-2 h-10 justify-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 sm:col-span-1 sm:ml-auto sm:h-9"
             >
               {activeAction === "schedule" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
-              <span>Approve all ({activeSlots.length})</span>
+              <span>Schedule all ({activeSlots.length})</span>
             </Button>
           )}
         </div>
 
-        {/* Slot-count prompt — stacks comfortably on mobile widths. */}
         {pendingMode !== null && (
           <div className="mt-2.5 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
               How many slots?
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setSlotCount((c) => Math.max(1, c - 1))}
@@ -268,23 +271,29 @@ export function WeeklyPlanView({
             <span className="text-sm">Generating plan…</span>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {days.map((day) => {
               const dayKey = utcDateString(day);
               const isToday = dayKey === todayKey;
+              const daySlots = slotsByDay.get(dayKey) ?? [];
+              const hasContent = daySlots.length > 0;
               return (
                 <div key={dayKey} ref={isToday ? todayRef : undefined}>
-                  <DayGroup
-                    day={day}
-                    isToday={isToday}
-                    slots={slotsByDay.get(dayKey) ?? []}
-                    onApprove={onApproveSlot}
-                    onRemove={onRemoveSlot}
-                  />
+                  {hasContent ? (
+                    <DayGroup
+                      day={day}
+                      isToday={isToday}
+                      slots={daySlots}
+                      onUnschedule={(id) => void onUnscheduleSlot(id)}
+                      onSchedule={(id) => void onScheduleSlot(id)}
+                      onBodyChange={onBodyChange}
+                    />
+                  ) : (
+                    <EmptyDayPill day={day} isToday={isToday} />
+                  )}
                 </div>
               );
             })}
-            {/* Infinite scroll sentinel */}
             <div ref={sentinelRef} className="h-4" />
           </div>
         )}

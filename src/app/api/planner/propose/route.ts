@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMondayUTC } from "@/lib/planner/week";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
 const ALLOWED_PLATFORMS = new Set([
   "INSTAGRAM",
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     hour?: unknown;
     platforms?: unknown;
     reasoning?: unknown;
+    schedule?: unknown;
   };
 
   const postId = typeof body.postId === "string" ? body.postId : "";
@@ -47,6 +49,15 @@ export async function POST(req: NextRequest) {
   }
 
   const reasoning = typeof body.reasoning === "string" ? body.reasoning : null;
+  const scheduleNow = body.schedule === true;
+
+  // schedule:true requires an explicit hour — we need it to compute scheduledAt.
+  if (scheduleNow && hour == null) {
+    return NextResponse.json(
+      { error: "hour is required when schedule=true" },
+      { status: 400 },
+    );
+  }
 
   const post = await prisma.post.findFirst({
     where: { id: postId, userId },
@@ -90,12 +101,56 @@ export async function POST(req: NextRequest) {
       postId,
       day: dayDate,
       hour,
-      status: "PROPOSED",
+      status: scheduleNow ? "SCHEDULED" : "PROPOSED",
       reasoning,
       platforms,
     },
     select: { id: true },
   });
 
-  return NextResponse.json({ ok: true, planId: plan.id, slotId: slot.id });
+  if (scheduleNow && hour != null) {
+    const scheduledAt = buildSlotDate(dayDate, hour);
+    // Personal FACEBOOK is handled by the push-reminder flow, not by
+    // PublishRecord — drop it from the auto-schedule set. ALLOWED_PLATFORMS
+    // already excludes plain "FACEBOOK" but keep the guard explicit.
+    const autoPlatforms = platforms.filter((p) => p !== "FACEBOOK");
+
+    if (autoPlatforms.length > 0) {
+      // Sequential awaits (no $transaction) — pgbouncer transaction-pool mode
+      // times out on $transaction in this stack.
+      for (const platform of autoPlatforms) {
+        // Cancel any existing PENDING record for the same post+platform so a
+        // second propose-with-schedule doesn't leave a duplicate scheduled job.
+        await prisma.publishRecord.updateMany({
+          where: {
+            postId,
+            platform: platform as never,
+            status: "PENDING",
+          },
+          data: { status: "CANCELLED" },
+        });
+
+        await prisma.publishRecord.create({
+          data: {
+            postId,
+            platform: platform as never,
+            status: "PENDING",
+            scheduledAt,
+          },
+        });
+      }
+
+      await prisma.post.update({
+        where: { id: postId },
+        data: { publishCount: { increment: 1 } },
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    planId: plan.id,
+    slotId: slot.id,
+    scheduled: scheduleNow,
+  });
 }

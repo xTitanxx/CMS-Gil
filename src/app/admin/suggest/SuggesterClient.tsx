@@ -186,6 +186,9 @@ export function SuggesterClient() {
         });
       }
 
+      // Suggester accept commits a real schedule — propose creates the slot
+      // AND the matching PublishRecord in one call. AI/Recycle plans keep the
+      // PROPOSED → bulk-schedule flow; the Suggester is per-post and intentional.
       const res = await fetch("/api/planner/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -195,6 +198,7 @@ export function SuggesterClient() {
           hour: input.slot.hour,
           platforms: input.platforms,
           reasoning: "Approved via one-by-one suggester",
+          schedule: true,
         }),
       });
 
@@ -316,20 +320,18 @@ export function SuggesterClient() {
           </button>
 
           {accepted.length > 0 && (
-            <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                Just scheduled
-              </div>
-              <div className="space-y-1.5">
-                {accepted.slice(0, 5).map((a) => (
-                  <div key={a.slotId || a.postId} className="flex items-center gap-2 text-xs text-gray-700">
-                    <span className="text-gray-400">{a.day}</span>
-                    <span className="font-medium">{a.hour}:00</span>
-                    <span className="truncate text-gray-600">— {a.body}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Link
+              href="/admin/planner"
+              className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-semibold text-gray-900">
+                  {accepted.length} scheduled
+                </span>{" "}
+                this session — review in Planner
+              </span>
+              <span className="shrink-0 text-gray-400">→</span>
+            </Link>
           )}
 
           {skipped.length > 0 && (
@@ -467,22 +469,6 @@ export function SuggesterClient() {
         </div>
       )}
 
-      {accepted.length > 0 && (
-        <div className="shrink-0 border-t border-gray-100 bg-white px-3 py-2">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {accepted.slice(0, 6).map((a) => (
-              <div
-                key={a.slotId || a.postId}
-                className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-700 ring-1 ring-emerald-200"
-              >
-                <span className="font-semibold">{a.day.slice(5)}</span>
-                <span>·</span>
-                <span>{a.hour}:00</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>,
     document.body
   );

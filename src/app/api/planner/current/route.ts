@@ -33,7 +33,7 @@ const SLOT_INCLUDE = {
 } as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeSlot(s: any, hour: number | null): PlanSlotData {
+function serializeSlot(s: any, hour: number | null, published: boolean): PlanSlotData {
   const firstMedia = s.post.media[0];
   const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
   const lastPub = s.post.publishes?.[0]?.publishedAt;
@@ -46,6 +46,7 @@ function serializeSlot(s: any, hour: number | null): PlanSlotData {
     status: s.status as PlanSlotData["status"],
     reasoning: s.reasoning,
     platforms: s.platforms,
+    published,
     post: {
       id: s.post.id,
       body: s.post.body,
@@ -116,17 +117,21 @@ export async function GET() {
           status: { in: ["PENDING", "PUBLISHED", "PROCESSING"] },
           scheduledAt: { not: null },
         },
-        select: { postId: true, scheduledAt: true },
+        select: { postId: true, scheduledAt: true, status: true },
         orderBy: { scheduledAt: "asc" },
       })
     : [];
-  // Map from postId|YYYY-MM-DD (UTC) → first matching scheduledAt
+  // Map from postId|YYYY-MM-DD (UTC) → first matching scheduledAt.
+  // Track published-ness separately so the client can grey out today's
+  // already-fired slots without re-deriving from raw records.
   const scheduledByPostDay = new Map<string, Date>();
+  const publishedByPostDay = new Set<string>();
   for (const r of scheduledTimes) {
     if (!r.scheduledAt) continue;
     const dayKey = r.scheduledAt.toISOString().slice(0, 10);
     const key = `${r.postId}|${dayKey}`;
     if (!scheduledByPostDay.has(key)) scheduledByPostDay.set(key, r.scheduledAt);
+    if (r.status === "PUBLISHED") publishedByPostDay.add(key);
   }
 
   // Merge all slots across all weeks into one flat array
@@ -150,13 +155,16 @@ export async function GET() {
       // legacy slots saved before `hour` existed — otherwise a single slot at
       // 18:00 would render as 12:00 because index 0 was always mapped to 12.
       let hour: number | null = s.hour ?? FIXED_SLOT_HOURS[idx] ?? null;
+      let published = false;
       if (s.status === "SCHEDULED") {
-        const at = scheduledByPostDay.get(`${s.postId}|${dayKey}`);
+        const recordKey = `${s.postId}|${dayKey}`;
+        const at = scheduledByPostDay.get(recordKey);
         if (at) {
           hour = Number(formatInTimeZone(at, SCHEDULE_TZ, "H"));
         }
+        published = publishedByPostDay.has(recordKey);
       }
-      allSlots.push(serializeSlot(s, hour));
+      allSlots.push(serializeSlot(s, hour, published));
     }
   }
 

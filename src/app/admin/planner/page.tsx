@@ -99,6 +99,9 @@ export default async function PlannerPage() {
         status: s.status as PlanSlotData["status"],
         reasoning: s.reasoning,
         platforms: s.platforms,
+        // Initial SSR pass doesn't derive published — the client refetch via
+        // /api/planner/current fills it in. Default false so the type matches.
+        published: false,
         post: {
           id: s.post.id,
           body: s.post.body,

@@ -21,6 +21,10 @@ export interface PlanSlotData {
   status: "PROPOSED" | "APPROVED" | "SCHEDULED" | "SKIPPED";
   reasoning: string | null;
   platforms: string[];
+  /** True when this slot's PublishRecord has already fired (status PUBLISHED).
+   *  Derived server-side; the post-first Planner view greys these and hides
+   *  destructive actions. */
+  published: boolean;
   post: {
     id: string;
     body: string;

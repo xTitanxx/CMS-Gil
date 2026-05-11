@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { upload } from "@vercel/blob/client";
 import { useDropzone } from "react-dropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -148,62 +147,73 @@ export default function ImportPage() {
       return;
     }
 
-    // Multiple files or large ZIP — try Blob staging first, fall back to direct FormData
+    // Multiple files or large ZIP — presign each to R2, PUT directly, then
+    // hand the keys to /api/import/process.
     setUploadingFiles(true);
 
     try {
       let jobId: string;
 
-      // Try Blob upload first (works on Vercel with BLOB_READ_WRITE_TOKEN)
-      let usedBlob = false;
-      const blobUrls: string[] = [];
-      try {
-        for (let i = 0; i < files.length; i++) {
-          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
-          const blob = await upload(files[i].name, files[i], {
-            access: "public",
-            handleUploadUrl: "/api/blob",
-          });
-          blobUrls.push(blob.url);
-        }
-        usedBlob = true;
-      } catch {
-        // Blob not available (no token / local dev) — fall back to direct upload
-        blobUrls.length = 0;
-      }
+      const keys: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
+        const file = files[i];
+        const contentType = file.type || "application/zip";
 
-      if (usedBlob) {
-        setFileProgress(null);
-        const res = await fetch("/api/import/process", {
+        const presignRes = await fetch("/api/import/presign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ blobUrls }),
+          body: JSON.stringify({
+            filename: file.name,
+            contentType,
+            size: file.size,
+          }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          setUploadError(data.error ?? "Processing failed");
-          return;
+        if (!presignRes.ok) {
+          throw new Error(await presignRes.text());
         }
-        jobId = data.jobId;
-      } else {
-        // Direct FormData upload (local dev / no Blob token)
-        const form = new FormData();
-        for (let i = 0; i < files.length; i++) {
-          setFileProgress({ current: i + 1, total: files.length, name: files[i].name });
-          form.append("files", files[i]);
-        }
-        setFileProgress(null);
-        const res = await fetch("/api/import/process", {
-          method: "POST",
-          body: form,
+        const { url: putUrl, key } = (await presignRes.json()) as {
+          url: string;
+          key: string;
+        };
+
+        // Direct PUT to R2 — the Content-Type header is bound into the
+        // presigned URL, so it must match what we sent at presign time
+        // or R2 will reject the request.
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", putUrl);
+          xhr.setRequestHeader("Content-Type", contentType);
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else
+              reject(
+                new Error(
+                  `R2 PUT ${xhr.status}${xhr.statusText ? `: ${xhr.statusText}` : ""}`,
+                ),
+              );
+          };
+          xhr.onerror = () =>
+            reject(new Error("network error during upload"));
+          xhr.onabort = () => reject(new Error("upload aborted"));
+          xhr.send(file);
         });
-        const data = await res.json();
-        if (!res.ok) {
-          setUploadError(data.error ?? "Processing failed");
-          return;
-        }
-        jobId = data.jobId;
+
+        keys.push(key);
       }
+
+      setFileProgress(null);
+      const res = await fetch("/api/import/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Processing failed");
+        return;
+      }
+      jobId = data.jobId;
 
       const label = files.length === 1 ? files[0].name : `${files.length} ZIP files`;
       const newJob: ImportJob = { id: jobId, status: "PENDING", filename: label, source: "UPLOAD", totalPosts: 0, importedPosts: 0, skippedPosts: 0, errorLog: null, startedAt: null, completedAt: null };

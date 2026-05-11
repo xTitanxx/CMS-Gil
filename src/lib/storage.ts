@@ -121,3 +121,7 @@ export async function deleteObject(url: string): Promise<void> {
 export function mediaKey(userId: string, filename: string): string {
   return `media/${userId}/${Date.now()}-${filename}`;
 }
+
+export function importKey(userId: string, filename: string): string {
+  return `import/${userId}/${Date.now()}-${filename}`;
+}

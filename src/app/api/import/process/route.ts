@@ -4,8 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runImportJob } from "@/lib/import-worker";
 import { parseFacebookFile, dedupeParsedPosts, ParsedPost } from "@/lib/facebook-parser";
-import { isOurBlobUrl } from "@/lib/url-allowlist";
-import { del } from "@vercel/blob";
+import { getObject, deleteObject, r2UrlForKey } from "@/lib/storage";
 import unzipper from "unzipper";
 import { readdir } from "fs/promises";
 import { join } from "path";
@@ -20,7 +19,7 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   const contentType = req.headers.get("content-type") ?? "";
-  let blobUrls: string[] = [];
+  let keys: string[] = [];
   let localPath = "";
 
   if (contentType.includes("application/json")) {
@@ -36,13 +35,20 @@ export async function POST(req: NextRequest) {
         );
       }
       localPath = body.localPath;
-    } else if (Array.isArray(body.blobUrls) && body.blobUrls.length > 0) {
-      // SSRF guard: every URL we then fetch must be on the Vercel Blob host.
-      const candidates = body.blobUrls as unknown[];
-      if (!candidates.every((u) => typeof u === "string" && isOurBlobUrl(u))) {
-        return NextResponse.json({ error: "Invalid blob URL" }, { status: 400 });
+    } else if (Array.isArray(body.keys) && body.keys.length > 0) {
+      // Lock every key to this user's import prefix. Without this, the body
+      // could point at any object in R2 (another user's media, audio, …)
+      // and we'd happily download and process it as if it were a ZIP.
+      const userPrefix = `import/${userId}/`;
+      const candidates = body.keys as unknown[];
+      if (
+        !candidates.every(
+          (k) => typeof k === "string" && k.startsWith(userPrefix)
+        )
+      ) {
+        return NextResponse.json({ error: "Invalid storage key" }, { status: 400 });
       }
-      blobUrls = candidates as string[];
+      keys = candidates as string[];
     } else {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
   const job = await prisma.importJob.create({
     data: {
       userId,
-      filename: localPath ? `Local: ${localPath.split("/").pop()}` : `${blobUrls.length} ZIP files`,
+      filename: localPath ? `Local: ${localPath.split("/").pop()}` : `${keys.length} ZIP files`,
       source: "UPLOAD",
       status: "PENDING",
     },
@@ -64,7 +70,7 @@ export async function POST(req: NextRequest) {
       if (localPath) {
         await processLocalFolder(job.id, userId, localPath);
       } else {
-        await processMultiZipFromBlob(job.id, userId, blobUrls);
+        await processMultiZipFromR2(job.id, userId, keys);
       }
     } catch (err) {
       console.error("Multi-ZIP import error:", err);
@@ -77,8 +83,11 @@ export async function POST(req: NextRequest) {
         },
       });
     } finally {
-      for (const url of blobUrls) {
-        del(url).catch(() => {});
+      // Whether the run succeeded or failed, the staged ZIPs are useless
+      // now — leaving them around bloats R2 and costs egress on future
+      // accidental re-fetches.
+      for (const key of keys) {
+        deleteObject(r2UrlForKey(key)).catch(() => {});
       }
     }
   });
@@ -201,21 +210,17 @@ async function processLocalFolder(
   await runImportJob({ jobId, userId, parsedPosts: dedupedPosts, getMedia });
 }
 
-async function processMultiZipFromBlob(
+async function processMultiZipFromR2(
   jobId: string,
   userId: string,
-  blobUrls: string[],
+  keys: string[],
 ): Promise<void> {
   const mediaEntries = new Map<string, MediaRef>();
   const jsonContents: string[] = [];
   const directories: unzipper.CentralDirectory[] = [];
 
-  for (const blobUrl of blobUrls) {
-    const res = await fetch(blobUrl);
-    if (!res.ok) {
-      throw new Error(`Failed to download ZIP from Blob: ${res.status}`);
-    }
-    const buffer = Buffer.from(await res.arrayBuffer());
+  for (const key of keys) {
+    const buffer = await getObject(r2UrlForKey(key));
     const directory = await unzipper.Open.buffer(buffer);
     directories.push(directory);
     indexZipEntries(directory, mediaEntries);

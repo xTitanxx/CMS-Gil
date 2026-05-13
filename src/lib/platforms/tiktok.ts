@@ -12,7 +12,11 @@ interface TikTokCredentials {
   accessToken: string;
 }
 
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks
+// TikTok requires chunk_size between 5 MB and 64 MB. Single-chunk uploads
+// must have chunk_size === video_size. For multi-chunk, the last chunk
+// absorbs the remainder, so total_chunk_count uses Math.floor.
+const MIN_CHUNK_SIZE = 5 * 1024 * 1024;
+const PREFERRED_CHUNK_SIZE = 10 * 1024 * 1024;
 
 export async function postToTikTok(
   creds: TikTokCredentials,
@@ -29,7 +33,18 @@ export async function postToTikTok(
   const { accessToken } = creds;
   const videoBuffer = await getObject(videoKey);
   const totalBytes = videoBuffer.length;
-  const chunkCount = Math.ceil(totalBytes / CHUNK_SIZE);
+
+  let chunkSize: number;
+  let chunkCount: number;
+  if (totalBytes < MIN_CHUNK_SIZE) {
+    // Whole video uploaded as a single sub-min chunk; TikTok allows this when
+    // chunk_size === video_size and total_chunk_count === 1.
+    chunkSize = totalBytes;
+    chunkCount = 1;
+  } else {
+    chunkSize = PREFERRED_CHUNK_SIZE;
+    chunkCount = Math.floor(totalBytes / chunkSize);
+  }
 
   // 1. Initialize upload
   const initRes = await fetch(
@@ -52,7 +67,7 @@ export async function postToTikTok(
         source_info: {
           source: "FILE_UPLOAD",
           video_size: totalBytes,
-          chunk_size: CHUNK_SIZE,
+          chunk_size: chunkSize,
           total_chunk_count: chunkCount,
         },
       }),
@@ -71,10 +86,12 @@ export async function postToTikTok(
     throw new Error(`TikTok init missing fields: ${JSON.stringify(initData)}`);
   }
 
-  // 2. Upload chunks
+  // 2. Upload chunks. The last chunk absorbs any remainder bytes so the
+  // whole video is uploaded even when totalBytes is not a multiple of
+  // chunkSize.
   for (let i = 0; i < chunkCount; i++) {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, totalBytes) - 1;
+    const start = i * chunkSize;
+    const end = i === chunkCount - 1 ? totalBytes - 1 : start + chunkSize - 1;
     const chunk = videoBuffer.slice(start, end + 1);
 
     const uploadRes = await fetch(uploadUrl, {

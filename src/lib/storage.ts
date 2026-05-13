@@ -87,8 +87,16 @@ export function getMediaUrl(media: { storageKey: string }): Promise<string> {
   return getSignedDownloadUrl(media.storageKey);
 }
 
+// Strip filename bytes that survive URLSearchParams/JSON encoding but trip up
+// downstream URL fetchers (Meta Graph rejects file_urls with literal spaces).
+// Keep ASCII alphanumerics, dot, dash and underscore; collapse anything else
+// to a single dash. Mirrors what S3/R2 callers commonly do for object keys.
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 export function audioKey(userId: string, filename: string): string {
-  return `audio/${userId}/${Date.now()}-${filename}`;
+  return `audio/${userId}/${Date.now()}-${sanitizeFilename(filename)}`;
 }
 
 export async function getThumbnailUrl(
@@ -119,9 +127,9 @@ export async function deleteObject(url: string): Promise<void> {
 }
 
 export function mediaKey(userId: string, filename: string): string {
-  return `media/${userId}/${Date.now()}-${filename}`;
+  return `media/${userId}/${Date.now()}-${sanitizeFilename(filename)}`;
 }
 
 export function importKey(userId: string, filename: string): string {
-  return `import/${userId}/${Date.now()}-${filename}`;
+  return `import/${userId}/${Date.now()}-${sanitizeFilename(filename)}`;
 }

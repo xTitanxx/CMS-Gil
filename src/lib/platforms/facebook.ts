@@ -18,6 +18,18 @@ interface FacebookCredentials {
 const GRAPH = "https://graph.facebook.com/v21.0";
 const VIDEO_RE = /\.(mp4|mov|avi|webm|mkv)$/i;
 
+// FB's URL fetcher rejects URLs that contain literal unsafe characters (most
+// commonly spaces — historical R2 keys preserve the source filename verbatim,
+// so a clip named "how we transport.mp4" lands as a storageKey with literal
+// spaces). URLSearchParams encodes form values once and FB decodes them once,
+// which means FB still sees the unsafe URL. encodeURI pre-encodes those bytes
+// so after FB's single decode the URL is still %20-encoded and fetchable.
+// encodeURI is the right primitive: it leaves `:/?#&=` alone so already-valid
+// URLs round-trip unchanged.
+function encodeForRemoteFetch(url: string): string {
+  return encodeURI(url);
+}
+
 // FB Graph code 1 ("API Unknown" — message: "Please reduce the amount of
 // data you're asking for, then retry your request") and code 2 ("API
 // Service") are documented as transient. Retry the same call a few times
@@ -123,7 +135,7 @@ async function photoPost(
   fields: { url: string; caption: string }
 ): Promise<PublishResult> {
   const form = new URLSearchParams({
-    url: fields.url,
+    url: encodeForRemoteFetch(fields.url),
     caption: fields.caption,
     published: "true",
     access_token: accessToken,
@@ -147,7 +159,7 @@ async function videoPost(
   fields: { file_url: string; description: string }
 ): Promise<PublishResult> {
   const form = new URLSearchParams({
-    file_url: fields.file_url,
+    file_url: encodeForRemoteFetch(fields.file_url),
     description: fields.description,
     access_token: accessToken,
   });
@@ -235,7 +247,7 @@ async function storyPost(
     : `${GRAPH}/${pageId}/photo_stories`;
 
   const form = new URLSearchParams({
-    [fields.isVideo ? "file_url" : "url"]: fields.url,
+    [fields.isVideo ? "file_url" : "url"]: encodeForRemoteFetch(fields.url),
     access_token: accessToken,
   });
   const res = await fetch(endpoint, { method: "POST", body: form });
@@ -262,7 +274,7 @@ async function multiPhotoPost(
   for (const key of keys) {
     const url = await getSignedDownloadUrl(key);
     const form = new URLSearchParams({
-      url,
+      url: encodeForRemoteFetch(url),
       published: "false",
       access_token: accessToken,
     });

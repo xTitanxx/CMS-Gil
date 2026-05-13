@@ -16,6 +16,12 @@ import {
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { formatSlotHour } from "@/lib/planner/format-slot";
+import {
+  eligiblePlatforms,
+  ineligibilityReason,
+  isPlatformEligible,
+  mediaShapeFromMimeTypes,
+} from "@/lib/platform-eligibility";
 import type { SuggestCandidate, SuggestedSlot } from "./types";
 
 interface Props {
@@ -27,11 +33,11 @@ interface Props {
 }
 
 const PUBLISHABLE_PLATFORMS = [
-  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]", requiresVideo: false },
-  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]", requiresVideo: false },
-  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]", requiresVideo: false },
-  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]", requiresVideo: true },
-  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]", requiresVideo: true },
+  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]" },
+  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]" },
+  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]" },
+  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]" },
+  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]" },
 ] as const;
 
 function formatSlotParts(day: string, hour: number): { when: string; weekday: string; date: string; time: string } {
@@ -56,9 +62,20 @@ const SWIPE_THRESHOLD_RATIO = 0.35;
 const MAX_ROTATION_DEG = 6;
 
 export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip, onAccept }: Props) {
+  // Eligibility is derived from the candidate's media-type mix, not from
+  // `requiresVideo` per platform — the rules differ (IG needs media-of-any-
+  // kind, FB/LI accept text). Defaults select every eligible platform so the
+  // user only has to deselect; ineligible chips are disabled.
+  const shape = mediaShapeFromMimeTypes(candidate.media.map((m) => m.mimeType));
+  const eligible = eligiblePlatforms(shape, PUBLISHABLE_PLATFORMS.map((p) => p.key));
+  const defaultPlatforms =
+    initialPlatforms.length > 0
+      ? initialPlatforms.filter((p) => eligible.includes(p))
+      : eligible;
+
   const [body, setBody] = useState(candidate.body);
   const [editing, setEditing] = useState(false);
-  const [platforms, setPlatforms] = useState<string[]>(initialPlatforms);
+  const [platforms, setPlatforms] = useState<string[]>(defaultPlatforms);
   const [reminderFb, setReminderFb] = useState(true);
   const [mediaIdx, setMediaIdx] = useState(0);
   const [accepting, setAccepting] = useState(false);
@@ -74,22 +91,25 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
   useEffect(() => {
     setBody(candidate.body);
     setEditing(false);
-    setPlatforms(initialPlatforms);
+    setPlatforms(defaultPlatforms);
     setReminderFb(true);
     setMediaIdx(0);
     setAccepted(false);
     setMuted(true);
     setDrag({ x: 0, active: false });
     setExitDir(null);
+    // defaultPlatforms is derived from candidate identity + initialPlatforms,
+    // both of which are already in the dep list. Excluded to avoid an infinite
+    // re-render loop from the array reference changing each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate.id, candidate.body, initialPlatforms]);
 
   const media = candidate.media[mediaIdx] ?? null;
   const isVideo = media?.mimeType.startsWith("video/") ?? false;
   const hasMultipleMedia = candidate.media.length > 1;
-  const candidateHasVideo = candidate.hasVideo === true;
 
-  const togglePlatform = (key: string, requiresVideo: boolean) => {
-    if (requiresVideo && !candidateHasVideo) return;
+  const togglePlatform = (key: string) => {
+    if (!isPlatformEligible(key, shape)) return;
     setPlatforms((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
   };
 
@@ -279,15 +299,16 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         Publish to
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color, requiresVideo }) => {
+        {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
           const active = platforms.includes(key);
-          const disabled = requiresVideo && !candidateHasVideo;
+          const reason = ineligibilityReason(key, shape);
+          const disabled = reason !== null;
           return (
             <button
               key={key}
-              onClick={() => togglePlatform(key, requiresVideo)}
+              onClick={() => togglePlatform(key)}
               disabled={disabled}
-              title={disabled ? "Video posts only" : undefined}
+              title={reason ?? undefined}
               aria-disabled={disabled}
               className={`flex min-w-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
                 disabled
@@ -303,7 +324,6 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
                 }`}
               />
               <span className="truncate">{label}</span>
-              {disabled && <span className="text-[10px] uppercase opacity-70">video</span>}
             </button>
           );
         })}

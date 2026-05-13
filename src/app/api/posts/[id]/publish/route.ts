@@ -167,7 +167,7 @@ export async function publishNow(
       case "YOUTUBE":
         result = await postToYouTube(
           { accessToken, refreshToken },
-          post.body.slice(0, 100),
+          post.body,
           post.body,
           mediaKeys
         );

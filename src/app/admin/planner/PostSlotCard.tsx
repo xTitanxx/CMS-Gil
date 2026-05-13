@@ -10,8 +10,10 @@ import type { PlanSlotData } from "@/lib/planner/types";
 
 interface PostSlotCardProps {
   slot: PlanSlotData;
-  /** Cancels publish + removes the slot from the visible plan. */
-  onUnschedule: (slotId: string) => void;
+  /** Cancels publish + removes the slot from the visible plan. Receives the
+   *  full slot so virtual orphan-publish entries route to the per-record
+   *  cancel endpoint instead of a plan slot update. */
+  onUnschedule: (slot: PlanSlotData) => void;
   /** Flips a PROPOSED slot to SCHEDULED (creates the PublishRecord). Absent for already-scheduled slots. */
   onSchedule?: (slotId: string) => void;
   /** Reflect inline caption edits back up so the in-memory plan stays in sync without a refetch. */
@@ -219,7 +221,7 @@ export function PostSlotCard({ slot, onUnschedule, onSchedule, onBodyChange }: P
         {showActions && (
           <button
             type="button"
-            onClick={() => onUnschedule(slot.id)}
+            onClick={() => onUnschedule(slot)}
             className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg text-gray-700 hover:bg-white"
             aria-label="Unschedule"
             title="Unschedule"

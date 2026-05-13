@@ -8,7 +8,7 @@ interface DayGroupProps {
   day: Date;
   isToday: boolean;
   slots: PlanSlotData[];
-  onUnschedule: (slotId: string) => void;
+  onUnschedule: (slot: PlanSlotData) => void;
   onSchedule: (slotId: string) => void;
   onBodyChange: (postId: string, body: string) => void;
 }

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { WeeklyPlanView } from "./WeeklyPlanView";
-import type { WeeklyPlanData } from "@/lib/planner/types";
+import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
 interface Stats {
   /** PENDING records with a future scheduledAt. */
@@ -40,12 +40,24 @@ export function PlannerDashboard({ initialPlan, stats }: PlannerDashboardProps) 
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);
 
-  const handleUnscheduleSlot = useCallback(async (slotId: string) => {
+  const handleUnscheduleSlot = useCallback(async (slot: PlanSlotData) => {
     if (!plan) return;
+    // Virtual slots (synthesized from raw PublishRecords with no backing
+    // WeeklyPlanSlot — e.g. scheduled from the post detail page) don't have
+    // a plan slot to remove. Cancel the underlying record(s) instead.
+    if (slot.publishRecordIds && slot.publishRecordIds.length > 0) {
+      await Promise.all(
+        slot.publishRecordIds.map((id) =>
+          fetch(`/api/publish/${id}/cancel`, { method: "POST" }),
+        ),
+      );
+      await refreshPlan();
+      return;
+    }
     const res = await fetch(`/api/planner/${plan.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "remove", slotId }),
+      body: JSON.stringify({ action: "remove", slotId: slot.id }),
     });
     if (res.ok) await refreshPlan();
   }, [plan, refreshPlan]);

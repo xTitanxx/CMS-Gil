@@ -148,6 +148,7 @@ export function ActivityList({
   const [fbComments, setFbComments] = useState<FbComment[]>(initialFbComments);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<Set<string>>(() => new Set());
 
   // Sync state when the server tree re-renders with new data — happens after
   // PublishPanel calls router.refresh() on a successful Post Now. Without
@@ -187,6 +188,24 @@ export function ActivityList({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [hasActive, refresh]);
+
+  const cancelPublish = useCallback(async (recordId: string) => {
+    setCancelling((prev) => {
+      const next = new Set(prev);
+      next.add(recordId);
+      return next;
+    });
+    try {
+      await fetch(`/api/publish/${recordId}/cancel`, { method: "POST" });
+      await refresh();
+    } finally {
+      setCancelling((prev) => {
+        const next = new Set(prev);
+        next.delete(recordId);
+        return next;
+      });
+    }
+  }, [refresh]);
 
   const refreshAnalytics = useCallback(async () => {
     setRefreshing(true);
@@ -407,6 +426,20 @@ export function ActivityList({
                     {a.comments != null && <Stat icon={MessageCircle} value={a.comments} />}
                     {a.shares != null && <Stat icon={Share2} value={a.shares} />}
                     {a.saves != null && <Stat icon={Bookmark} value={a.saves} />}
+                  </div>
+                )}
+
+                {pr.status === "PENDING" && (
+                  <div className="ml-12 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => cancelPublish(pr.id)}
+                      disabled={cancelling.has(pr.id)}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <XCircle className="h-3 w-3" />
+                      {cancelling.has(pr.id) ? "Cancelling…" : "Cancel scheduling"}
+                    </button>
                   </div>
                 )}
 

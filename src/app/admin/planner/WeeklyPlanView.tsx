@@ -19,8 +19,10 @@ interface WeeklyPlanViewProps {
   loading: boolean;
   /** Per-slot Schedule action (flips PROPOSED → SCHEDULED via /schedule endpoint). */
   onScheduleSlot: (slotId: string) => Promise<void>;
-  /** Per-slot Unschedule action (cancels publish + removes from plan). */
-  onUnscheduleSlot: (slotId: string) => Promise<void>;
+  /** Per-slot Unschedule action (cancels publish + removes from plan).
+   *  Receives the full slot so virtual orphan-publish slots can be routed
+   *  to the per-record cancel endpoint instead of the planner PATCH. */
+  onUnscheduleSlot: (slot: PlanSlotData) => Promise<void>;
   onClearAll: () => Promise<void>;
   onScheduleAll: () => Promise<void>;
   /** Inline caption editor calls this so the parent can update its cached plan state. */
@@ -174,7 +176,7 @@ export function WeeklyPlanView({
                       day={day}
                       isToday={isToday}
                       slots={daySlots}
-                      onUnschedule={(id) => void onUnscheduleSlot(id)}
+                      onUnschedule={(slot) => void onUnscheduleSlot(slot)}
                       onSchedule={(id) => void onScheduleSlot(id)}
                       onBodyChange={onBodyChange}
                     />

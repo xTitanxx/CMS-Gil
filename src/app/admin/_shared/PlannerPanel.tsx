@@ -2,7 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import { WeeklyPlanView } from "../planner/WeeklyPlanView";
-import type { WeeklyPlanData } from "@/lib/planner/types";
+import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
 
 export interface PlannerPanelHandle {
   refresh: () => Promise<void>;
@@ -37,12 +37,24 @@ export const PlannerPanel = forwardRef<PlannerPanelHandle>(function PlannerPanel
   );
 
   const handleUnscheduleSlot = useCallback(
-    async (slotId: string) => {
+    async (slot: PlanSlotData) => {
       if (!plan) return;
+      // Virtual orphan-publish slots are cancelled per record; real plan
+      // slots go through the planner PATCH which handles the slot status +
+      // any associated PublishRecord in one call.
+      if (slot.publishRecordIds && slot.publishRecordIds.length > 0) {
+        await Promise.all(
+          slot.publishRecordIds.map((id) =>
+            fetch(`/api/publish/${id}/cancel`, { method: "POST" }),
+          ),
+        );
+        await refreshPlan();
+        return;
+      }
       await fetch(`/api/planner/${plan.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "remove", slotId }),
+        body: JSON.stringify({ action: "remove", slotId: slot.id }),
       });
       await refreshPlan();
     },

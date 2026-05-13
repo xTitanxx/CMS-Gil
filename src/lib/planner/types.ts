@@ -25,6 +25,11 @@ export interface PlanSlotData {
    *  Derived server-side; the post-first Planner view greys these and hides
    *  destructive actions. */
   published: boolean;
+  /** Present when this slot is synthesized from raw PublishRecord(s) that
+   *  have no backing WeeklyPlanSlot — e.g. scheduled directly from the post
+   *  detail page. "Remove" on such slots cancels these records via
+   *  /api/publish/[id]/cancel instead of touching a plan slot. */
+  publishRecordIds?: string[];
   post: {
     id: string;
     body: string;

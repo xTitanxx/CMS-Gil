@@ -168,6 +168,115 @@ export async function GET() {
     }
   }
 
+  // Synthesize "virtual" slots for PublishRecords that don't have a backing
+  // WeeklyPlanSlot — e.g. a post scheduled directly from /admin/posts/[id]
+  // via PublishPanel. Without this, those posts only show up in the calendar
+  // and never in the planner, and there's no way to cancel them from here.
+  //
+  // Build a coverage set of (postId|day) already represented by a real slot
+  // (any status) so a post that has both a slot AND a PublishRecord still
+  // collapses to one entry — the slot wins because it carries plan-level
+  // metadata (reasoning, hour, scheduled status).
+  const slotPostDays = new Set<string>();
+  for (const plan of plans) {
+    for (const s of plan.slots) {
+      slotPostDays.add(`${s.postId}|${format(s.day, "yyyy-MM-dd")}`);
+    }
+  }
+
+  const now = new Date();
+  const orphanRecords = await prisma.publishRecord.findMany({
+    where: {
+      post: { userId },
+      status: "PENDING",
+      scheduledAt: { not: null, gte: now },
+    },
+    include: { post: { select: SLOT_INCLUDE.post.select } },
+    orderBy: { scheduledAt: "asc" },
+  });
+
+  // Group records that share the same post + same timestamp (a single
+  // post-page Schedule click creates one record per platform, all stamped
+  // with the identical scheduledAt). Each group becomes one virtual slot
+  // with platforms[] aggregated and recordIds[] for cancellation.
+  type Orphan = (typeof orphanRecords)[number];
+  const virtualGroups = new Map<
+    string,
+    {
+      scheduledAt: Date;
+      postId: string;
+      platforms: string[];
+      recordIds: string[];
+      post: Orphan["post"];
+    }
+  >();
+  for (const r of orphanRecords) {
+    if (!r.scheduledAt) continue;
+    // Day-key via `format()` (same as the slot serializer) so dedup with
+    // slotPostDays compares apples to apples — `toISOString` is UTC and would
+    // disagree with `format` near day boundaries.
+    const dayKey = format(r.scheduledAt, "yyyy-MM-dd");
+    if (slotPostDays.has(`${r.postId}|${dayKey}`)) continue;
+    // Bucket on the full ISO timestamp (millisecond precision is fine —
+    // platform records made in the same loop share the same Date object).
+    const key = `${r.postId}|${r.scheduledAt.toISOString()}`;
+    const existing = virtualGroups.get(key);
+    if (existing) {
+      existing.recordIds.push(r.id);
+      if (!existing.platforms.includes(r.platform)) existing.platforms.push(r.platform);
+    } else {
+      virtualGroups.set(key, {
+        scheduledAt: r.scheduledAt,
+        postId: r.postId,
+        platforms: [r.platform],
+        recordIds: [r.id],
+        post: r.post,
+      });
+    }
+  }
+
+  for (const g of virtualGroups.values()) {
+    const dayKey = format(g.scheduledAt, "yyyy-MM-dd");
+    const hour = Number(formatInTimeZone(g.scheduledAt, SCHEDULE_TZ, "H"));
+    const firstMedia = g.post.media[0];
+    const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
+    const lastPub = g.post.publishes?.[0]?.publishedAt;
+
+    allSlots.push({
+      // Synthetic id; the cancel path keys off publishRecordIds, not id, but
+      // React keys still need uniqueness across slots.
+      id: `publish:${g.recordIds.join(",")}`,
+      day: dayKey,
+      hour,
+      postId: g.postId,
+      status: "SCHEDULED",
+      reasoning: null,
+      platforms: g.platforms,
+      published: false,
+      publishRecordIds: g.recordIds,
+      post: {
+        id: g.post.id,
+        body: g.post.body,
+        tags: g.post.tags,
+        originalDate: format(g.post.originalDate, "yyyy-MM-dd"),
+        publishCount: g.post.publishCount,
+        lastPublishedAt: format(
+          lastPub && lastPub > g.post.originalDate ? lastPub : g.post.originalDate,
+          "yyyy-MM-dd"
+        ),
+        thumbUrl,
+        hasVideo: g.post.media.some((m) => m.mimeType.startsWith("video/")),
+        lifecycle: (g.post.lifecycle ?? "UNKNOWN") as PlanSlotData["post"]["lifecycle"],
+        season: (g.post.season ?? null) as PlanSlotData["post"]["season"],
+        rating: g.post.rating?.stars ?? null,
+        postType: (g.post.postType ?? "POST") as PlanSlotData["post"]["postType"],
+        mediaCount: g.post.media.length,
+        hasAudio: g.post.media.some((m) => m.hasAudio === true),
+        platformUrl: g.post.platformUrl ?? null,
+      },
+    });
+  }
+
   // Use the current week's plan as the primary record
   const currentPlan = plans.find(
     (p) => format(p.weekStart, "yyyy-MM-dd") === format(weekStart, "yyyy-MM-dd")

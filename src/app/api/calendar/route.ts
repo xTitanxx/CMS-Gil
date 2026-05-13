@@ -75,6 +75,9 @@ export async function GET(req: NextRequest) {
     platforms: string[];
     thumbUrl: string | null;
     body: string;
+    /** PublishRecord ids — only populated for PENDING entries so the day
+     *  panel can offer per-entry cancellation. */
+    publishRecordIds?: string[];
     _storageKey?: string;
     _mimeType?: string;
   };
@@ -91,6 +94,10 @@ export async function GET(req: NextRequest) {
       if (!existing.platforms.includes(r.platform)) {
         existing.platforms.push(r.platform);
       }
+      if (status === "PENDING") {
+        existing.publishRecordIds ??= [];
+        existing.publishRecordIds.push(r.id);
+      }
     } else {
       const media = r.post.media[0];
       groups.set(groupKey, {
@@ -101,6 +108,7 @@ export async function GET(req: NextRequest) {
         platforms: [r.platform],
         thumbUrl: null,
         body: r.post.body,
+        publishRecordIds: status === "PENDING" ? [r.id] : undefined,
         _storageKey: media?.storageKey,
         _mimeType: media?.mimeType,
       });
@@ -179,6 +187,7 @@ export async function GET(req: NextRequest) {
         platforms: g.platforms,
         thumbUrl,
         body: g.body,
+        publishRecordIds: g.publishRecordIds,
       };
     })
   );

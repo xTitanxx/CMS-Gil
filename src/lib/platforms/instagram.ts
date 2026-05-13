@@ -4,6 +4,14 @@
 
 import { getSignedDownloadUrl } from "@/lib/storage";
 
+// Same constraint as Facebook (see facebook.ts): Meta's URL fetcher refuses
+// URLs containing literal unsafe bytes (spaces in particular). encodeURI
+// leaves `:/?#&=` alone so already-valid URLs are unchanged; spaces become
+// %20 so the URL survives JSON-decoding by Meta's side.
+function encodeForRemoteFetch(url: string): string {
+  return encodeURI(url);
+}
+
 interface PublishResult {
   platformPostId: string;
   platformUrl?: string;
@@ -50,7 +58,7 @@ export async function postToInstagram(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          [isVideo ? "video_url" : "image_url"]: mediaUrl,
+          [isVideo ? "video_url" : "image_url"]: encodeForRemoteFetch(mediaUrl),
           caption: body,
           access_token: accessToken,
           ...(mediaType ? { media_type: mediaType } : {}),
@@ -82,7 +90,7 @@ export async function postToInstagram(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          [isVideo ? "video_url" : "image_url"]: mediaUrl,
+          [isVideo ? "video_url" : "image_url"]: encodeForRemoteFetch(mediaUrl),
           is_carousel_item: true,
           access_token: accessToken,
         }),

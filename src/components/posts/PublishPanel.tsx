@@ -1,11 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Clock, Video, Copy, Check, HelpCircle, Download, CalendarClock } from "lucide-react";
+import { Send, Clock, Copy, Check, HelpCircle, Download, CalendarClock } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
+import {
+  ineligibilityReason,
+  isPlatformEligible,
+  mediaShapeFromMimeTypes,
+} from "@/lib/platform-eligibility";
 
 const PLATFORMS = ["INSTAGRAM", "LINKEDIN", "YOUTUBE", "TIKTOK", "FACEBOOK_PAGE"] as const;
 type Platform = (typeof PLATFORMS)[number];
@@ -19,8 +24,6 @@ const PLATFORM_ICONS: Record<Platform, IconComponent> = {
   TIKTOK: SiTiktok as unknown as IconComponent,
   FACEBOOK_PAGE: SiFacebook as unknown as IconComponent,
 };
-
-const VIDEO_ONLY_PLATFORMS: ReadonlySet<Platform> = new Set(["YOUTUBE", "TIKTOK"]);
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   INSTAGRAM: "Instagram",
@@ -68,7 +71,34 @@ interface PublishPanelProps {
 }
 
 export function PublishPanel({ postId, body, hasVideo, media, onPublished }: PublishPanelProps) {
-  const [selected, setSelected] = useState<Set<Platform>>(new Set());
+  // Eligibility is derived from the actual media-type mix, not just hasVideo:
+  // Instagram needs photo-or-video, FB/LI accept anything, YT/TT need video.
+  // hasVideo is still respected as a hint (some callers pre-compute it before
+  // media URLs are available).
+  const shape = useMemo(() => {
+    const baseline = mediaShapeFromMimeTypes(media.map((m) => m.mimeType));
+    return { ...baseline, hasVideo: baseline.hasVideo || hasVideo };
+  }, [media, hasVideo]);
+
+  const enabledPlatforms = useMemo(
+    () => PLATFORMS.filter((p) => isPlatformEligible(p, shape)),
+    [shape]
+  );
+
+  // Default selection = every eligible platform. Re-derive whenever the
+  // eligibility set changes (e.g. user adds/removes media) so the picker stays
+  // in sync with the rule "always select all those that are possible". Keyed
+  // on the joined platform list rather than the array reference to avoid
+  // re-running on every parent render.
+  const eligibilityKey = enabledPlatforms.join(",");
+  const [selected, setSelected] = useState<Set<Platform>>(() => new Set(enabledPlatforms));
+  useEffect(() => {
+    setSelected(new Set(enabledPlatforms));
+    // enabledPlatforms is derived from eligibilityKey; keying on the string
+    // gives stable, content-based comparison.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibilityKey]);
+
   const [scheduledAt, setScheduledAt] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -79,8 +109,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
   const [downloadError, setDownloadError] = useState("");
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isDisabled = (p: Platform) => VIDEO_ONLY_PLATFORMS.has(p) && !hasVideo;
-  const enabledPlatforms = PLATFORMS.filter((p) => !isDisabled(p));
+  const isDisabled = (p: Platform) => !isPlatformEligible(p, shape);
 
   const toggle = (p: Platform) => {
     if (isDisabled(p)) return;
@@ -209,7 +238,8 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
         {/* Platform chips */}
         <div className="flex flex-wrap items-center gap-2">
           {PLATFORMS.map((p) => {
-            const disabled = isDisabled(p);
+            const reason = ineligibilityReason(p, shape);
+            const disabled = reason !== null;
             const Icon = PLATFORM_ICONS[p];
             const active = selected.has(p);
             return (
@@ -217,7 +247,7 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
                 key={p}
                 onClick={() => toggle(p)}
                 disabled={disabled}
-                title={disabled ? `${PLATFORM_LABELS[p]} requires video` : PLATFORM_LABELS[p]}
+                title={disabled ? `${PLATFORM_LABELS[p]} — ${reason}` : PLATFORM_LABELS[p]}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
                   disabled
                     ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed"
@@ -228,7 +258,6 @@ export function PublishPanel({ postId, body, hasVideo, media, onPublished }: Pub
               >
                 <Icon size={14} aria-hidden="true" />
                 {PLATFORM_LABELS[p]}
-                {disabled && <Video className="h-3 w-3 ml-0.5" />}
               </button>
             );
           })}

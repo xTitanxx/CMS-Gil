@@ -168,10 +168,33 @@ async function videoPost(
   if (!res.ok || !data.id) {
     throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
   }
+  // /videos returns the *video* id, not the wall post id. The video node's
+  // permalink_url points at facebook.com/watch/?v=... which opens a
+  // standalone player, not the post we just made. Resolve the wall post id
+  // via `?fields=post_id` and use that to fetch the post's permalink so
+  // "Take me to the post" lands on the actual feed entry.
+  const wallPostId = await fetchVideoPostId(data.id, accessToken);
+  const idForPermalink = wallPostId ?? data.id;
   return {
-    platformPostId: data.id,
-    platformUrl: await fetchPermalink(data.id, accessToken),
+    platformPostId: wallPostId ?? data.id,
+    platformUrl: await fetchPermalink(idForPermalink, accessToken),
   };
+}
+
+async function fetchVideoPostId(
+  videoId: string,
+  accessToken: string
+): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `${GRAPH}/${videoId}?fields=post_id&access_token=${accessToken}`
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return typeof data.post_id === "string" ? data.post_id : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function reelPost(
@@ -324,7 +347,13 @@ async function fetchPermalink(
     );
     if (!res.ok) return undefined;
     const data = await res.json();
-    return typeof data.permalink_url === "string" ? data.permalink_url : undefined;
+    const raw =
+      typeof data.permalink_url === "string" ? data.permalink_url : undefined;
+    if (!raw) return undefined;
+    // Some Graph API node types (notably videos and certain page objects)
+    // return a path-only string like `/PageName/posts/pfbid...`. Without a
+    // host the browser resolves it against cms-gil.vercel.app — broken.
+    return raw.startsWith("/") ? `https://www.facebook.com${raw}` : raw;
   } catch {
     return undefined;
   }

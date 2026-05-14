@@ -44,11 +44,41 @@ interface SchedulePanelProps {
 }
 
 const PUBLISHABLE_PLATFORMS = [
-  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]" },
-  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]" },
-  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]" },
-  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]" },
-  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]" },
+  {
+    key: "FACEBOOK_PAGE",
+    label: "FB Page",
+    Icon: SiFacebook,
+    color: "text-[#1877F2]",
+    activeClasses: "border-[#1877F2] bg-[#1877F2]/10 text-[#1877F2]",
+  },
+  {
+    key: "INSTAGRAM",
+    label: "Instagram",
+    Icon: SiInstagram,
+    color: "text-[#E1306C]",
+    activeClasses: "border-[#E1306C] bg-[#E1306C]/10 text-[#E1306C]",
+  },
+  {
+    key: "LINKEDIN",
+    label: "LinkedIn",
+    Icon: FaLinkedin,
+    color: "text-[#0A66C2]",
+    activeClasses: "border-[#0A66C2] bg-[#0A66C2]/10 text-[#0A66C2]",
+  },
+  {
+    key: "YOUTUBE",
+    label: "YouTube",
+    Icon: SiYoutube,
+    color: "text-[#FF0000]",
+    activeClasses: "border-[#FF0000] bg-[#FF0000]/10 text-[#FF0000]",
+  },
+  {
+    key: "TIKTOK",
+    label: "TikTok",
+    Icon: SiTiktok,
+    color: "text-[#111111]",
+    activeClasses: "border-gray-900 bg-gray-900 text-white",
+  },
 ] as const;
 
 function formatSlotParts(day: string, hour: number): { when: string; date: string; time: string } {
@@ -101,9 +131,9 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
   const [loadingSlot, setLoadingSlot] = useState(true);
   const [slotError, setSlotError] = useState<string | null>(null);
 
-  // Action state — schedule / postNow / postAll all share this so two actions
-  // can't fire simultaneously.
-  const [busy, setBusy] = useState<null | "schedule" | "post" | "postAll">(null);
+  // Action state — schedule / postNow share this so two actions can't fire
+  // simultaneously.
+  const [busy, setBusy] = useState<null | "schedule" | "post">(null);
   const [scheduled, setScheduled] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -113,8 +143,10 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
   const [downloadError, setDownloadError] = useState("");
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchSlot = useCallback(async () => {
-    setLoadingSlot(true);
+  const fetchSlot = useCallback(async (opts?: { silent?: boolean }) => {
+    // `silent` skips the loading spinner — used by auto-refresh + visibility
+    // handlers so the SlotPill doesn't flicker every minute.
+    if (!opts?.silent) setLoadingSlot(true);
     setSlotError(null);
     setActionError(null);
     try {
@@ -142,6 +174,30 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
   useEffect(() => {
     void fetchSlot();
   }, [fetchSlot]);
+
+  // Auto-refresh the slot so it stays current as time passes and as other
+  // posts get scheduled into nearby hours. Pauses once the user has scheduled
+  // (the panel collapses into a confirmation), skips while busy to avoid
+  // racing an in-flight schedule/publish, and skips when the tab is hidden so
+  // backgrounded tabs don't hammer the API. A visibilitychange listener fires
+  // a refetch the moment the tab comes back to the foreground.
+  useEffect(() => {
+    if (scheduled) return;
+    const maybeRefetch = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (busy) return;
+      void fetchSlot({ silent: true });
+    };
+    const intervalId = window.setInterval(maybeRefetch, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") maybeRefetch();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [scheduled, busy, fetchSlot]);
 
   // Re-sync the platform selection whenever eligibility changes (e.g. user
   // adds/removes media). Default = every eligible platform; keyed on the
@@ -192,20 +248,19 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
     }
   };
 
-  const publish = async (which: "post" | "postAll") => {
+  const publish = async () => {
     if (busy) return;
-    const platformsToUse = which === "postAll" ? eligible : platforms;
-    if (platformsToUse.length === 0) {
+    if (platforms.length === 0) {
       setActionError("Select at least one platform");
       return;
     }
-    setBusy(which);
+    setBusy("post");
     setActionError(null);
     try {
       const res = await fetch(`/api/posts/${postId}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platforms: platformsToUse }),
+        body: JSON.stringify({ platforms }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -312,10 +367,17 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
             Publish to
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
+            {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color, activeClasses }) => {
               const active = platforms.includes(key);
               const reason = ineligibilityReason(key, shape);
               const disabled = reason !== null || scheduled;
+              const iconColor = reason
+                ? "text-gray-300"
+                : active
+                  ? key === "TIKTOK"
+                    ? "text-white"
+                    : color
+                  : color;
               return (
                 <button
                   key={key}
@@ -328,15 +390,11 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
                     reason
                       ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
                       : active
-                        ? "border-gray-900 bg-gray-900 text-white"
+                        ? activeClasses
                         : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                   } ${scheduled ? "opacity-60" : ""}`}
                 >
-                  <Icon
-                    className={`h-3.5 w-3.5 shrink-0 ${
-                      reason ? "text-gray-300" : active ? "text-white" : color
-                    }`}
-                  />
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} />
                   <span className="truncate">{label}</span>
                 </button>
               );
@@ -401,7 +459,7 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
             )}
             <button
               type="button"
-              onClick={() => void publish("post")}
+              onClick={() => void publish()}
               disabled={busy !== null || platforms.length === 0}
               className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50 sm:flex-1"
             >
@@ -413,19 +471,6 @@ export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelP
               <span className="min-w-0 truncate">
                 {busy === "post" ? "Posting…" : `Post Now${platforms.length > 0 ? ` (${platforms.length})` : ""}`}
               </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void publish("postAll")}
-              disabled={busy !== null || eligible.length === 0}
-              className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 sm:flex-none"
-            >
-              {busy === "postAll" ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4 shrink-0" />
-              )}
-              <span className="min-w-0 truncate">Post All</span>
             </button>
           </div>
         )}

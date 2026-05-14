@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, CalendarClock, Check, Loader2, RotateCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bell,
+  CalendarClock,
+  Check,
+  Copy,
+  Download,
+  HelpCircle,
+  Loader2,
+  RotateCw,
+  Send,
+} from "lucide-react";
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { formatSlotHour } from "@/lib/planner/format-slot";
@@ -17,12 +27,20 @@ interface SlotShape {
   hour: number;
 }
 
+export interface SchedulePanelMedia {
+  id: string;
+  url: string | null;
+  mimeType: string;
+}
+
 interface SchedulePanelProps {
   postId: string;
-  /** MIME types of the post's media — drives platform eligibility. */
-  mediaMimeTypes: string[];
-  /** Called after a successful schedule so the parent can refresh activity. */
-  onScheduled?: () => void;
+  /** Caption — used by the FB Personal "Copy" button. */
+  body: string;
+  /** Post media — drives platform eligibility AND powers the Download button. */
+  media: SchedulePanelMedia[];
+  /** Called after a successful schedule/publish so the parent can refresh. */
+  onChanged?: () => void;
 }
 
 const PUBLISHABLE_PLATFORMS = [
@@ -51,26 +69,54 @@ function formatScheduleLabel(day: string, hour: number): string {
   return `${dateLabel} · ${time}`;
 }
 
-export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: SchedulePanelProps) {
-  const shape = useMemo(() => mediaShapeFromMimeTypes(mediaMimeTypes), [mediaMimeTypes]);
+function extFromMime(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+  if (m === "image/png") return "png";
+  if (m === "image/gif") return "gif";
+  if (m === "image/webp") return "webp";
+  if (m === "image/heic") return "heic";
+  if (m === "video/mp4") return "mp4";
+  if (m === "video/quicktime") return "mov";
+  if (m === "video/webm") return "webm";
+  if (m.startsWith("image/")) return "img";
+  if (m.startsWith("video/")) return "mp4";
+  return "bin";
+}
+
+export function SchedulePanel({ postId, body, media, onChanged }: SchedulePanelProps) {
+  const shape = useMemo(
+    () => mediaShapeFromMimeTypes(media.map((m) => m.mimeType)),
+    [media],
+  );
   const eligible = useMemo(
     () => eligiblePlatforms(shape, PUBLISHABLE_PLATFORMS.map((p) => p.key)),
     [shape],
   );
+  const eligibilityKey = eligible.join(",");
 
   const [slot, setSlot] = useState<SlotShape | null>(null);
   const [platforms, setPlatforms] = useState<string[]>(eligible);
   const [reminderFb, setReminderFb] = useState(true);
   const [loadingSlot, setLoadingSlot] = useState(true);
   const [slotError, setSlotError] = useState<string | null>(null);
-  const [scheduling, setScheduling] = useState(false);
+
+  // Action state — schedule / postNow / postAll all share this so two actions
+  // can't fire simultaneously.
+  const [busy, setBusy] = useState<null | "schedule" | "post" | "postAll">(null);
   const [scheduled, setScheduled] = useState(false);
-  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchSlot = useCallback(async () => {
     setLoadingSlot(true);
     setSlotError(null);
-    setScheduleError(null);
+    setActionError(null);
     try {
       const res = await fetch(`/api/planner/next-slot?postId=${encodeURIComponent(postId)}`);
       if (!res.ok) throw new Error(`next-slot ${res.status}`);
@@ -84,10 +130,6 @@ export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: ScheduleP
         setSlotError(data.error ?? "No open slots in the next 8 weeks");
       } else {
         setSlot(data.slot);
-        // Server-provided platforms factor in connections; intersect with the
-        // media-eligible set so the chips can't disagree with the UI rules.
-        const serverEligible = data.platforms.filter((p) => eligible.includes(p));
-        setPlatforms(serverEligible.length > 0 ? serverEligible : eligible);
       }
     } catch (e) {
       setSlot(null);
@@ -95,21 +137,29 @@ export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: ScheduleP
     } finally {
       setLoadingSlot(false);
     }
-  }, [postId, eligible]);
+  }, [postId]);
 
   useEffect(() => {
     void fetchSlot();
   }, [fetchSlot]);
+
+  // Re-sync the platform selection whenever eligibility changes (e.g. user
+  // adds/removes media). Default = every eligible platform; keyed on the
+  // joined list for stable, content-based comparison.
+  useEffect(() => {
+    setPlatforms(eligible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibilityKey]);
 
   const togglePlatform = (key: string) => {
     if (!isPlatformEligible(key, shape)) return;
     setPlatforms((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
   };
 
-  const submit = async () => {
-    if (!slot || scheduling || scheduled || platforms.length === 0) return;
-    setScheduling(true);
-    setScheduleError(null);
+  const scheduleSlot = async () => {
+    if (!slot || busy || scheduled || platforms.length === 0) return;
+    setBusy("schedule");
+    setActionError(null);
     try {
       const res = await fetch("/api/planner/propose", {
         method: "POST",
@@ -124,36 +174,109 @@ export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: ScheduleP
         }),
       });
       if (res.status === 409) {
-        setScheduleError("That slot was just taken — refreshing.");
-        setScheduling(false);
+        setActionError("That slot was just taken — refreshing.");
+        setBusy(null);
         void fetchSlot();
         return;
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        const message = err?.error ?? `Schedule failed (${res.status})`;
-        throw new Error(message);
+        throw new Error(err?.error ?? `Schedule failed (${res.status})`);
       }
       setScheduled(true);
-      onScheduled?.();
+      onChanged?.();
     } catch (e) {
-      setScheduleError(e instanceof Error ? e.message : "Schedule failed");
+      setActionError(e instanceof Error ? e.message : "Schedule failed");
     } finally {
-      setScheduling(false);
+      setBusy(null);
     }
   };
 
-  const scheduleAnother = () => {
+  const publish = async (which: "post" | "postAll") => {
+    if (busy) return;
+    const platformsToUse = which === "postAll" ? eligible : platforms;
+    if (platformsToUse.length === 0) {
+      setActionError("Select at least one platform");
+      return;
+    }
+    setBusy(which);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/posts/${postId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platforms: platformsToUse }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Publish failed (${res.status})`);
+      }
+      onChanged?.();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Publish failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const resetForAnother = () => {
     setScheduled(false);
-    setScheduleError(null);
+    setActionError(null);
     void fetchSlot();
   };
+
+  const copyCaption = async () => {
+    if (!body) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyError("Copy not supported in this browser");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopied(true);
+      setCopyError("");
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyError("Copy failed — try again");
+    }
+  };
+
+  const downloadMedia = async () => {
+    const downloadable = media.filter((m): m is SchedulePanelMedia & { url: string } => !!m.url);
+    if (downloadable.length === 0) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      for (let i = 0; i < downloadable.length; i++) {
+        const m = downloadable[i];
+        const res = await fetch(`/api/media/${m.id}/download`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = `post-${postId}-${i + 1}.${extFromMime(m.mimeType)}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const downloadableCount = media.filter((m) => m.url).length;
+  const canSchedule = slot != null && !scheduled;
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
       <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-900">Schedule next slot</h3>
-        {!loadingSlot && slot && !scheduled && (
+        <h3 className="text-sm font-semibold text-gray-900">Publish</h3>
+        {canSchedule && !loadingSlot && (
           <button
             type="button"
             onClick={() => void fetchSlot()}
@@ -161,14 +284,14 @@ export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: ScheduleP
             title="Find another slot"
           >
             <RotateCw className="h-3 w-3" />
-            Refresh
+            Refresh slot
           </button>
         )}
       </div>
 
       <div className="space-y-3 px-4 pb-4">
         {loadingSlot && (
-          <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+          <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" />
             Finding the next open slot…
           </div>
@@ -176,108 +299,191 @@ export function SchedulePanel({ postId, mediaMimeTypes, onScheduled }: ScheduleP
 
         {!loadingSlot && !slot && (
           <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs text-amber-900">
-            {slotError ?? "No open slots in the next 8 weeks."}
+            {slotError ?? "No open slots in the next 8 weeks — Post Now still works."}
           </div>
         )}
 
-        {!loadingSlot && slot && (
-          <>
-            <SlotPill slot={slot} />
+        {!loadingSlot && slot && <SlotPill slot={slot} />}
 
-            <div className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                Publish to
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
-                  const active = platforms.includes(key);
-                  const reason = ineligibilityReason(key, shape);
-                  const disabled = reason !== null || scheduled;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => togglePlatform(key)}
-                      disabled={disabled}
-                      title={reason ?? undefined}
-                      aria-disabled={disabled}
-                      className={`flex min-w-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                        disabled && reason
-                          ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
-                          : active
-                            ? "border-gray-900 bg-gray-900 text-white"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                      } ${scheduled ? "opacity-60" : ""}`}
-                    >
-                      <Icon
-                        className={`h-3.5 w-3.5 shrink-0 ${
-                          reason ? "text-gray-300" : active ? "text-white" : color
-                        }`}
-                      />
-                      <span className="truncate">{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <label className="mt-2.5 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-[12px] text-amber-900">
-                <input
-                  type="checkbox"
-                  checked={reminderFb}
-                  onChange={(e) => setReminderFb(e.target.checked)}
-                  disabled={scheduled}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-amber-300"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1 font-semibold">
-                    <Bell className="h-3 w-3 shrink-0" />
-                    FB personal reminder
-                  </span>
-                  <span className="block text-[11px] text-amber-800">
-                    Get a notification before this slot to manually post on Facebook personal.
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            {scheduleError && (
-              <p className="text-xs text-red-600">{scheduleError}</p>
-            )}
-
-            {scheduled ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
-                <Check className="h-4 w-4 shrink-0" strokeWidth={3} />
-                <span className="min-w-0 flex-1 truncate">
-                  Scheduled · {formatScheduleLabel(slot.day, slot.hour)}
-                </span>
+        {/* Platform chips — drive Schedule, Post Now, and (implicitly via
+            the all-eligible set) Post All. */}
+        <div className="rounded-xl border border-gray-200 bg-white p-3">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Publish to
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
+              const active = platforms.includes(key);
+              const reason = ineligibilityReason(key, shape);
+              const disabled = reason !== null || scheduled;
+              return (
                 <button
+                  key={key}
                   type="button"
-                  onClick={scheduleAnother}
-                  className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                  onClick={() => togglePlatform(key)}
+                  disabled={disabled}
+                  title={reason ?? undefined}
+                  aria-disabled={disabled}
+                  className={`flex min-w-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                    reason
+                      ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
+                      : active
+                        ? "border-gray-900 bg-gray-900 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  } ${scheduled ? "opacity-60" : ""}`}
                 >
-                  Schedule another
+                  <Icon
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      reason ? "text-gray-300" : active ? "text-white" : color
+                    }`}
+                  />
+                  <span className="truncate">{label}</span>
                 </button>
-              </div>
-            ) : (
+              );
+            })}
+          </div>
+          <label className="mt-2.5 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-[12px] text-amber-900">
+            <input
+              type="checkbox"
+              checked={reminderFb}
+              onChange={(e) => setReminderFb(e.target.checked)}
+              disabled={scheduled}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-amber-300"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1 font-semibold">
+                <Bell className="h-3 w-3 shrink-0" />
+                FB personal reminder
+              </span>
+              <span className="block text-[11px] text-amber-800">
+                Get a notification before this slot to manually post on Facebook personal.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+
+        {scheduled && slot ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+            <Check className="h-4 w-4 shrink-0" strokeWidth={3} />
+            <span className="min-w-0 flex-1 truncate">
+              Scheduled · {formatScheduleLabel(slot.day, slot.hour)}
+            </span>
+            <button
+              type="button"
+              onClick={resetForAnother}
+              className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+            >
+              Schedule another
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            {canSchedule && slot && (
               <button
                 type="button"
-                onClick={() => void submit()}
-                disabled={scheduling || platforms.length === 0}
-                className="flex w-full min-w-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                onClick={() => void scheduleSlot()}
+                disabled={busy !== null || platforms.length === 0}
+                className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
-                {scheduling ? (
+                {busy === "schedule" ? (
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                 ) : (
-                  <Check className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+                  <CalendarClock className="h-4 w-4 shrink-0" strokeWidth={2.5} />
                 )}
                 <span className="min-w-0 truncate">
-                  {scheduling
+                  {busy === "schedule"
                     ? "Scheduling…"
                     : `Schedule ${formatScheduleLabel(slot.day, slot.hour)}`}
                 </span>
               </button>
             )}
-          </>
+            <button
+              type="button"
+              onClick={() => void publish("post")}
+              disabled={busy !== null || platforms.length === 0}
+              className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50 sm:flex-1"
+            >
+              {busy === "post" ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 shrink-0" />
+              )}
+              <span className="min-w-0 truncate">
+                {busy === "post" ? "Posting…" : `Post Now${platforms.length > 0 ? ` (${platforms.length})` : ""}`}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void publish("postAll")}
+              disabled={busy !== null || eligible.length === 0}
+              className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 sm:flex-none"
+            >
+              {busy === "postAll" ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 shrink-0" />
+              )}
+              <span className="min-w-0 truncate">Post All</span>
+            </button>
+          </div>
         )}
+
+        {/* Facebook Personal (manual) — copy caption + download media. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-blue-700">
+            <SiFacebook size={14} aria-hidden="true" className="shrink-0" />
+            <span className="font-medium">FB Personal</span>
+            <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-gray-500">
+              Manual
+            </span>
+            <span className="group relative">
+              <button
+                type="button"
+                aria-label="Why manual?"
+                className="inline-flex h-4 w-4 items-center justify-center text-gray-400 hover:text-gray-600"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 w-56 -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-[10px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+              >
+                Meta&apos;s API doesn&apos;t support personal profile posting. Copy caption + download media to post manually.
+              </span>
+            </span>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={copyCaption}
+              disabled={!body}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3 w-3" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" /> Copy
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={downloadMedia}
+              disabled={downloading || downloadableCount === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-3 w-3" />
+              {downloading ? "…" : "Media"}
+            </button>
+          </div>
+        </div>
+        {copyError && <p className="text-[11px] text-red-600">{copyError}</p>}
+        {downloadError && <p className="text-[11px] text-red-600">Download: {downloadError}</p>}
       </div>
     </div>
   );
@@ -293,7 +499,7 @@ function SlotPill({ slot }: { slot: SlotShape }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-700">
-            Filling slot
+            Next open slot
           </div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-base font-bold leading-tight text-gray-900 md:text-lg">

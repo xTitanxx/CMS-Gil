@@ -151,7 +151,7 @@ export function ActivityList({
   const [cancelling, setCancelling] = useState<Set<string>>(() => new Set());
 
   // Sync state when the server tree re-renders with new data — happens after
-  // PublishPanel calls router.refresh() on a successful Post Now. Without
+  // SchedulePanel calls router.refresh() on a successful action. Without
   // this, useState keeps its initial empty value and the panel stays hidden
   // for any post that had no prior publishes.
   useEffect(() => {

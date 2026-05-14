@@ -131,12 +131,13 @@ export function PostEditor({
   const CAPTION_COLLAPSE_THRESHOLD = 500;
   const isLong = body.length > CAPTION_COLLAPSE_THRESHOLD;
   const PLATFORM_CHAR_LIMITS = [
-    { label: "IG", limit: 2200 },
-    { label: "TT", limit: 2200 },
-    { label: "LI", limit: 3000 },
-    { label: "YT", limit: 5000 },
-    { label: "FB", limit: 63206 },
+    { label: "IG", name: "Instagram", limit: 2200 },
+    { label: "TT", name: "TikTok", limit: 2200 },
+    { label: "LI", name: "LinkedIn", limit: 3000 },
+    { label: "YT", name: "YouTube", limit: 5000 },
+    { label: "FB", name: "Facebook", limit: 63206 },
   ] as const;
+  const exceededPlatforms = PLATFORM_CHAR_LIMITS.filter((p) => body.length > p.limit);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
@@ -392,19 +393,28 @@ export function PostEditor({
             ) : (
               <span />
             )}
-            <div aria-live="polite" className="flex items-center gap-1.5">
-              <span className="text-xs tabular-nums text-gray-400">{body.length}</span>
-              {PLATFORM_CHAR_LIMITS.map(({ label, limit }) => (
-                <span
-                  key={label}
-                  title={`${label}: ${limit.toLocaleString()} char limit`}
-                  className={`text-[10px] tabular-nums ${
-                    body.length > limit ? "font-semibold text-red-600" : "text-gray-300"
-                  }`}
-                >
-                  {label}
-                </span>
-              ))}
+            <div
+              aria-live="polite"
+              className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-[11px] text-gray-400"
+              title={PLATFORM_CHAR_LIMITS.map(
+                (p) => `${p.name}: ${p.limit.toLocaleString()} char limit`,
+              ).join("\n")}
+            >
+              <span className="tabular-nums">{body.length.toLocaleString()} chars</span>
+              <span className="text-gray-300">·</span>
+              {exceededPlatforms.length === 0 ? (
+                <span>Fits all platforms</span>
+              ) : (
+                <>
+                  <span className="font-medium text-red-600">Too long for</span>
+                  {exceededPlatforms.map((p, i) => (
+                    <span key={p.label} className="font-medium text-red-600">
+                      {p.name}
+                      {i < exceededPlatforms.length - 1 ? "," : ""}
+                    </span>
+                  ))}
+                </>
+              )}
             </div>
           </div>
         </div>

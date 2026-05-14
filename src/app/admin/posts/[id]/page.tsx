@@ -2,7 +2,11 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
-import { DeleteButton, PublishPanelWithRefresh } from "./PostInteractions";
+import {
+  DeleteButton,
+  PublishPanelWithRefresh,
+  SchedulePanelWithRefresh,
+} from "./PostInteractions";
 import { ActivityList } from "./ActivityList";
 import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
@@ -224,6 +228,11 @@ export default async function PostDetailPage({
                 }
               : null
           }
+        />
+
+        <SchedulePanelWithRefresh
+          postId={id}
+          mediaMimeTypes={mediaWithUrls.map((m) => m.mimeType)}
         />
 
         <PublishPanelWithRefresh

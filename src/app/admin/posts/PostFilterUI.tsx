@@ -7,6 +7,8 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Shuffle,
+  Loader2,
 } from "lucide-react";
 
 /**
@@ -137,6 +139,7 @@ export const SORT_OPTIONS = [
   { value: "createdAt_desc", label: "Import date (newest)" },
   { value: "createdAt_asc", label: "Import date (oldest)" },
   { value: "queue_asc", label: "Suggester queue" },
+  { value: "shuffled_queue_asc", label: "Reshuffled queue" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -655,6 +658,64 @@ export function FilterMenu(props: FilterMenuProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  ReshuffleButton                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Shown next to SortMenu only when the "Reshuffled queue" sort is active.
+ * POSTs to /api/planner/reshuffle, then fires onDone so the parent can reload
+ * its post list (it owns the cache + fetchInitial primitives).
+ */
+export function ReshuffleButton({
+  sort,
+  onDone,
+}: {
+  sort: string;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (sort !== "shuffled_queue_asc") return null;
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/planner/reshuffle", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `Reshuffle failed (${res.status})`);
+      }
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void run()}
+      disabled={busy}
+      aria-label="Reshuffle the queue"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+      title={error ?? "Reshuffle the queue"}
+    >
+      {busy ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+      ) : (
+        <Shuffle className="h-4 w-4 shrink-0" />
+      )}
+      <span className="hidden sm:inline">
+        {busy ? "Reshuffling…" : "Reshuffle now"}
+      </span>
+    </button>
   );
 }
 

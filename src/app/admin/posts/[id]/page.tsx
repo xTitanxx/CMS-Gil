@@ -2,11 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
-import {
-  DeleteButton,
-  PublishPanelWithRefresh,
-  SchedulePanelWithRefresh,
-} from "./PostInteractions";
+import { DeleteButton, SchedulePanelWithRefresh } from "./PostInteractions";
 import { ActivityList } from "./ActivityList";
 import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
@@ -150,8 +146,6 @@ export default async function PostDetailPage({
     })),
   );
 
-  const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
-
   return (
     <div>
       <PostNavBar
@@ -232,13 +226,7 @@ export default async function PostDetailPage({
 
         <SchedulePanelWithRefresh
           postId={id}
-          mediaMimeTypes={mediaWithUrls.map((m) => m.mimeType)}
-        />
-
-        <PublishPanelWithRefresh
-          postId={id}
           body={post.body}
-          hasVideo={hasVideo}
           media={mediaWithUrls.map((m) => ({ id: m.id, url: m.url, mimeType: m.mimeType }))}
         />
 

@@ -5,8 +5,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Trash2, RefreshCw } from "lucide-react";
-import { PublishPanel, type PublishPanelMedia } from "@/components/posts/PublishPanel";
-import { SchedulePanel } from "@/components/posts/SchedulePanel";
+import { SchedulePanel, type SchedulePanelMedia } from "@/components/posts/SchedulePanel";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -76,42 +75,22 @@ export function ReanalyzeButton({ postId }: { postId: string }) {
   );
 }
 
-export function PublishPanelWithRefresh({
+export function SchedulePanelWithRefresh({
   postId,
   body,
-  hasVideo,
   media,
 }: {
   postId: string;
   body: string;
-  hasVideo: boolean;
-  media: PublishPanelMedia[];
-}) {
-  const router = useRouter();
-  return (
-    <PublishPanel
-      postId={postId}
-      body={body}
-      hasVideo={hasVideo}
-      media={media}
-      onPublished={() => router.refresh()}
-    />
-  );
-}
-
-export function SchedulePanelWithRefresh({
-  postId,
-  mediaMimeTypes,
-}: {
-  postId: string;
-  mediaMimeTypes: string[];
+  media: SchedulePanelMedia[];
 }) {
   const router = useRouter();
   return (
     <SchedulePanel
       postId={postId}
-      mediaMimeTypes={mediaMimeTypes}
-      onScheduled={() => router.refresh()}
+      body={body}
+      media={media}
+      onChanged={() => router.refresh()}
     />
   );
 }

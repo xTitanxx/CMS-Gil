@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/prisma";
+
 export interface ReshufflePost {
   id: string;
   tags: string[];
@@ -179,4 +181,47 @@ export function computeShuffledOrder(
   }
 
   return [...orderPartition(aged), ...orderPartition(recent)];
+}
+
+const POSITION_STEP = 1000;
+
+/**
+ * Reshuffles the user's eligible posts and writes `shufflePosition` for each.
+ * Returns the number of posts shuffled.
+ *
+ * Eligibility mirrors getSuggesterCandidateWhere: readiness NOT IN
+ * (NOT_READY, ARCHIVED). Writes are sequential (no `$transaction([])`) per the
+ * pgbouncer P2028 pattern documented in CLAUDE.md.
+ */
+export async function writeShuffledOrderForUser(userId: string): Promise<number> {
+  const rows = await prisma.post.findMany({
+    where: {
+      userId,
+      readiness: { notIn: ["NOT_READY", "ARCHIVED"] },
+    },
+    select: {
+      id: true,
+      tags: true,
+      originalDate: true,
+      media: { select: { mimeType: true } },
+    },
+  });
+
+  const input: ReshufflePost[] = rows.map((r) => ({
+    id: r.id,
+    tags: r.tags,
+    originalDate: r.originalDate,
+    mediaMimeTypes: r.media.map((m) => m.mimeType),
+  }));
+
+  const ordered = computeShuffledOrder(input);
+
+  for (let i = 0; i < ordered.length; i++) {
+    await prisma.post.update({
+      where: { id: ordered[i] },
+      data: { shufflePosition: (i + 1) * POSITION_STEP },
+    });
+  }
+
+  return ordered.length;
 }

@@ -10,8 +10,14 @@ import {
  * Eitan can see and triage the full queue from the All Posts page.
  */
 export const QUEUE_SORT = "queue_asc";
+export const SHUFFLED_QUEUE_SORT = "shuffled_queue_asc";
+
 export function isQueueSort(sort: string | undefined): boolean {
   return sort === QUEUE_SORT;
+}
+
+export function isShuffledQueueSort(sort: string | undefined): boolean {
+  return sort === SHUFFLED_QUEUE_SORT;
 }
 
 export interface PostsFilters {
@@ -426,8 +432,9 @@ export function buildPostsQuery(
   }
 
   // Queue sort: layer in the suggester's eligibility filter so the All Posts
-  // page mirrors what the one-card suggester would serve.
-  if (isQueueSort(filters.sort)) {
+  // page mirrors what the one-card suggester would serve. Same logic for the
+  // reshuffled test sort.
+  if (isQueueSort(filters.sort) || isShuffledQueueSort(filters.sort)) {
     const suggesterWhere = getSuggesterCandidateWhere(userId);
     if (suggesterWhere.readiness) extraAnds.push({ readiness: suggesterWhere.readiness });
   }
@@ -465,10 +472,15 @@ export function buildPostsQuery(
 
   const orderBy: Prisma.PostOrderByWithRelationInput[] = isQueueSort(filters.sort)
     ? SUGGESTER_ORDER_BY
-    : [
-        { [field]: dir } as Prisma.PostOrderByWithRelationInput,
-        { id: dir },
-      ];
+    : isShuffledQueueSort(filters.sort)
+      ? [
+          { shufflePosition: { sort: "asc", nulls: "last" } } as Prisma.PostOrderByWithRelationInput,
+          { id: "asc" },
+        ]
+      : [
+          { [field]: dir } as Prisma.PostOrderByWithRelationInput,
+          { id: dir },
+        ];
 
   return { where, orderBy };
 }
@@ -534,6 +546,24 @@ export function buildCursorClause(
     };
   }
 
+  if (isShuffledQueueSort(sort)) {
+    // Cursor value is the shufflePosition float, or "null" once we're in the
+    // NULLS LAST tail (unshuffled rows).
+    if (cursor.value === "null") {
+      return { shufflePosition: null, id: { gt: cursor.id } };
+    }
+    const pos = Number(cursor.value);
+    if (!Number.isFinite(pos)) return {};
+    return {
+      OR: [
+        { shufflePosition: { gt: pos } },
+        { shufflePosition: pos, id: { gt: cursor.id } },
+        // Cross into the NULLS LAST tail once shuffled rows are exhausted
+        { shufflePosition: null },
+      ],
+    };
+  }
+
   const { field, dir } = parseSort(sort);
   const op = dir === "desc" ? "lt" : "gt";
   const value = new Date(cursor.value);
@@ -556,11 +586,18 @@ export function cursorFromRow(
     createdAt: Date;
     lastPublishedViaHubAt?: Date | null;
     publishCount?: number;
+    shufflePosition?: number | null;
   },
 ): PostCursor {
   if (isQueueSort(sort)) {
     return {
       value: `${row.publishCount ?? 0}|${row.originalDate.toISOString()}`,
+      id: row.id,
+    };
+  }
+  if (isShuffledQueueSort(sort)) {
+    return {
+      value: row.shufflePosition == null ? "null" : String(row.shufflePosition),
       id: row.id,
     };
   }

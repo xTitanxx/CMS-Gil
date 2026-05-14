@@ -17,6 +17,7 @@ import { PageHeader } from "./PageHeader";
 import {
   FilterMenu,
   SortMenu,
+  ReshuffleButton,
   JumpToDateMenu,
   parseCsvToSet,
   countActiveFilters,
@@ -630,6 +631,15 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               </Button>
             )}
             <SortMenu sort={sort} setSort={setSort} />
+            <ReshuffleButton
+              sort={sort}
+              onDone={() => {
+                listCache.delete(cacheKey);
+                initialisedKeyRef.current = cacheKey;
+                setPosts([]);
+                fetchInitial();
+              }}
+            />
             <JumpToDateMenu
               onJump={(dateStr) => {
                 const c = jumpCursorForDate(dateStr, sort);

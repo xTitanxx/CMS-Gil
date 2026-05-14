@@ -161,6 +161,12 @@ model Post {
   // Distinct from publishCount above which counts schedule events.
   hubPublishCount       Int       @default(0)
 
+  // Position within the "Reshuffled queue" sort on /admin/posts. Written by
+  // computeShuffledOrder() in src/lib/planner/reshuffle.ts. Float so future
+  // inserts can slot between two existing positions without renumbering.
+  // Null = unshuffled (new posts, NOT_READY→READY transitions); sorts last.
+  shufflePosition Float?
+
   lifecycle           Lifecycle @default(UNKNOWN)
   season              Season?
   lifecycleOverridden Boolean   @default(false)
@@ -225,6 +231,7 @@ model Post {
   @@index([readiness])
   @@index([lifecycle])
   @@index([userId, lastPublishedViaHubAt])
+  @@index([userId, shufflePosition])
 }
 
 model PostLike {

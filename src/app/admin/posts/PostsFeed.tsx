@@ -40,6 +40,7 @@ import {
 import {
   FilterMenu,
   SortMenu,
+  ReshuffleButton,
   JumpToDateMenu,
   parseCsvToSet,
   serializeSet,
@@ -495,6 +496,14 @@ export function PostsFeed() {
             </Button>
           )}
           <SortMenu sort={sort} setSort={setSort} />
+          <ReshuffleButton
+            sort={sort}
+            onDone={() => {
+              feedCache.delete(cacheKey);
+              initialisedKeyRef.current = null;
+              setJumpCursor(null);
+            }}
+          />
           <JumpToDateMenu
             onJump={(dateStr) => {
               const c = jumpCursorForDate(dateStr, sort);

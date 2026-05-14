@@ -199,6 +199,50 @@ describe("queue sort", () => {
   });
 });
 
+describe("shuffled queue sort", () => {
+  it("buildPostsQuery uses shufflePosition NULLS LAST and applies suggester eligibility", () => {
+    const { where, orderBy } = buildPostsQuery({ sort: "shuffled_queue_asc" }, "user_1");
+    expect(orderBy[0]).toEqual({ shufflePosition: { sort: "asc", nulls: "last" } });
+    expect(orderBy[orderBy.length - 1]).toEqual({ id: "asc" });
+    const ands = (where.AND ?? []) as Array<Record<string, unknown>>;
+    expect(ands).toEqual(
+      expect.arrayContaining([
+        { readiness: { notIn: ["NOT_READY", "ARCHIVED"] } },
+      ]),
+    );
+  });
+  it("cursorFromRow encodes shufflePosition as string", () => {
+    const row = {
+      id: "p1",
+      originalDate: new Date("2024-01-01"),
+      createdAt: new Date("2024-02-02"),
+      shufflePosition: 4000,
+    };
+    expect(cursorFromRow("shuffled_queue_asc", row).value).toBe("4000");
+  });
+  it("cursorFromRow encodes null shufflePosition as 'null'", () => {
+    const row = {
+      id: "p1",
+      originalDate: new Date("2024-01-01"),
+      createdAt: new Date("2024-02-02"),
+      shufflePosition: null,
+    };
+    expect(cursorFromRow("shuffled_queue_asc", row).value).toBe("null");
+  });
+  it("buildCursorClause walks shufflePosition and crosses into NULLS tail", () => {
+    const clause = buildCursorClause("shuffled_queue_asc", { value: "2000", id: "abc" });
+    const or = (clause as { OR: Array<Record<string, unknown>> }).OR;
+    expect(or).toHaveLength(3);
+    expect(or[0]).toEqual({ shufflePosition: { gt: 2000 } });
+    expect(or[1]).toEqual({ shufflePosition: 2000, id: { gt: "abc" } });
+    expect(or[2]).toEqual({ shufflePosition: null });
+  });
+  it("buildCursorClause inside the NULLS tail paginates by id only", () => {
+    const clause = buildCursorClause("shuffled_queue_asc", { value: "null", id: "abc" });
+    expect(clause).toEqual({ shufflePosition: null, id: { gt: "abc" } });
+  });
+});
+
 describe("buildNeighborQueries", () => {
   const current = {
     id: "p1",

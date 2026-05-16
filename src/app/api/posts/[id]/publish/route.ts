@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
@@ -71,18 +71,19 @@ export async function POST(
     records.push(record);
   }
 
-  // Fire-and-forget dispatch to the internal worker endpoint. Wrapped in
-  // after() so the lambda stays alive long enough to actually send each
-  // request before terminating; each fetch returns ~quickly (202 from the
-  // worker once it's scheduled its own background work).
+  // Dispatch synchronously (no after()) so the network calls go out as part
+  // of the request lifecycle, not in a post-response callback. Empirically
+  // after() was leaving immediate posts in PENDING — the callback would not
+  // reliably fire its fetches before the lambda exited. Each internal call
+  // returns 202 in ~100ms after handing off to its OWN after() (in a fresh
+  // lambda with a fresh 300s budget), so even 5 platforms in parallel finish
+  // well inside the 60s budget here.
   if (!scheduled) {
     const baseUrl = new URL("/api/internal/publish-record", req.url);
     const cronSecret = process.env.CRON_SECRET;
-    after(async () => {
-      if (!cronSecret) {
-        console.error("CRON_SECRET missing — cannot dispatch publish");
-        return;
-      }
+    if (!cronSecret) {
+      console.error("CRON_SECRET missing — cannot dispatch publish");
+    } else {
       await Promise.allSettled(
         records.map((r) =>
           fetch(baseUrl, {
@@ -92,17 +93,27 @@ export async function POST(
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ recordId: r.id }),
+            // Cap per-dispatch wall time so a single stuck network call
+            // can't block the whole response. The cron's null-scheduledAt
+            // safety net catches anything that misses.
+            signal: AbortSignal.timeout(8000),
           }).catch((err) =>
             console.error("publish dispatch failed", { recordId: r.id, err }),
           ),
         ),
       );
-    });
+    }
   }
 
-  return NextResponse.json({
-    records: records.map((r) => ({ id: r.id, platform: r.platform, status: r.status })),
+  // Re-read so the response reflects PROCESSING (or whatever terminal state
+  // the worker reached if it was fast) instead of stale PENDING — the UI
+  // uses these statuses for its initial render.
+  const fresh = await prisma.publishRecord.findMany({
+    where: { id: { in: records.map((r) => r.id) } },
+    select: { id: true, platform: true, status: true },
   });
+
+  return NextResponse.json({ records: fresh });
 }
 
 export async function publishNow(
@@ -121,25 +132,11 @@ export async function publishNow(
   },
   platform: Platform
 ) {
-  // Conditional PENDING → PROCESSING transition. Closes the race where the
-  // user clicks Cancel between the internal endpoint's status check and this
-  // function actually starting work — if count is 0 the row is already
-  // CANCELLED (or PUBLISHED via a sibling invocation), so we bail without
-  // doing the upload.
-  const claim = await prisma.publishRecord.updateMany({
-    where: { id: recordId, status: "PENDING" },
-    data: { status: "PROCESSING" },
-  });
-  if (claim.count === 0) {
-    console.warn("publishNow: record no longer PENDING, skipping upload", {
-      recordId,
-    });
-    return;
-  }
-
-  // Everything after this point is wrapped in try/catch so that ANY failure
-  // (missing token, decrypt error, provider error) transitions the record to
-  // FAILED instead of leaving it orphaned in PROCESSING forever.
+  // The row is already PROCESSING — the internal dispatcher claimed it
+  // synchronously before scheduling this call. If the user cancels mid-flight
+  // the terminal updateMany writes below (gated on status === PROCESSING)
+  // will no-op, so the upload finishes silently but the record stays
+  // CANCELLED.
   try {
     const token = await prisma.platformToken.findUnique({
       where: { userId_platform: { userId, platform } },

@@ -59,6 +59,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Claim the row synchronously — flip PENDING → PROCESSING before returning
+  // so the parent's re-read shows PROCESSING (not stale PENDING). The
+  // updateMany filter wins the race with /api/publish/[id]/cancel: if the
+  // user cancelled in the millisecond between the findUnique above and now,
+  // count === 0 and we don't do the upload.
+  const claim = await prisma.publishRecord.updateMany({
+    where: { id: recordId, status: "PENDING" },
+    data: { status: "PROCESSING" },
+  });
+  if (claim.count === 0) {
+    return NextResponse.json(
+      { skipped: true, reason: "raced with cancel" },
+      { status: 200 },
+    );
+  }
+
   const post = record.post;
   const platform = record.platform as Platform;
 

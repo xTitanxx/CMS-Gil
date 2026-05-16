@@ -27,6 +27,9 @@ describe("proxy decide()", () => {
       "/api/cron/publish",
       "/api/cron/readiness",
       "/api/cron/push-reminders",
+      // Internal fan-out endpoint reached only by Bearer CRON_SECRET; the
+      // proxy must not 401 it before the route's own auth check runs.
+      "/api/internal/publish-record",
     ];
     for (const p of paths) {
       it(`anon, subscriber, admin all reach ${p}`, () => {

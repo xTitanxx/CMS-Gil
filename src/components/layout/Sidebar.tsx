@@ -18,10 +18,20 @@ import {
   Users,
   Layers,
 } from "lucide-react";
+import { SiFacebook } from "react-icons/si";
 import { signOut } from "next-auth/react";
 
+type IconComponent = React.ComponentType<{ className?: string }>;
+
 type NavItem =
-  | { type: "link"; href: string; label: string; icon: typeof FileText; badge?: "triage" }
+  | {
+      type: "link";
+      href: string;
+      label: string;
+      icon: IconComponent;
+      iconColor?: string;
+      badge?: "triage" | "manual-fb";
+    }
   | { type: "section"; label: string };
 
 const nav: NavItem[] = [
@@ -29,6 +39,14 @@ const nav: NavItem[] = [
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
   { type: "link", href: "/admin/suggest", label: "Suggester", icon: Layers },
   { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
+  {
+    type: "link",
+    href: "/admin/manual-fb",
+    label: "Manual FB",
+    icon: SiFacebook,
+    iconColor: "text-[#1877F2]",
+    badge: "manual-fb",
+  },
   { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
 
   { type: "section", label: "Content" },
@@ -54,6 +72,34 @@ function TriageBadge() {
         if (res.ok) {
           const data = await res.json();
           setCount(data.total ?? 0);
+        }
+      } catch {
+        // silent
+      }
+    }
+    void fetch_();
+    const interval = setInterval(fetch_, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!count) return null;
+  return (
+    <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function ManualFbBadge() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetch_() {
+      try {
+        const res = await fetch("/api/admin/manual-fb-queue/count");
+        if (res.ok) {
+          const data = await res.json();
+          setCount(typeof data?.overdue === "number" ? data.overdue : 0);
         }
       } catch {
         // silent
@@ -129,21 +175,23 @@ export function Sidebar() {
               </div>
             );
           }
-          const { href, label, icon: Icon, badge } = item;
+          const { href, label, icon: Icon, iconColor, badge } = item;
+          const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation",
-                pathname.startsWith(href)
+                active
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className={cn("h-4 w-4", !active && iconColor)} />
               {label}
               {badge === "triage" && <TriageBadge />}
+              {badge === "manual-fb" && <ManualFbBadge />}
             </Link>
           );
         })}

@@ -1,0 +1,38 @@
+# Vercel Hobby plans cap built-in crons at once-per-day, but the publish
+# pipeline needs a tight loop: scheduled-for-later posts should fire within
+# minutes of their scheduledAt, and orphaned PROCESSING rows (lambda died
+# mid-upload) need to be reaped before the spinner sits for 24h. GitHub
+# Actions runs scheduled workflows down to 5-min granularity for free, so we
+# use it as the trigger and let Vercel host the actual handler. vercel.json
+# keeps a daily backstop in case GitHub Actions is throttled.
+#
+# Setup (mirrors .github/workflows/push-reminders.yml):
+# - CRON_SECRET set as a repo secret AND on Vercel project envs.
+# - The /api/cron/publish route validates the bearer with timing-safe
+#   comparison against process.env.CRON_SECRET (src/lib/cron-auth.ts).
+name: Publish cron
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub Actions cron is best-effort and can drift by a
+    # few minutes under load — fine for publish dispatch + reaping.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit the publish cron endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 60 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://cms-gil.vercel.app/api/cron/publish")
+          echo "$response"

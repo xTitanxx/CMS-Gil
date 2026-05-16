@@ -13,10 +13,11 @@ import {
 import { SiFacebook } from "react-icons/si";
 
 export type QueueItem = {
-  slotId: string;
+  // slotId is null for ad-hoc items (not on the weekly planner).
+  slotId: string | null;
   postId: string;
   scheduledAt: string;
-  status: "SCHEDULED" | "APPROVED";
+  status: "SCHEDULED" | "APPROVED" | "AD_HOC";
   reminderSentAt: string | null;
   body: string;
   platformUrl: string | null;
@@ -116,8 +117,8 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
     }
   }
 
-  function removeItem(slotId: string) {
-    setItems((prev) => prev.filter((i) => i.slotId !== slotId));
+  function removeItem(postId: string) {
+    setItems((prev) => prev.filter((i) => i.postId !== postId));
   }
 
   return (
@@ -156,7 +157,11 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
       ) : (
         <ul className="space-y-2.5">
           {items.map((item) => (
-            <QueueRow key={item.slotId} item={item} onMarked={() => removeItem(item.slotId)} />
+            <QueueRow
+              key={item.slotId ?? `post:${item.postId}`}
+              item={item}
+              onMarked={() => removeItem(item.postId)}
+            />
           ))}
         </ul>
       )}
@@ -256,7 +261,7 @@ function QueueRow({
       <div className="flex gap-3 p-3">
         {/* Thumb */}
         <Link
-          href={`/admin/m/${item.postId}?slot=${item.slotId}`}
+          href={item.slotId ? `/admin/m/${item.postId}?slot=${item.slotId}` : `/admin/m/${item.postId}`}
           className="relative block h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-200"
           aria-label="Open manual posting helper"
         >
@@ -316,7 +321,7 @@ function QueueRow({
           )}
         </button>
         <Link
-          href={`/admin/m/${item.postId}?slot=${item.slotId}`}
+          href={item.slotId ? `/admin/m/${item.postId}?slot=${item.slotId}` : `/admin/m/${item.postId}`}
           className="flex flex-1 items-center justify-center gap-1.5 border-l border-black/[0.04] py-2.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100"
         >
           Open helper

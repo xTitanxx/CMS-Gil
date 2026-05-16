@@ -50,12 +50,14 @@ async function loadQueue(userId: string): Promise<QueueItem[]> {
   });
 
   const items: QueueItem[] = [];
+  const seenPostIds = new Set<string>();
   for (const slot of slots) {
     if (slot.post.publishes.length > 0) continue;
     const hour = slot.hour ?? FIXED_SLOT_HOURS[0];
     const scheduledAt = buildSlotDate(slot.day, hour);
     if (scheduledAt < lookbackStart) continue;
 
+    seenPostIds.add(slot.post.id);
     items.push({
       slotId: slot.id,
       postId: slot.post.id,
@@ -65,6 +67,67 @@ async function loadQueue(userId: string): Promise<QueueItem[]> {
       body: slot.post.body ?? "",
       platformUrl: slot.post.platformUrl,
       media: slot.post.media.map((m) => ({
+        id: m.id,
+        mimeType: m.mimeType,
+        url: m.storageKey,
+      })),
+    });
+  }
+
+  // Ad-hoc posts: pushed via "Post now" or SchedulePanel (not the weekly
+  // planner) so they have PublishRecord rows but no WeeklyPlanSlot. We still
+  // want them in this queue so the user remembers to cross-post to FB
+  // personal. Excludes slot-tracked posts and anything already FB-published.
+  const adhocPosts = await prisma.post.findMany({
+    where: {
+      userId,
+      id: seenPostIds.size > 0 ? { notIn: [...seenPostIds] } : undefined,
+      publishes: {
+        some: {
+          createdAt: { gte: lookbackStart },
+          status: { in: ["PENDING", "PROCESSING", "PUBLISHED", "FAILED"] },
+        },
+      },
+      NOT: {
+        publishes: {
+          some: { platform: "FACEBOOK", status: "PUBLISHED" },
+        },
+      },
+    },
+    select: {
+      id: true,
+      body: true,
+      platformUrl: true,
+      publishes: {
+        select: { scheduledAt: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+      media: {
+        select: { id: true, mimeType: true, storageKey: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    take: MAX_RESULTS,
+  });
+
+  for (const post of adhocPosts) {
+    // Prefer the first record's scheduledAt (a non-planner future schedule);
+    // fall back to its createdAt — for "Post now" that's effectively the
+    // moment the user clicked the button.
+    const first = post.publishes[0];
+    const moment = first?.scheduledAt ?? first?.createdAt ?? new Date();
+    if (moment < lookbackStart) continue;
+
+    items.push({
+      slotId: null,
+      postId: post.id,
+      scheduledAt: moment.toISOString(),
+      status: "AD_HOC",
+      reminderSentAt: null,
+      body: post.body ?? "",
+      platformUrl: post.platformUrl,
+      media: post.media.map((m) => ({
         id: m.id,
         mimeType: m.mimeType,
         url: m.storageKey,

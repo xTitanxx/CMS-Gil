@@ -10,10 +10,12 @@ const LOOKBACK_DAYS = 30;
 const MAX_RESULTS = 100;
 
 export type QueueItem = {
-  slotId: string;
+  // slotId is null for ad-hoc items (not on the weekly planner): the user
+  // pushed "Post now" or scheduled directly from the post detail page.
+  slotId: string | null;
   postId: string;
   scheduledAt: string;
-  status: "SCHEDULED" | "APPROVED";
+  status: "SCHEDULED" | "APPROVED" | "AD_HOC";
   reminderSentAt: string | null;
   body: string;
   platformUrl: string | null;
@@ -69,6 +71,7 @@ export async function GET(req: NextRequest) {
   });
 
   const items: QueueItem[] = [];
+  const seenPostIds = new Set<string>();
   for (const slot of slots) {
     if (slot.post.publishes.length > 0) continue;
 
@@ -76,6 +79,7 @@ export async function GET(req: NextRequest) {
     const scheduledAt = buildSlotDate(slot.day, hour);
     if (scheduledAt < lookbackStart) continue;
 
+    seenPostIds.add(slot.post.id);
     items.push({
       slotId: slot.id,
       postId: slot.post.id,
@@ -85,6 +89,64 @@ export async function GET(req: NextRequest) {
       body: slot.post.body ?? "",
       platformUrl: slot.post.platformUrl,
       media: slot.post.media.map((m) => ({
+        id: m.id,
+        mimeType: m.mimeType,
+        url: m.storageKey,
+      })),
+    });
+  }
+
+  // Ad-hoc posts: pushed via "Post now" or the SchedulePanel (not the weekly
+  // planner). They have PublishRecord rows but no WeeklyPlanSlot, so the
+  // slot query above doesn't pick them up. Still want them here so the user
+  // remembers to cross-post to FB personal.
+  const adhocPosts = await prisma.post.findMany({
+    where: {
+      userId,
+      id: seenPostIds.size > 0 ? { notIn: [...seenPostIds] } : undefined,
+      publishes: {
+        some: {
+          createdAt: { gte: lookbackStart },
+          status: { in: ["PENDING", "PROCESSING", "PUBLISHED", "FAILED"] },
+        },
+      },
+      NOT: {
+        publishes: {
+          some: { platform: "FACEBOOK", status: "PUBLISHED" },
+        },
+      },
+    },
+    select: {
+      id: true,
+      body: true,
+      platformUrl: true,
+      publishes: {
+        select: { scheduledAt: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+      media: {
+        select: { id: true, mimeType: true, storageKey: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    take: MAX_RESULTS,
+  });
+
+  for (const post of adhocPosts) {
+    const first = post.publishes[0];
+    const moment = first?.scheduledAt ?? first?.createdAt ?? new Date();
+    if (moment < lookbackStart) continue;
+
+    items.push({
+      slotId: null,
+      postId: post.id,
+      scheduledAt: moment.toISOString(),
+      status: "AD_HOC",
+      reminderSentAt: null,
+      body: post.body ?? "",
+      platformUrl: post.platformUrl,
+      media: post.media.map((m) => ({
         id: m.id,
         mimeType: m.mimeType,
         url: m.storageKey,

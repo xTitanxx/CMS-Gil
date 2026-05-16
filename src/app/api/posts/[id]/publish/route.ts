@@ -121,10 +121,21 @@ export async function publishNow(
   },
   platform: Platform
 ) {
-  await prisma.publishRecord.update({
-    where: { id: recordId },
+  // Conditional PENDING → PROCESSING transition. Closes the race where the
+  // user clicks Cancel between the internal endpoint's status check and this
+  // function actually starting work — if count is 0 the row is already
+  // CANCELLED (or PUBLISHED via a sibling invocation), so we bail without
+  // doing the upload.
+  const claim = await prisma.publishRecord.updateMany({
+    where: { id: recordId, status: "PENDING" },
     data: { status: "PROCESSING" },
   });
+  if (claim.count === 0) {
+    console.warn("publishNow: record no longer PENDING, skipping upload", {
+      recordId,
+    });
+    return;
+  }
 
   // Everything after this point is wrapped in try/catch so that ANY failure
   // (missing token, decrypt error, provider error) transitions the record to
@@ -205,8 +216,12 @@ export async function publishNow(
     }
 
     const publishedAt = new Date();
-    await prisma.publishRecord.update({
-      where: { id: recordId },
+    // updateMany with a status filter so a user-cancelled row (CANCELLED) isn't
+    // overwritten back to PUBLISHED by a lambda that finished after the click.
+    // The upload itself can't be aborted mid-flight, but the record reflects
+    // the user's intent: they said cancel, so it stays cancelled.
+    const updated = await prisma.publishRecord.updateMany({
+      where: { id: recordId, status: "PROCESSING" },
       data: {
         status: "PUBLISHED",
         publishedAt,
@@ -214,6 +229,17 @@ export async function publishNow(
         platformUrl: result.platformUrl ?? null,
       },
     });
+    if (updated.count === 0) {
+      // Row was cancelled (or reaped) while the upload was running. The post
+      // did go live on the platform — surface that in logs so we can manually
+      // reconcile if needed — but don't touch the record state.
+      console.warn("publishNow: record no longer PROCESSING, leaving status as-is", {
+        recordId,
+        platformPostId: result.platformPostId,
+        platformUrl: result.platformUrl,
+      });
+      return;
+    }
 
     // Mirror the publish event onto Post so list views can sort/filter by
     // hub-publish state directly without joining PublishRecord. Sequential
@@ -232,8 +258,9 @@ export async function publishNow(
       console.error("Post hub-publish denorm failed", { postId: post.id, denormErr });
     }
   } catch (err) {
-    await prisma.publishRecord.update({
-      where: { id: recordId },
+    // Same guard as the success path — don't overwrite a CANCELLED row.
+    await prisma.publishRecord.updateMany({
+      where: { id: recordId, status: "PROCESSING" },
       data: {
         status: "FAILED",
         errorMessage: String(err),

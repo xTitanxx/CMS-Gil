@@ -429,7 +429,7 @@ export function ActivityList({
                   </div>
                 )}
 
-                {pr.status === "PENDING" && (
+                {(pr.status === "PENDING" || pr.status === "PROCESSING") && (
                   <div className="ml-12 mt-2">
                     <button
                       type="button"
@@ -438,7 +438,11 @@ export function ActivityList({
                       className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <XCircle className="h-3 w-3" />
-                      {cancelling.has(pr.id) ? "Cancelling…" : "Cancel scheduling"}
+                      {cancelling.has(pr.id)
+                        ? "Cancelling…"
+                        : pr.scheduledAt
+                          ? "Cancel scheduling"
+                          : "Cancel"}
                     </button>
                   </div>
                 )}

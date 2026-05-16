@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Clock,
   Copy,
-  ExternalLink,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -148,46 +147,52 @@ async function buildShareFiles(
 }
 
 /**
- * Tries Web Share API with media + caption, falls back progressively. Returns
- * "shared" if the share sheet was successfully opened (we can't tell whether
- * the user actually completed the post inside FB, so this only signals
- * "intent to share").
+ * On iOS the Web Share API hits the system share sheet so the user can pick
+ * FB and the composer pre-fills with media + caption. There is no equivalent
+ * on macOS or any desktop browser — `navigator.share` either doesn't exist
+ * or refuses files — and the `fb://composer` deep link is iOS-only.
+ *
+ * For the desktop case we do the next best thing the user asked for: copy the
+ * caption to the clipboard and open the FB sharer dialog
+ * (`sharer.php?u=<public post URL>`), which gives them a real new draft post
+ * in FB with the public post URL preview attached. They paste the caption.
+ *
+ * Returns "shared" when the native sheet ran, "sharer" when we opened the
+ * desktop dialog, "copied" if even that failed (popup blocked).
  */
 async function shareToFb(opts: {
   body: string;
   media: { id: string; mimeType: string; url: string | null }[];
   postId: string;
-}): Promise<"shared" | "copied" | "unsupported"> {
+}): Promise<"shared" | "sharer" | "copied"> {
   const nav = navigator as NavWithShare;
   const fallbackName = `gil-${opts.postId}`;
+  const publicUrl = `${window.location.origin}/p/${opts.postId}`;
+  const sharerUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
 
-  if (nav.share) {
+  // iOS path: try Web Share with files + text first. Some browsers expose
+  // `navigator.share` but reject files (macOS Safari) — fall through to the
+  // desktop path in that case rather than dropping to text-only share.
+  if (nav.share && nav.canShare) {
     const files = await buildShareFiles(opts.media, fallbackName);
     const payload = { text: opts.body, files };
-    if (files.length > 0 && nav.canShare?.(payload)) {
+    if (files.length > 0 && nav.canShare(payload)) {
       try {
         await nav.share(payload);
         return "shared";
       } catch {
-        // user cancelled — treat as "no-op" (don't fall through to copy)
-        return "shared";
-      }
-    }
-    const textOnly = { text: opts.body };
-    if (nav.canShare?.(textOnly) ?? true) {
-      try {
-        await nav.share(textOnly);
-        return "shared";
-      } catch {
+        // User cancelled or share aborted. Stop here — don't also open a
+        // desktop sharer tab.
         return "shared";
       }
     }
   }
 
-  // Fallback: copy caption, then deep-link into FB composer.
+  // Desktop fallback. Open the sharer synchronously in the click handler so
+  // popup blockers don't intercept it, then copy the caption.
+  const opened = window.open(sharerUrl, "_blank", "noopener,noreferrer");
   await copyTextToClipboard(opts.body);
-  window.location.href = "fb://composer";
-  return "copied";
+  return opened ? "sharer" : "copied";
 }
 
 export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[] }) {
@@ -603,14 +608,14 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
           type="button"
           onClick={() => void clearWithStatus("PUBLISHED")}
           disabled={marking || cleared}
-          className="flex flex-1 min-w-0 items-center justify-center gap-1 py-2.5 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 disabled:opacity-50"
+          className="flex flex-1 min-w-0 items-center justify-center gap-1 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40"
         >
           {marking ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <Check className="h-3.5 w-3.5" />
           )}
-          <span className="truncate">Posted</span>
+          <span className="truncate">Mark posted</span>
         </button>
         <button
           type="button"
@@ -637,18 +642,6 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
           <span className="truncate">Helper</span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         </Link>
-        {item.platformUrl ? (
-          <a
-            href={item.platformUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex w-10 shrink-0 items-center justify-center border-l border-black/[0.04] text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-            title="Original on Facebook"
-            aria-label="Original on Facebook"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        ) : null}
       </div>
 
       {(shareError || actionError) && (

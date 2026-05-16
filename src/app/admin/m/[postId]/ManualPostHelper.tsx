@@ -323,17 +323,19 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
             3. Post on Facebook
           </div>
           <p className="mb-2 text-sm text-blue-900">
-            Open the Facebook app, paste the caption, and attach the saved media.
+            Open Facebook, paste the caption, and attach the saved media.
           </p>
           <a
-            href="fb://composer"
+            href="https://www.facebook.com/"
+            target="_blank"
+            rel="noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1877F2] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
           >
             <SiFacebook className="h-4 w-4" />
             Open Facebook
           </a>
           <p className="mt-1.5 text-[11px] text-blue-800/80">
-            {"(If the app doesn't open, tap and hold to open in Safari instead.)"}
+            {"(On iPhone this opens the Facebook app via Apple's universal-link handling; in a desktop browser it opens facebook.com in a new tab.)"}
           </p>
         </section>
 

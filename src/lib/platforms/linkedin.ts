@@ -2,6 +2,7 @@
 // Scopes: w_member_social, r_basicprofile
 
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 
 interface PublishResult {
   platformPostId: string;
@@ -79,10 +80,11 @@ export async function postToLinkedIn(
     },
   };
 
-  const res = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+  const res = await fetchWithTimeout("https://api.linkedin.com/v2/ugcPosts", {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    timeoutMs: 30_000,
   });
 
   if (!res.ok) {
@@ -113,7 +115,7 @@ async function registerLinkedInMedia(
   };
 
   // Register upload
-  const registerRes = await fetch(
+  const registerRes = await fetchWithTimeout(
     "https://api.linkedin.com/v2/assets?action=registerUpload",
     {
       method: "POST",
@@ -134,6 +136,7 @@ async function registerLinkedInMedia(
           ],
         },
       }),
+      timeoutMs: 30_000,
     }
   );
 
@@ -148,13 +151,27 @@ async function registerLinkedInMedia(
     throw new Error(`LinkedIn register upload failed: ${JSON.stringify(registerData)}`);
   }
 
-  // Download and re-upload the media
-  const mediaBuffer = await fetch(mediaUrl).then((r) => r.arrayBuffer());
-  await fetch(uploadUrl, {
+  // Download from R2 then re-upload to LinkedIn. Both legs need timeouts —
+  // without them a stalled R2 or LinkedIn endpoint will silently drain the
+  // entire lambda budget and leave the record stuck in PROCESSING.
+  const mediaRes = await fetchWithTimeout(mediaUrl, { timeoutMs: 60_000 });
+  if (!mediaRes.ok) {
+    throw new Error(
+      `LinkedIn media download failed for ${key}: ${mediaRes.status}`,
+    );
+  }
+  const mediaBuffer = await mediaRes.arrayBuffer();
+  const uploadRes = await fetchWithTimeout(uploadUrl, {
     method: "PUT",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: mediaBuffer,
+    timeoutMs: 90_000,
   });
+  if (!uploadRes.ok) {
+    throw new Error(
+      `LinkedIn asset upload failed for ${key}: ${uploadRes.status}`,
+    );
+  }
 
   return assetUrn;
 }

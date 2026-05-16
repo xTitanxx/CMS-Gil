@@ -11,9 +11,13 @@ import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
 import { preparePublishKeys } from "@/lib/publish-prep";
 
-// Audio muxing + platform upload can take well past the default. Give the
-// background work the full Fluid Compute window.
-export const maxDuration = 300;
+// This handler is now dispatch-only: it creates the PublishRecord rows and
+// fans out to /api/internal/publish-record so every platform gets its own
+// lambda invocation (and its own 300s budget). Previously all selected
+// platforms ran concurrently inside this single lambda; when the slowest
+// blew past 300s the lambda died and any other platform still uploading was
+// left stuck in PROCESSING forever.
+export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -45,11 +49,11 @@ export async function POST(
   if (!post) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const scheduled = scheduledAt ? new Date(scheduledAt) : null;
-  const records = [];
+  const records: Array<{ id: string; platform: Platform; status: string }> = [];
 
   for (const platform of platforms) {
     // Cancel any existing pending or stuck-processing record for this
-    // post+platform. PROCESSING records get orphaned when the lambda dies
+    // post+platform. PROCESSING records get orphaned when a lambda dies
     // mid-flight; without clearing them here, re-publishing is blocked.
     await prisma.publishRecord.updateMany({
       where: { postId: id, platform, status: { in: ["PENDING", "PROCESSING"] } },
@@ -65,22 +69,35 @@ export async function POST(
       },
     });
     records.push(record);
+  }
 
-    // If immediate, publish now in the background. `after()` keeps the
-    // function instance alive past the HTTP response — without it the
-    // lambda terminates, the publishNow promise is killed mid-flight, and
-    // the record is left orphaned in PROCESSING forever.
-    if (!scheduled) {
-      const recordId = record.id;
-      const userId = session.user.id;
-      after(async () => {
-        try {
-          await publishNow(recordId, userId, post, platform);
-        } catch (err) {
-          console.error("publishNow failed", { recordId, platform, err });
-        }
-      });
-    }
+  // Fire-and-forget dispatch to the internal worker endpoint. Wrapped in
+  // after() so the lambda stays alive long enough to actually send each
+  // request before terminating; each fetch returns ~quickly (202 from the
+  // worker once it's scheduled its own background work).
+  if (!scheduled) {
+    const baseUrl = new URL("/api/internal/publish-record", req.url);
+    const cronSecret = process.env.CRON_SECRET;
+    after(async () => {
+      if (!cronSecret) {
+        console.error("CRON_SECRET missing — cannot dispatch publish");
+        return;
+      }
+      await Promise.allSettled(
+        records.map((r) =>
+          fetch(baseUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${cronSecret}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ recordId: r.id }),
+          }).catch((err) =>
+            console.error("publish dispatch failed", { recordId: r.id, err }),
+          ),
+        ),
+      );
+    });
   }
 
   return NextResponse.json({

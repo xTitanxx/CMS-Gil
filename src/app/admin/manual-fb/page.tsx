@@ -36,7 +36,7 @@ async function loadQueue(userId: string): Promise<QueueItem[]> {
           body: true,
           platformUrl: true,
           publishes: {
-            where: { platform: "FACEBOOK", status: "PUBLISHED" },
+            where: { platform: "FACEBOOK", status: { in: ["PUBLISHED", "CANCELLED"] } },
             select: { id: true },
             take: 1,
           },
@@ -90,7 +90,7 @@ async function loadQueue(userId: string): Promise<QueueItem[]> {
       },
       NOT: {
         publishes: {
-          some: { platform: "FACEBOOK", status: "PUBLISHED" },
+          some: { platform: "FACEBOOK", status: { in: ["PUBLISHED", "CANCELLED"] } },
         },
       },
     },

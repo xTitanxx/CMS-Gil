@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
           body: true,
           platformUrl: true,
           publishes: {
-            where: { platform: "FACEBOOK", status: "PUBLISHED" },
+            where: { platform: "FACEBOOK", status: { in: ["PUBLISHED", "CANCELLED"] } },
             select: { id: true },
             take: 1,
           },
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
       },
       NOT: {
         publishes: {
-          some: { platform: "FACEBOOK", status: "PUBLISHED" },
+          some: { platform: "FACEBOOK", status: { in: ["PUBLISHED", "CANCELLED"] } },
         },
       },
     },

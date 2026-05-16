@@ -23,7 +23,12 @@ export async function POST(
   if (!record) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (record.status !== "PENDING") {
+  // PENDING = before dispatch, safe to cancel. PROCESSING = a platform lambda
+  // is already mid-upload; we flip the row anyway and publishNow's final write
+  // is gated on status === PROCESSING, so a CANCELLED row won't get overwritten
+  // back to PUBLISHED. The in-flight upload itself can't be aborted, but the
+  // record of truth respects the user's intent.
+  if (record.status !== "PENDING" && record.status !== "PROCESSING") {
     return NextResponse.json(
       { error: `Cannot cancel a ${record.status.toLowerCase()} record` },
       { status: 400 }

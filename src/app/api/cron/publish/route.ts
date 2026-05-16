@@ -36,14 +36,26 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // Two flavors of PENDING get picked up:
+  //   - scheduledAt <= now    → a scheduled post whose tick has arrived
+  //   - scheduledAt IS NULL   → an immediate "Post now" record whose in-process
+  //                             fan-out from /api/posts/[id]/publish failed (the
+  //                             after() didn't run, the internal fetch was
+  //                             rejected, etc.). Without this branch they'd
+  //                             stay PENDING forever — the symptom that
+  //                             showed up as "5 platforms stuck Pending" even
+  //                             after the per-platform fan-out shipped.
   const pendingRecords = await prisma.publishRecord.findMany({
     where: {
       status: "PENDING",
-      scheduledAt: { lte: now },
+      OR: [
+        { scheduledAt: { lte: now } },
+        { scheduledAt: null },
+      ],
     },
     select: { id: true },
     take: 20,
-    orderBy: { scheduledAt: "asc" },
+    orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
   });
 
   const cronSecret = process.env.CRON_SECRET;

@@ -27,6 +27,13 @@ const ALWAYS_PUBLIC_PREFIXES = [
   // each route validates that header itself. Without this allowlist the
   // proxy returns NextAuth 401 before the bearer check ever runs.
   "/api/cron",
+  // /api/internal/* is the lambda-to-lambda fan-out for publishing. Reached
+  // only via fetch from /api/posts/[id]/publish and /api/cron/publish with
+  // a Bearer CRON_SECRET — same gating as /api/cron. Without this allowlist
+  // the proxy returns 401 (no session cookie on the server-to-server hop)
+  // before isAuthorizedCron ever runs, so every publish dispatch fails
+  // silently and records sit in PENDING until the cron rescues them.
+  "/api/internal",
 ];
 
 // Public archive — readable by anyone, including unauthenticated visitors.

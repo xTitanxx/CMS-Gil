@@ -4,6 +4,7 @@
 // access token (from /me/accounts), not a user access token.
 
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 
 interface PublishResult {
   platformPostId: string;
@@ -38,7 +39,15 @@ async function graphPost(path: string, body: URLSearchParams): Promise<Response>
   const url = `${GRAPH}${path}`;
   let last: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url, { method: "POST", body });
+    // 60s per attempt: video posts can chunk-upload server-side and the
+    // graph call won't return until Meta finishes ingesting. Raw fetch
+    // here would hang indefinitely on a stalled connection and drain the
+    // lambda's whole 300s budget.
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      body,
+      timeoutMs: 60_000,
+    });
     if (res.ok) return res;
     let code: number | undefined;
     try {
@@ -186,8 +195,9 @@ async function fetchVideoPostId(
   accessToken: string
 ): Promise<string | undefined> {
   try {
-    const res = await fetch(
-      `${GRAPH}/${videoId}?fields=post_id&access_token=${accessToken}`
+    const res = await fetchWithTimeout(
+      `${GRAPH}/${videoId}?fields=post_id&access_token=${accessToken}`,
+      { timeoutMs: 15_000 },
     );
     if (!res.ok) return undefined;
     const data = await res.json();
@@ -207,9 +217,10 @@ async function reelPost(
     upload_phase: "start",
     access_token: accessToken,
   });
-  const initRes = await fetch(`${GRAPH}/${pageId}/video_reels`, {
+  const initRes = await fetchWithTimeout(`${GRAPH}/${pageId}/video_reels`, {
     method: "POST",
     body: initForm,
+    timeoutMs: 30_000,
   });
   const initData = await initRes.json();
   if (!initRes.ok || !initData.video_id) {
@@ -217,9 +228,12 @@ async function reelPost(
   }
 
   // Step 2: Upload the video binary
-  const videoRes = await fetch(fields.file_url);
+  const videoRes = await fetchWithTimeout(fields.file_url, { timeoutMs: 60_000 });
+  if (!videoRes.ok) {
+    throw new Error(`Facebook reel: R2 fetch failed (${videoRes.status})`);
+  }
   const videoBuffer = await videoRes.arrayBuffer();
-  const uploadRes = await fetch(
+  const uploadRes = await fetchWithTimeout(
     `${GRAPH}/${initData.video_id}`,
     {
       method: "POST",
@@ -230,6 +244,7 @@ async function reelPost(
         "Content-Type": "application/octet-stream",
       },
       body: videoBuffer,
+      timeoutMs: 120_000,
     }
   );
   const uploadData = await uploadRes.json();
@@ -245,9 +260,10 @@ async function reelPost(
     description: fields.description,
     access_token: accessToken,
   });
-  const publishRes = await fetch(`${GRAPH}/${pageId}/video_reels`, {
+  const publishRes = await fetchWithTimeout(`${GRAPH}/${pageId}/video_reels`, {
     method: "POST",
     body: publishForm,
+    timeoutMs: 30_000,
   });
   const publishData = await publishRes.json();
   if (!publishRes.ok || !publishData.success) {
@@ -273,7 +289,11 @@ async function storyPost(
     [fields.isVideo ? "file_url" : "url"]: encodeForRemoteFetch(fields.url),
     access_token: accessToken,
   });
-  const res = await fetch(endpoint, { method: "POST", body: form });
+  const res = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    body: form,
+    timeoutMs: 60_000,
+  });
   const data = await res.json();
   if (!res.ok || !(data.success || data.id || data.post_id)) {
     throw new Error(`Facebook story post failed: ${JSON.stringify(data)}`);
@@ -342,8 +362,9 @@ async function fetchPermalink(
   accessToken: string
 ): Promise<string | undefined> {
   try {
-    const res = await fetch(
-      `${GRAPH}/${postId}?fields=permalink_url&access_token=${accessToken}`
+    const res = await fetchWithTimeout(
+      `${GRAPH}/${postId}?fields=permalink_url&access_token=${accessToken}`,
+      { timeoutMs: 15_000 },
     );
     if (!res.ok) return undefined;
     const data = await res.json();

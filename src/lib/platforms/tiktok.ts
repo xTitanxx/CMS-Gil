@@ -19,6 +19,17 @@ interface TikTokCredentials {
 const MIN_CHUNK_SIZE = 5 * 1024 * 1024;
 const PREFERRED_CHUNK_SIZE = 10 * 1024 * 1024;
 
+// Privacy levels in descending visibility. We pick the most public option
+// that creator_info reports as allowed for this account+app pairing. An
+// unaudited app in TikTok sandbox mode only ever gets ["SELF_ONLY"]; posting
+// with anything else returns `unaudited_client_can_only_post_to_private_accounts`.
+const PRIVACY_PREFERENCE = [
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+  "FOLLOWER_OF_CREATOR",
+  "SELF_ONLY",
+] as const;
+
 export async function postToTikTok(
   creds: TikTokCredentials,
   body: string,
@@ -47,6 +58,12 @@ export async function postToTikTok(
     chunkCount = Math.floor(totalBytes / chunkSize);
   }
 
+  // Discover this creator's allowed privacy levels. Hardcoding
+  // "PUBLIC_TO_EVERYONE" fails on unaudited apps (sandbox / pre-review) with
+  // `unaudited_client_can_only_post_to_private_accounts`. Querying first lets
+  // us pick the most public level the app+account is actually authorised for.
+  const privacyLevel = await getAllowedPrivacyLevel(accessToken);
+
   // 1. Initialize upload
   const initRes = await fetchWithTimeout(
     "https://open.tiktokapis.com/v2/post/publish/video/init/",
@@ -59,7 +76,7 @@ export async function postToTikTok(
       body: JSON.stringify({
         post_info: {
           title: truncate(body, 150),
-          privacy_level: "PUBLIC_TO_EVERYONE",
+          privacy_level: privacyLevel,
           disable_duet: false,
           disable_comment: false,
           disable_stitch: false,
@@ -151,6 +168,32 @@ async function pollTikTokStatus(
     }
   }
   throw new Error("TikTok publish polling timed out");
+}
+
+async function getAllowedPrivacyLevel(accessToken: string): Promise<string> {
+  const res = await fetchWithTimeout(
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      timeoutMs: 15_000,
+    }
+  );
+  const data = await res.json();
+  if (data.error?.code && data.error.code !== "ok") {
+    throw new Error(`TikTok creator_info error: ${JSON.stringify(data.error)}`);
+  }
+  const allowed: string[] = data.data?.privacy_level_options ?? [];
+  // Fall back to SELF_ONLY: TikTok guarantees every account allows it, so a
+  // missing-options response still yields a working publish.
+  return (
+    PRIVACY_PREFERENCE.find((p) => allowed.includes(p)) ??
+    allowed[0] ??
+    "SELF_ONLY"
+  );
 }
 
 function sleep(ms: number) {

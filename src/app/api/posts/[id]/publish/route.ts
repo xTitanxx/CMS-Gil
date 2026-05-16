@@ -9,6 +9,7 @@ import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
 import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
+import { getValidTikTokAccessToken } from "@/lib/platforms/tiktok-auth";
 import { preparePublishKeys } from "@/lib/publish-prep";
 
 // This handler is now dispatch-only: it creates the PublishRecord rows and
@@ -197,9 +198,14 @@ export async function publishNow(
           mediaKeys
         );
         break;
-      case "TIKTOK":
-        result = await postToTikTok({ accessToken }, post.body, mediaKeys);
+      case "TIKTOK": {
+        // Refresh-or-return; access token is ~24h, refresh token is ~365d and
+        // rotates on every refresh. Without this, every publish >24h after the
+        // last reconnect hits "The access token is invalid or not found".
+        const freshToken = await getValidTikTokAccessToken(userId);
+        result = await postToTikTok({ accessToken: freshToken }, post.body, mediaKeys);
         break;
+      }
       case "FACEBOOK_PAGE":
         result = await postToFacebook(
           { accessToken, platformUserId: platformUserId! },

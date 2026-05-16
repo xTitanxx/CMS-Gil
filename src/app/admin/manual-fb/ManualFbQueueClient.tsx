@@ -146,34 +146,51 @@ async function buildShareFiles(
   return files;
 }
 
+function isMobileUserAgent(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function triggerBrowserDownload(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
 /**
- * On iOS the Web Share API hits the system share sheet so the user can pick
- * FB and the composer pre-fills with media + caption. There is no equivalent
- * on macOS or any desktop browser — `navigator.share` either doesn't exist
- * or refuses files — and the `fb://composer` deep link is iOS-only.
+ * Share-to-FB strategy:
  *
- * For the desktop case we do the next best thing the user asked for: copy the
- * caption to the clipboard and open the FB sharer dialog
- * (`sharer.php?u=<public post URL>`), which gives them a real new draft post
- * in FB with the public post URL preview attached. They paste the caption.
+ * - **iOS / Android (Web Share with files):** native share sheet — FB app
+ *   receives the media and caption in one tap. This is the only path where
+ *   FB's composer pre-fills automatically.
  *
- * Returns "shared" when the native sheet ran, "sharer" when we opened the
- * desktop dialog, "copied" if even that failed (popup blocked).
+ * - **Desktop (Mac/Win/Linux):** Facebook offers no public URL or API to
+ *   pre-fill a photo/video composer from the outside. `sharer.php` only
+ *   creates link-share posts, and the `fb://composer` deep link is iOS-only.
+ *   So we do the next-most-useful thing: open facebook.com in a new tab,
+ *   copy the caption to the clipboard, and download every media file to the
+ *   user's Downloads folder. They paste the caption, drag the media in, post.
+ *
+ * Returns which path ran so the UI can show the right confirmation hint.
  */
 async function shareToFb(opts: {
   body: string;
   media: { id: string; mimeType: string; url: string | null }[];
   postId: string;
-}): Promise<"shared" | "sharer" | "copied"> {
+}): Promise<"shared" | "desktop" | "blocked"> {
   const nav = navigator as NavWithShare;
   const fallbackName = `gil-${opts.postId}`;
-  const publicUrl = `${window.location.origin}/p/${opts.postId}`;
-  const sharerUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
 
-  // iOS path: try Web Share with files + text first. Some browsers expose
-  // `navigator.share` but reject files (macOS Safari) — fall through to the
-  // desktop path in that case rather than dropping to text-only share.
-  if (nav.share && nav.canShare) {
+  // Mobile path: Web Share API with files + text → iOS share sheet → FB app.
+  // UA-sniff so macOS Safari (which also exposes navigator.share but won't
+  // accept files in any useful way) goes straight to the desktop path.
+  if (isMobileUserAgent() && nav.share && nav.canShare) {
     const files = await buildShareFiles(opts.media, fallbackName);
     const payload = { text: opts.body, files };
     if (files.length > 0 && nav.canShare(payload)) {
@@ -181,18 +198,33 @@ async function shareToFb(opts: {
         await nav.share(payload);
         return "shared";
       } catch {
-        // User cancelled or share aborted. Stop here — don't also open a
-        // desktop sharer tab.
         return "shared";
       }
     }
   }
 
-  // Desktop fallback. Open the sharer synchronously in the click handler so
-  // popup blockers don't intercept it, then copy the caption.
-  const opened = window.open(sharerUrl, "_blank", "noopener,noreferrer");
+  // Desktop. Open the FB tab synchronously inside the user-gesture window so
+  // popup blockers leave it alone, then do the slow async work afterwards.
+  const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
   await copyTextToClipboard(opts.body);
-  return opened ? "sharer" : "copied";
+
+  // Download every media file to the user's Downloads folder so they can
+  // drag-and-drop into the FB composer. Browsers happily run multiple
+  // .download anchor clicks back-to-back when triggered from a single gesture.
+  for (const m of opts.media) {
+    if (!m.url) continue;
+    try {
+      const res = await fetch(m.url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const ext = m.mimeType.split("/")[1] ?? "bin";
+      triggerBrowserDownload(blob, `${fallbackName}-${m.id}.${ext}`);
+    } catch {
+      // Skip a single failed media file rather than aborting the whole share.
+    }
+  }
+
+  return fbTab ? "desktop" : "blocked";
 }
 
 export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[] }) {
@@ -407,6 +439,7 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [shareHint, setShareHint] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -424,15 +457,25 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     if (sharing) return;
     setSharing(true);
     setShareError(null);
+    setShareHint(null);
     try {
       const result = await shareToFb({
         body: item.body,
         media: item.media,
         postId: item.postId,
       });
-      if (result === "copied") {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
+      if (result === "desktop") {
+        const mediaCount = item.media.length;
+        const mediaPhrase =
+          mediaCount === 0
+            ? ""
+            : mediaCount === 1
+              ? " · media downloaded — drag it into the composer"
+              : ` · ${mediaCount} files downloaded — drag them in`;
+        setShareHint(`Caption copied${mediaPhrase}`);
+        setTimeout(() => setShareHint(null), 8000);
+      } else if (result === "blocked") {
+        setShareError("Browser blocked the new Facebook tab — allow popups and try again.");
       }
     } catch {
       setShareError("Couldn't open share sheet");
@@ -644,8 +687,13 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
         </Link>
       </div>
 
+      {shareHint && !shareError && !actionError && (
+        <p className="border-t border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] break-words text-emerald-800">
+          {shareHint}
+        </p>
+      )}
       {(shareError || actionError) && (
-        <p className="border-t border-red-100 bg-red-50 px-3 py-1.5 text-[11px] text-red-700">
+        <p className="border-t border-red-100 bg-red-50 px-3 py-1.5 text-[11px] break-words text-red-700">
           {shareError ?? actionError}
         </p>
       )}

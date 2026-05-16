@@ -100,12 +100,19 @@ async function generateTitle(body: string): Promise<string> {
   if (!trimmed) return "Untitled";
 
   try {
-    const resp = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 200,
-      system: TITLE_PROMPT,
-      messages: [{ role: "user", content: trimmed }],
-    });
+    // Hard 20s cap. The Anthropic SDK doesn't enforce its own deadline; a
+    // wedged call would otherwise sit eating the lambda's 300s budget before
+    // we even start uploading the video. On timeout/abort we fall through to
+    // the deriveTitle fallback in the catch block.
+    const resp = await anthropic.messages.create(
+      {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        system: TITLE_PROMPT,
+        messages: [{ role: "user", content: trimmed }],
+      },
+      { signal: AbortSignal.timeout(20_000) },
+    );
     const raw =
       resp.content
         .find((b): b is Anthropic.TextBlock => b.type === "text")

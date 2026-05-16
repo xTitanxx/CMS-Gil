@@ -3,6 +3,7 @@
 // Requires Professional (Business or Creator) account
 
 import { getSignedDownloadUrl } from "@/lib/storage";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 
 // Same constraint as Facebook (see facebook.ts): Meta's URL fetcher refuses
 // URLs containing literal unsafe bytes (spaces in particular). encodeURI
@@ -52,7 +53,7 @@ export async function postToInstagram(
     }
     // POST + image: no media_type needed (default IMAGE behavior)
 
-    const containerRes = await fetch(
+    const containerRes = await fetchWithTimeout(
       `${baseUrl}/${platformUserId}/media`,
       {
         method: "POST",
@@ -63,6 +64,7 @@ export async function postToInstagram(
           access_token: accessToken,
           ...(mediaType ? { media_type: mediaType } : {}),
         }),
+        timeoutMs: 30_000,
       }
     );
 
@@ -84,7 +86,7 @@ export async function postToInstagram(
   for (const key of mediaKeys.slice(0, 10)) {
     const mediaUrl = await getSignedDownloadUrl(key);
     const isVideo = key.match(/\.(mp4|mov|avi|webm)$/i);
-    const itemRes = await fetch(
+    const itemRes = await fetchWithTimeout(
       `${baseUrl}/${platformUserId}/media`,
       {
         method: "POST",
@@ -94,6 +96,7 @@ export async function postToInstagram(
           is_carousel_item: true,
           access_token: accessToken,
         }),
+        timeoutMs: 30_000,
       }
     );
     const item = await itemRes.json();
@@ -101,7 +104,7 @@ export async function postToInstagram(
     itemIds.push(item.id);
   }
 
-  const carouselRes = await fetch(
+  const carouselRes = await fetchWithTimeout(
     `${baseUrl}/${platformUserId}/media`,
     {
       method: "POST",
@@ -112,6 +115,7 @@ export async function postToInstagram(
         caption: body,
         access_token: accessToken,
       }),
+      timeoutMs: 30_000,
     }
   );
   const carousel = await carouselRes.json();
@@ -126,13 +130,14 @@ async function publishContainer(
   containerId: string,
   accessToken: string
 ): Promise<PublishResult> {
-  const res = await fetch(`${baseUrl}/${userId}/media_publish`, {
+  const res = await fetchWithTimeout(`${baseUrl}/${userId}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       creation_id: containerId,
       access_token: accessToken,
     }),
+    timeoutMs: 30_000,
   });
   const data = await res.json();
   if (!data.id) throw new Error(`Instagram publish error: ${JSON.stringify(data)}`);
@@ -142,8 +147,9 @@ async function publishContainer(
   // get the real post URL.
   let platformUrl: string | undefined;
   try {
-    const permalinkRes = await fetch(
-      `${baseUrl}/${data.id}?fields=permalink&access_token=${accessToken}`
+    const permalinkRes = await fetchWithTimeout(
+      `${baseUrl}/${data.id}?fields=permalink&access_token=${accessToken}`,
+      { timeoutMs: 15_000 },
     );
     const permalinkData = await permalinkRes.json();
     if (typeof permalinkData.permalink === "string") {
@@ -160,21 +166,41 @@ async function publishContainer(
   };
 }
 
+// Instagram Reels transcoding routinely takes 90–180s for short videos; the
+// previous 60s window was hitting timeout long before IG was actually stuck.
+// Poll fast (3s) for the first ~30s when most images finish, then back off to
+// 10s for the longer tail so we don't hammer Graph for 4 minutes straight.
 async function waitForContainer(
   baseUrl: string,
   containerId: string,
   accessToken: string,
-  maxWaitMs = 60000
+  maxWaitMs = 240_000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
-    const res = await fetch(
-      `${baseUrl}/${containerId}?fields=status_code&access_token=${accessToken}`
+    const res = await fetchWithTimeout(
+      `${baseUrl}/${containerId}?fields=status_code&access_token=${accessToken}`,
+      { timeoutMs: 15_000 },
     );
     const data = await res.json();
-    if (data.status_code === "FINISHED") return;
-    if (data.status_code === "ERROR") throw new Error("Instagram media processing failed");
-    await sleep(3000);
+    const status = data.status_code as string | undefined;
+    if (status === "FINISHED") return;
+    if (status === "ERROR") {
+      throw new Error("Instagram media processing failed");
+    }
+    if (status === "EXPIRED") {
+      // Container TTL elapsed before publish — typically means the media URL
+      // we handed Meta became unreachable mid-transcode. Fail fast instead of
+      // burning the rest of the budget.
+      throw new Error(
+        "Instagram container expired before publish (media URL likely unreachable)",
+      );
+    }
+    if (status !== "IN_PROGRESS" && status !== undefined) {
+      console.warn("Instagram container status unrecognised", { status });
+    }
+    const elapsed = Date.now() - start;
+    await sleep(elapsed < 30_000 ? 3_000 : 10_000);
   }
   throw new Error("Instagram container processing timed out");
 }

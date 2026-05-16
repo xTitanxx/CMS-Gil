@@ -2,6 +2,7 @@
 // Scopes: video.publish, video.upload
 
 import { getObject } from "@/lib/storage";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 
 interface PublishResult {
   platformPostId: string;
@@ -47,7 +48,7 @@ export async function postToTikTok(
   }
 
   // 1. Initialize upload
-  const initRes = await fetch(
+  const initRes = await fetchWithTimeout(
     "https://open.tiktokapis.com/v2/post/publish/video/init/",
     {
       method: "POST",
@@ -71,6 +72,7 @@ export async function postToTikTok(
           total_chunk_count: chunkCount,
         },
       }),
+      timeoutMs: 30_000,
     }
   );
 
@@ -94,7 +96,7 @@ export async function postToTikTok(
     const end = i === chunkCount - 1 ? totalBytes - 1 : start + chunkSize - 1;
     const chunk = videoBuffer.slice(start, end + 1);
 
-    const uploadRes = await fetch(uploadUrl, {
+    const uploadRes = await fetchWithTimeout(uploadUrl, {
       method: "PUT",
       headers: {
         "Content-Range": `bytes ${start}-${end}/${totalBytes}`,
@@ -102,6 +104,7 @@ export async function postToTikTok(
         "Content-Length": String(chunk.length),
       },
       body: chunk,
+      timeoutMs: 90_000,
     });
 
     if (!uploadRes.ok) {
@@ -126,7 +129,7 @@ async function pollTikTokStatus(
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     await sleep(5000);
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
       {
         method: "POST",
@@ -135,6 +138,7 @@ async function pollTikTokStatus(
           "Content-Type": "application/json; charset=UTF-8",
         },
         body: JSON.stringify({ publish_id: publishId }),
+        timeoutMs: 15_000,
       }
     );
     const data = await res.json();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   SlidersHorizontal,
   ArrowUpDown,
@@ -9,6 +10,8 @@ import {
   ChevronRight,
   Shuffle,
   Loader2,
+  X,
+  Check,
 } from "lucide-react";
 
 /**
@@ -47,6 +50,100 @@ function useClampedDropdown(
     return () => window.removeEventListener("resize", update);
   }, [open, parentRef, menuRef]);
   return right;
+}
+
+/**
+ * Tailwind's `md` breakpoint (768px) as a media query. Used to render the
+ * filter/sort dropdowns as a proper bottom sheet on mobile while keeping
+ * the desktop dropdown UX untouched.
+ */
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return mobile;
+}
+
+/**
+ * Mobile bottom sheet: fixed full-width panel that slides up from below.
+ * Renders via portal so parent overflow doesn't clip it and the body
+ * scrolls are locked while open.
+ */
+function BottomSheet({
+  open,
+  onClose,
+  title,
+  rightAction,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  rightAction?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-end justify-center md:hidden">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 animate-[fade-in_0.15s_ease-out]"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="relative flex max-h-[88vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl animate-[slide-up_0.18s_cubic-bezier(0.32,0.72,0,1)]"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+      >
+        <div className="flex justify-center pt-2.5 pb-1">
+          <span aria-hidden className="h-1.5 w-10 rounded-full bg-gray-300" />
+        </div>
+        <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 pb-3 pt-1">
+          <span className="min-w-0 truncate text-base font-semibold text-gray-900">
+            {title}
+          </span>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {rightAction}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3">
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 import {
   CONTENT_CATEGORIES,
@@ -312,15 +409,15 @@ export function RadioRow({
   label: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+    <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[15px] text-gray-800 hover:bg-gray-50 md:min-h-0 md:gap-2 md:px-1.5 md:py-1 md:text-sm md:text-gray-700">
       <input
         type="radio"
         name={name}
         checked={checked}
         onChange={onChange}
-        className="h-4 w-4 cursor-pointer border-gray-300 text-blue-600"
+        className="h-5 w-5 flex-shrink-0 cursor-pointer border-gray-300 text-blue-600 md:h-4 md:w-4"
       />
-      {label}
+      <span className="min-w-0 flex-1 break-words">{label}</span>
     </label>
   );
 }
@@ -337,14 +434,14 @@ export function CheckRow({
   label: string;
 }) {
   return (
-    <label className="group flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+    <label className="group flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-[15px] text-gray-800 hover:bg-gray-50 md:min-h-0 md:gap-2 md:px-1.5 md:py-1 md:text-sm md:text-gray-700">
       <input
         type="checkbox"
         checked={checked}
         onChange={onChange}
-        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-blue-600"
+        className="h-5 w-5 flex-shrink-0 cursor-pointer rounded border-gray-300 text-blue-600 md:h-4 md:w-4"
       />
-      <span className="flex-1">{label}</span>
+      <span className="min-w-0 flex-1 break-words">{label}</span>
       {onOnly && (
         <button
           type="button"
@@ -353,7 +450,7 @@ export function CheckRow({
             e.stopPropagation();
             onOnly();
           }}
-          className="ml-auto hidden rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600 hover:bg-blue-50 group-hover:inline"
+          className="ml-auto flex-shrink-0 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-blue-600 hover:bg-blue-50 md:hidden md:px-1.5 md:py-0.5 md:text-[10px] md:group-hover:inline"
         >
           Only
         </button>
@@ -402,12 +499,13 @@ function toggleIn<T extends string>(
 
 export function FilterMenu(props: FilterMenuProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const clampedRight = useClampedDropdown(open, ref, menuRef);
+  const clampedRight = useClampedDropdown(open && !isMobile, ref, menuRef);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isMobile) return;
     function onClick(e: MouseEvent) {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     }
@@ -420,7 +518,190 @@ export function FilterMenu(props: FilterMenuProps) {
       document.removeEventListener("mousedown", onClick);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, isMobile]);
+
+  const sectionsList = (
+    <div className="divide-y divide-gray-100">
+      <div className="pb-3">
+        <FilterSection
+          title="Quality"
+          selected={props.quality.size}
+          total={QUALITY_VALUES.length}
+          onSelectAll={() => props.setQuality(new Set(QUALITY_VALUES))}
+        >
+          {QUALITY_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.quality.has(o.value)}
+              onChange={() => toggleIn(props.quality, o.value, props.setQuality)}
+              onOnly={() => props.setQuality(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Caption rating"
+          selected={props.captionQuality.size}
+          total={CAPTION_QUALITY_VALUES.length}
+          onSelectAll={() => props.setCaptionQuality(new Set(CAPTION_QUALITY_VALUES))}
+        >
+          {CAPTION_QUALITY_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.captionQuality.has(o.value)}
+              onChange={() => toggleIn(props.captionQuality, o.value, props.setCaptionQuality)}
+              onOnly={() => props.setCaptionQuality(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Content"
+          selected={props.content.size}
+          total={CONTENT_CATEGORIES.length}
+          onSelectAll={() => props.setContent(new Set(CONTENT_CATEGORIES))}
+        >
+          {CONTENT_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.content.has(o.value)}
+              onChange={() => toggleIn(props.content, o.value, props.setContent)}
+              onOnly={() => props.setContent(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Audio"
+          selected={props.audio.size}
+          total={AUDIO_CATEGORIES.length}
+          onSelectAll={() => props.setAudio(new Set(AUDIO_CATEGORIES))}
+        >
+          {AUDIO_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.audio.has(o.value)}
+              onChange={() => toggleIn(props.audio, o.value, props.setAudio)}
+              onOnly={() => props.setAudio(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Facebook link"
+          selected={props.link.size}
+          total={LINK_VALUES.length}
+          onSelectAll={() => props.setLink(new Set(LINK_VALUES))}
+        >
+          {LINK_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.link.has(o.value)}
+              onChange={() => toggleIn(props.link, o.value, props.setLink)}
+              onOnly={() => props.setLink(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Media count"
+          selected={props.multiMedia.size}
+          total={MULTI_MEDIA_VALUES.length}
+          onSelectAll={() => props.setMultiMedia(new Set(MULTI_MEDIA_VALUES))}
+        >
+          {MULTI_MEDIA_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.multiMedia.has(o.value)}
+              onChange={() => toggleIn(props.multiMedia, o.value, props.setMultiMedia)}
+              onOnly={() => props.setMultiMedia(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="Share / crosspost"
+          selected={props.share.size}
+          total={SHARE_VALUES.length}
+          onSelectAll={() => props.setShare(new Set(SHARE_VALUES))}
+        >
+          {SHARE_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.share.has(o.value)}
+              onChange={() => toggleIn(props.share, o.value, props.setShare)}
+              onOnly={() => props.setShare(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="py-3">
+        <FilterSection
+          title="AI tags"
+          selected={props.tagged.size}
+          total={TAGGED_VALUES.length}
+          onSelectAll={() => props.setTagged(new Set(TAGGED_VALUES))}
+        >
+          {TAGGED_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.tagged.has(o.value)}
+              onChange={() => toggleIn(props.tagged, o.value, props.setTagged)}
+              onOnly={() => props.setTagged(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+      <div className="pt-3">
+        <FilterSection
+          title="FB analytics"
+          selected={props.enriched.size}
+          total={ENRICHED_VALUES.length}
+          onSelectAll={() => props.setEnriched(new Set(ENRICHED_VALUES))}
+        >
+          {ENRICHED_OPTIONS.map((o) => (
+            <CheckRow
+              key={o.value}
+              checked={props.enriched.has(o.value)}
+              onChange={() => toggleIn(props.enriched, o.value, props.setEnriched)}
+              onOnly={() => props.setEnriched(new Set([o.value]))}
+              label={o.label}
+            />
+          ))}
+        </FilterSection>
+      </div>
+    </div>
+  );
+
+  const resetButton = (
+    <button
+      type="button"
+      onClick={props.onReset}
+      disabled={props.activeCount === 0}
+      className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors md:px-2 md:py-1 md:text-xs ${
+        props.activeCount > 0
+          ? "text-blue-600 hover:bg-blue-50"
+          : "cursor-default text-gray-300"
+      }`}
+      title="Reset all filters to Any"
+    >
+      Reset all
+    </button>
+  );
 
   return (
     <div ref={ref} className="relative">
@@ -429,25 +710,26 @@ export function FilterMenu(props: FilterMenuProps) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label="Filters"
-        className={`inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-sm font-medium transition-colors focus:outline-none ${
+        className={`inline-flex h-10 items-center gap-1.5 rounded-full border bg-white px-3 text-sm font-medium transition-colors focus:outline-none md:h-9 ${
           props.activeCount > 0 || open
             ? "border-blue-400 text-blue-700 hover:bg-blue-50"
             : "border-gray-200 text-gray-700 hover:bg-gray-50"
         }`}
       >
-        <SlidersHorizontal className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">Filters</span>
+        <SlidersHorizontal className="h-4 w-4 flex-shrink-0" />
+        <span>Filters</span>
         {props.activeCount > 0 && (
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
             {props.activeCount}
           </span>
         )}
       </button>
-      {open && (
+      {/* Desktop dropdown */}
+      {open && !isMobile && (
         <div
           ref={menuRef}
           style={{ right: clampedRight }}
-          className="absolute top-full z-20 mt-1.5 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5"
+          className="absolute top-full z-20 mt-1.5 hidden w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-black/5 md:block"
         >
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
             <div className="flex items-center gap-2">
@@ -458,205 +740,22 @@ export function FilterMenu(props: FilterMenuProps) {
                 </span>
               )}
             </div>
-            <button
-              onClick={props.onReset}
-              disabled={props.activeCount === 0}
-              className={`text-xs font-medium transition-colors ${
-                props.activeCount > 0
-                  ? "text-blue-600 hover:underline"
-                  : "cursor-default text-gray-300"
-              }`}
-              title="Reset all filters to Any"
-            >
-              Reset all
-            </button>
+            {resetButton}
           </div>
           <div className="px-4 pb-1 pt-2">
-          <div className="max-h-[70vh] divide-y divide-gray-100 overflow-y-auto pr-1">
-            <div className="pb-3">
-              <FilterSection
-                title="Quality"
-                selected={props.quality.size}
-                total={QUALITY_VALUES.length}
-                onSelectAll={() => props.setQuality(new Set(QUALITY_VALUES))}
-              >
-                {QUALITY_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.quality.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.quality, o.value, props.setQuality)
-                    }
-                    onOnly={() => props.setQuality(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Caption rating"
-                selected={props.captionQuality.size}
-                total={CAPTION_QUALITY_VALUES.length}
-                onSelectAll={() => props.setCaptionQuality(new Set(CAPTION_QUALITY_VALUES))}
-              >
-                {CAPTION_QUALITY_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.captionQuality.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.captionQuality, o.value, props.setCaptionQuality)
-                    }
-                    onOnly={() => props.setCaptionQuality(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Content"
-                selected={props.content.size}
-                total={CONTENT_CATEGORIES.length}
-                onSelectAll={() => props.setContent(new Set(CONTENT_CATEGORIES))}
-              >
-                {CONTENT_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.content.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.content, o.value, props.setContent)
-                    }
-                    onOnly={() => props.setContent(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Audio"
-                selected={props.audio.size}
-                total={AUDIO_CATEGORIES.length}
-                onSelectAll={() => props.setAudio(new Set(AUDIO_CATEGORIES))}
-              >
-                {AUDIO_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.audio.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.audio, o.value, props.setAudio)
-                    }
-                    onOnly={() => props.setAudio(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Facebook link"
-                selected={props.link.size}
-                total={LINK_VALUES.length}
-                onSelectAll={() => props.setLink(new Set(LINK_VALUES))}
-              >
-                {LINK_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.link.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.link, o.value, props.setLink)
-                    }
-                    onOnly={() => props.setLink(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Media count"
-                selected={props.multiMedia.size}
-                total={MULTI_MEDIA_VALUES.length}
-                onSelectAll={() => props.setMultiMedia(new Set(MULTI_MEDIA_VALUES))}
-              >
-                {MULTI_MEDIA_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.multiMedia.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.multiMedia, o.value, props.setMultiMedia)
-                    }
-                    onOnly={() => props.setMultiMedia(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="Share / crosspost"
-                selected={props.share.size}
-                total={SHARE_VALUES.length}
-                onSelectAll={() => props.setShare(new Set(SHARE_VALUES))}
-              >
-                {SHARE_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.share.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.share, o.value, props.setShare)
-                    }
-                    onOnly={() => props.setShare(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="py-3">
-              <FilterSection
-                title="AI tags"
-                selected={props.tagged.size}
-                total={TAGGED_VALUES.length}
-                onSelectAll={() => props.setTagged(new Set(TAGGED_VALUES))}
-              >
-                {TAGGED_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.tagged.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.tagged, o.value, props.setTagged)
-                    }
-                    onOnly={() => props.setTagged(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-            <div className="pt-3">
-              <FilterSection
-                title="FB analytics"
-                selected={props.enriched.size}
-                total={ENRICHED_VALUES.length}
-                onSelectAll={() => props.setEnriched(new Set(ENRICHED_VALUES))}
-              >
-                {ENRICHED_OPTIONS.map((o) => (
-                  <CheckRow
-                    key={o.value}
-                    checked={props.enriched.has(o.value)}
-                    onChange={() =>
-                      toggleIn(props.enriched, o.value, props.setEnriched)
-                    }
-                    onOnly={() => props.setEnriched(new Set([o.value]))}
-                    label={o.label}
-                  />
-                ))}
-              </FilterSection>
-            </div>
-          </div>
+            <div className="max-h-[70vh] overflow-y-auto pr-1">{sectionsList}</div>
           </div>
         </div>
       )}
+      {/* Mobile bottom sheet */}
+      <BottomSheet
+        open={open && isMobile}
+        onClose={() => setOpen(false)}
+        title={props.activeCount > 0 ? `Filters · ${props.activeCount}` : "Filters"}
+        rightAction={resetButton}
+      >
+        {sectionsList}
+      </BottomSheet>
     </div>
   );
 }
@@ -704,13 +803,13 @@ export function ReshuffleButton({
       onClick={() => void run()}
       disabled={busy}
       aria-label="Reshuffle the queue"
-      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+      className="inline-flex h-10 flex-shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 md:h-9"
       title={error ?? "Reshuffle the queue"}
     >
       {busy ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+        <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
       ) : (
-        <Shuffle className="h-4 w-4 shrink-0" />
+        <Shuffle className="h-4 w-4 flex-shrink-0" />
       )}
       <span className="hidden sm:inline">
         {busy ? "Reshuffling…" : "Reshuffle now"}
@@ -723,6 +822,23 @@ export function ReshuffleButton({
 /*  SortMenu                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Compact label for the current sort, shown on the trigger button so the
+ * user sees their choice without having to open the menu. Falls back to
+ * generic "Sort" if the value somehow doesn't match a known option.
+ */
+function shortSortLabel(sort: string): string {
+  switch (sort) {
+    case "originalDate_desc": return "Newest";
+    case "originalDate_asc": return "Oldest";
+    case "createdAt_desc": return "Imported (new)";
+    case "createdAt_asc": return "Imported (old)";
+    case "queue_asc": return "Queue";
+    case "shuffled_queue_asc": return "Shuffled";
+    default: return "Sort";
+  }
+}
+
 export function SortMenu({
   sort,
   setSort,
@@ -731,50 +847,78 @@ export function SortMenu({
   setSort: (s: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const clampedRight = useClampedDropdown(open, ref, menuRef);
+  const clampedRight = useClampedDropdown(open && !isMobile, ref, menuRef);
   useEffect(() => {
-    if (!open) return;
+    if (!open || isMobile) return;
     function onClick(e: MouseEvent) {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-  const current = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Sort";
+  }, [open, isMobile]);
+
+  const currentLabel = shortSortLabel(sort);
+  const handleSelect = (value: string) => {
+    setSort(value);
+    setOpen(false);
+  };
+
+  const optionList = (
+    <div className="flex flex-col">
+      {SORT_OPTIONS.map((o) => {
+        const isSelected = sort === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => handleSelect(o.value)}
+            aria-pressed={isSelected}
+            className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-[15px] transition-colors md:min-h-0 md:px-2 md:py-1.5 md:text-sm ${
+              isSelected
+                ? "bg-blue-50 font-medium text-blue-700"
+                : "text-gray-800 hover:bg-gray-50"
+            }`}
+          >
+            <span aria-hidden className="flex h-5 w-5 flex-shrink-0 items-center justify-center md:h-4 md:w-4">
+              {isSelected ? <Check className="h-5 w-5 text-blue-600 md:h-4 md:w-4" /> : null}
+            </span>
+            <span className="min-w-0 flex-1 break-words">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Sort"
-        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-gray-400 focus:outline-none"
-        title={current}
+        aria-label={`Sort: ${currentLabel}`}
+        aria-expanded={open}
+        className="inline-flex h-10 max-w-[10rem] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-gray-400 focus:outline-none md:h-9"
+        title={`Sorting: ${currentLabel}`}
       >
-        <ArrowUpDown className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">Sort</span>
+        <ArrowUpDown className="h-4 w-4 flex-shrink-0" />
+        <span className="min-w-0 truncate">{currentLabel}</span>
       </button>
-      {open && (
+      {/* Desktop dropdown */}
+      {open && !isMobile && (
         <div
           ref={menuRef}
           style={{ right: clampedRight }}
-          className="absolute top-full z-20 mt-1 w-56 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-2 shadow-lg"
+          className="absolute top-full z-20 mt-1 hidden w-60 max-w-[calc(100vw-1rem)] rounded-lg border border-gray-200 bg-white p-2 shadow-lg md:block"
         >
-          {SORT_OPTIONS.map((o) => (
-            <RadioRow
-              key={o.value}
-              name="sort"
-              checked={sort === o.value}
-              onChange={() => {
-                setSort(o.value);
-                setOpen(false);
-              }}
-              label={o.label}
-            />
-          ))}
+          {optionList}
         </div>
       )}
+      {/* Mobile bottom sheet */}
+      <BottomSheet open={open && isMobile} onClose={() => setOpen(false)} title="Sort by">
+        {optionList}
+      </BottomSheet>
     </div>
   );
 }
@@ -818,9 +962,9 @@ export function JumpToDateMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Jump to date"
-        className="inline-flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-gray-400 focus:outline-none"
+        className="inline-flex h-10 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:border-gray-400 focus:outline-none md:h-9"
       >
-        <CalendarDays className="h-4 w-4 shrink-0" />
+        <CalendarDays className="h-4 w-4 flex-shrink-0" />
         <span className="hidden sm:inline">Jump to date</span>
       </button>
       {open && (

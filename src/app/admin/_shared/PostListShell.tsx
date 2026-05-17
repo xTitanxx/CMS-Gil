@@ -204,7 +204,6 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
   const activeFilterCount = useMemo(
     () =>
       countActiveFilters({
-        sort,
         content,
         audio,
         link,
@@ -215,11 +214,10 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
         captionQuality,
         enriched,
       }),
-    [sort, content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched],
+    [content, audio, link, multiMedia, tagged, share, quality, captionQuality, enriched],
   );
 
   function resetFilters() {
-    setSort("originalDate_desc");
     setContent(new Set(CONTENT_CATEGORIES));
     setAudio(new Set(AUDIO_CATEGORIES));
     setLink(new Set(LINK_VALUES));

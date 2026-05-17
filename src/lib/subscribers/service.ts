@@ -1,11 +1,14 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import {
   appendRandomSuffix,
   blindIndex,
+  blindIndexRaw,
   deriveCodeFromName,
   generateCode,
   hashCode,
   isWellFormedCode,
+  normalizeCode,
   verifyCode,
 } from "./code";
 
@@ -73,16 +76,26 @@ function toPublic(row: {
 
 // Detect whether a given plaintext code is in use. Fast path uses the blind
 // index; legacy rows that pre-date the index column fall back to the O(N)
-// bcrypt scan against rows with codeBlindIndex == null.
-async function isCodeAlreadyInUse(code: string): Promise<boolean> {
+// bcrypt scan against rows with codeBlindIndex == null. `excludeId` skips a
+// given row — used by regenerate so a subscriber can keep their simple name
+// even though they themselves "currently hold" that code.
+async function isCodeAlreadyInUse(code: string, excludeId?: string): Promise<boolean> {
   const idx = blindIndex(code);
   const fast = await prisma.subscriber.findFirst({
-    where: { codeBlindIndex: idx, revokedAt: null },
+    where: {
+      codeBlindIndex: idx,
+      revokedAt: null,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
     select: { id: true },
   });
   if (fast) return true;
   const legacy = await prisma.subscriber.findMany({
-    where: { revokedAt: null, codeBlindIndex: null },
+    where: {
+      revokedAt: null,
+      codeBlindIndex: null,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
     select: { codeHash: true },
   });
   for (const c of legacy) {
@@ -91,11 +104,11 @@ async function isCodeAlreadyInUse(code: string): Promise<boolean> {
   return false;
 }
 
-async function pickAvailableCode(base: string): Promise<string> {
-  if (!(await isCodeAlreadyInUse(base))) return base;
+async function pickAvailableCode(base: string, excludeId?: string): Promise<string> {
+  if (!(await isCodeAlreadyInUse(base, excludeId))) return base;
   for (let n = 2; n <= MAX_COLLISION_SUFFIX; n++) {
     const candidate = `${base}${n}`;
-    if (!(await isCodeAlreadyInUse(candidate))) return candidate;
+    if (!(await isCodeAlreadyInUse(candidate, excludeId))) return candidate;
   }
   throw new Error("Too many subscribers share this name; please customize the password");
 }
@@ -114,7 +127,7 @@ export async function createSubscriber(params: {
   createdById: string;
   monthlyBudgetUsd?: number;
 }): Promise<{ code: string; subscriber: PublicSubscriber }> {
-  const requested = (params.code ?? deriveCodeFromName(params.name) ?? "").trim();
+  const requested = normalizeCode(params.code ?? deriveCodeFromName(params.name) ?? "");
   const base = requested || generateCode();
   if (!isWellFormedCode(base)) {
     throw new InvalidCodeError();
@@ -183,12 +196,22 @@ export async function regenerateCode(
 ): Promise<{ code: string; subscriber: PublicSubscriber }> {
   const existing = await prisma.subscriber.findUnique({
     where: { id },
-    select: { name: true },
+    select: { name: true, codeHash: true },
   });
   if (!existing) throw new Error("Subscriber not found");
 
   const base = deriveCodeFromName(existing.name);
-  const code = base ? appendRandomSuffix(base) : generateCode();
+  let code: string;
+  if (base) {
+    const candidate = await pickAvailableCode(base, id);
+    // If the simple name is free AND it's not the row's current code (which
+    // would mean rotating to the same plaintext, leaving the old hash valid),
+    // use it. Otherwise tack on a short random suffix to guarantee rotation.
+    const sameAsCurrent = await verifyCode(candidate, existing.codeHash);
+    code = sameAsCurrent ? appendRandomSuffix(base) : candidate;
+  } else {
+    code = generateCode();
+  }
   const codeHash = await hashCode(code);
   const codeBlindIndex = blindIndex(code);
   const row = await prisma.subscriber.update({
@@ -203,14 +226,27 @@ export async function deleteSubscriber(id: string): Promise<void> {
   await prisma.subscriber.delete({ where: { id } });
 }
 
-// Sign-in lookup. Fast path uses the blind index; if the row pre-dates the
-// index column (codeBlindIndex == null) we fall back to the legacy O(N) scan
-// and backfill the index on first match, so the next sign-in is fast.
+// Sign-in lookup. `blindIndex` and `verifyCode` both normalize (lowercase)
+// the input, so a user typing `Gil-Bob` matches a stored `gil-bob`.
+//
+// Three lookup paths in order of cost:
+//   1. Fast: blindIndex(normalized) — hits any row indexed in lowercase form.
+//   2. Case-fallback: blindIndex(as-typed) when input contains uppercase —
+//      hits legacy rows that were indexed under their original mixed-case
+//      plaintext (pre-normalize). On match, rehash to lowercase so the row
+//      moves onto the fast path.
+//   3. Legacy: O(N) scan over rows with codeBlindIndex == null — the
+//      pre-blind-index migration backfill scope. Unchanged from before.
+//
+// Steps 1 and 2 are constant-time. Step 3 is bounded by null-indexed rows
+// (zero in steady state once backfill finishes), so wrong-password attempts
+// don't trigger an all-subscribers bcrypt scan.
 export async function findSubscriberByCode(code: string): Promise<{
   id: string;
   name: string;
 } | null> {
   const idx = blindIndex(code);
+  const trimmed = code.trim();
 
   const fast = await prisma.subscriber.findFirst({
     where: { codeBlindIndex: idx, revokedAt: null },
@@ -220,24 +256,49 @@ export async function findSubscriberByCode(code: string): Promise<{
     if (await verifyCode(code, fast.codeHash)) {
       return { id: fast.id, name: fast.name };
     }
-    // Index hit but bcrypt mismatch: shouldn't happen unless the index column
-    // was tampered with directly. Treat as no match.
     return null;
   }
 
-  // Legacy backfill path: scan rows that don't have an index yet.
+  // Case-fallback: try the as-typed (non-normalized) index for legacy rows
+  // that were stored case-mixed. We only do this when input actually differs
+  // from its lowercased form — otherwise this is the same lookup as `fast`.
+  if (trimmed.toLowerCase() !== trimmed) {
+    const rawIdx = blindIndexRaw(trimmed);
+    const cased = await prisma.subscriber.findFirst({
+      where: { codeBlindIndex: rawIdx, revokedAt: null },
+      select: { id: true, name: true, codeHash: true },
+    });
+    if (cased && (await bcrypt.compare(trimmed, cased.codeHash))) {
+      // Migrate this row to the normalized hash + index.
+      const newHash = await hashCode(trimmed);
+      await prisma.subscriber
+        .update({ where: { id: cased.id }, data: { codeHash: newHash, codeBlindIndex: idx } })
+        .catch(() => {});
+      return { id: cased.id, name: cased.name };
+    }
+  }
+
+  // Legacy backfill: rows that pre-date the blind-index column.
   const legacy = await prisma.subscriber.findMany({
     where: { revokedAt: null, codeBlindIndex: null },
     select: { id: true, name: true, codeHash: true },
   });
   for (const c of legacy) {
-    if (await verifyCode(code, c.codeHash)) {
-      // Backfill so the next sign-in for this subscriber is O(1).
-      await prisma.subscriber
-        .update({ where: { id: c.id }, data: { codeBlindIndex: idx } })
-        .catch(() => {});
+    // Try the normalized form (rows whose plaintext was already lowercase),
+    // then the as-typed trimmed form (rows hashed from case-mixed plaintext).
+    const normalizedHit = await verifyCode(code, c.codeHash);
+    const rawHit =
+      !normalizedHit && trimmed.toLowerCase() !== trimmed
+        ? await bcrypt.compare(trimmed, c.codeHash)
+        : false;
+    if (normalizedHit || rawHit) {
+      const data = rawHit
+        ? { codeHash: await hashCode(trimmed), codeBlindIndex: idx }
+        : { codeBlindIndex: idx };
+      await prisma.subscriber.update({ where: { id: c.id }, data }).catch(() => {});
       return { id: c.id, name: c.name };
     }
   }
   return null;
 }
+

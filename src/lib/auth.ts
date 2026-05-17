@@ -99,9 +99,16 @@ async function isAllowedAdmin(email: string | null | undefined): Promise<boolean
   }
 }
 
+// 1-year session keeps subscribers (and admins) signed in across visits.
+// Cohort skews older — re-entering the access code every few weeks would be
+// a deal-breaker. Admin tokens still get a 5-min DB recheck via the jwt
+// callback below, so demotion propagates promptly even on long sessions.
+const SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_SECONDS },
+  jwt: { maxAge: SESSION_MAX_AGE_SECONDS },
   providers,
   trustHost: true,
   callbacks: {

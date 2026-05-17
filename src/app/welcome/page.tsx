@@ -13,15 +13,21 @@ const SUBSCRIBE_URL =
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; code?: string }>;
 }) {
   const session = await auth();
+  const params = await searchParams;
   // PR #56 security guard: reject `//evil.example` and `https://evil.example`
   // open-redirects. Allow same-origin paths only; default to `/` so users who
   // landed here from clicking Like/Save/Comment go back to the archive.
-  const rawNext = (await searchParams).next ?? "/";
+  const rawNext = params.next ?? "/";
   const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   if (session) redirect(next);
+
+  // Auto-login from an invite link: ?code=gil-bob pre-fills the form and
+  // submits it on mount. Same security posture as showing the code in a
+  // Messenger message — anyone with the link has the code.
+  const inviteCode = (params.code ?? "").trim();
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -63,7 +69,11 @@ export default async function WelcomePage({
             Enter the access code Gil sent you on Messenger.
           </p>
           <div className="mt-4">
-            <SignInForm next={next} />
+            <SignInForm
+              next={next}
+              initialCode={inviteCode}
+              autoSubmit={inviteCode.length > 0}
+            />
           </div>
         </section>
 

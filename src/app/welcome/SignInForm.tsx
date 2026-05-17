@@ -1,20 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 
-export default function SignInForm({ next }: { next: string }) {
-  const [code, setCode] = useState("");
+export default function SignInForm({
+  next,
+  initialCode = "",
+  autoSubmit = false,
+}: {
+  next: string;
+  initialCode?: string;
+  autoSubmit?: boolean;
+}) {
+  const [code, setCode] = useState(initialCode);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const autoTried = useRef(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function attemptSignIn(rawCode: string) {
     setLoading(true);
     setError("");
 
+    // Trim only — server-side `findSubscriberByCode` handles case-insensitivity.
     await signIn("subscriber-credentials", {
-      code: code.trim(),
+      code: rawCode.trim(),
       redirect: false,
     });
 
@@ -41,6 +50,21 @@ export default function SignInForm({ next }: { next: string }) {
     }
   }
 
+  // Auto-login from an invite link (?code=gil-bob). Fires once on mount, then
+  // falls back to the visible form on failure so the user can correct typos
+  // a copy-paste might have introduced.
+  useEffect(() => {
+    if (!autoSubmit || autoTried.current || !initialCode.trim()) return;
+    autoTried.current = true;
+    void attemptSignIn(initialCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmit, initialCode]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void attemptSignIn(code);
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <input
@@ -50,8 +74,9 @@ export default function SignInForm({ next }: { next: string }) {
         placeholder="gil-xxxxxxxx"
         autoComplete="off"
         autoCapitalize="off"
+        autoCorrect="off"
         spellCheck={false}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base lowercase text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         required
       />
       {error && <p className="text-sm text-red-600">{error}</p>}

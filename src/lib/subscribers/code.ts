@@ -9,7 +9,14 @@ const BCRYPT_ROUNDS = 10;
 const CODE_PREFIX = "gil-";
 const MIN_CODE_LENGTH = 5;
 const MAX_CODE_LENGTH = 40;
-const CODE_SUFFIX_RE = /^[A-Za-z0-9-]+$/;
+const CODE_SUFFIX_RE = /^[a-z0-9-]+$/;
+
+// Codes are stored and matched case-insensitively. Mobile keyboards on
+// elderly users' devices love to auto-capitalize the first letter — making
+// the code reject `Gil-bob` after the user typed `gil-bob` is just cruel.
+export function normalizeCode(code: string): string {
+  return code.trim().toLowerCase();
+}
 
 export function generateCode(): string {
   const bytes = randomBytes(CODE_LENGTH);
@@ -21,7 +28,7 @@ export function generateCode(): string {
 }
 
 export function deriveCodeFromName(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9]/g, "");
+  const cleaned = name.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
   return cleaned ? `${CODE_PREFIX}${cleaned}` : "";
 }
 
@@ -36,18 +43,19 @@ export function appendRandomSuffix(base: string): string {
 
 export function isWellFormedCode(code: string): boolean {
   if (typeof code !== "string") return false;
-  if (code.length < MIN_CODE_LENGTH || code.length > MAX_CODE_LENGTH) return false;
-  if (!code.startsWith(CODE_PREFIX)) return false;
-  const suffix = code.slice(CODE_PREFIX.length);
+  const normalized = normalizeCode(code);
+  if (normalized.length < MIN_CODE_LENGTH || normalized.length > MAX_CODE_LENGTH) return false;
+  if (!normalized.startsWith(CODE_PREFIX)) return false;
+  const suffix = normalized.slice(CODE_PREFIX.length);
   return suffix.length > 0 && CODE_SUFFIX_RE.test(suffix);
 }
 
 export async function hashCode(code: string): Promise<string> {
-  return bcrypt.hash(code, BCRYPT_ROUNDS);
+  return bcrypt.hash(normalizeCode(code), BCRYPT_ROUNDS);
 }
 
 export async function verifyCode(code: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(code, hash);
+  return bcrypt.compare(normalizeCode(code), hash);
 }
 
 // Deterministic blind-index over the code. Stored in `Subscriber.codeBlindIndex`
@@ -58,6 +66,13 @@ export async function verifyCode(code: string, hash: string): Promise<boolean> {
 // can't precompute a rainbow table for the 41-bit code space — they need the
 // pepper, which lives only on Vercel (and dev .env.local).
 export function blindIndex(code: string): string {
+  return blindIndexRaw(normalizeCode(code));
+}
+
+// Same HMAC as `blindIndex` but skips normalization. Sign-in uses this to
+// look up legacy rows that were indexed under their original case-mixed
+// plaintext, before we made codes case-insensitive.
+export function blindIndexRaw(code: string): string {
   const hex = process.env.SUBSCRIBER_INDEX_PEPPER ?? "";
   const key = Buffer.from(hex, "hex");
   if (key.length !== 32) {

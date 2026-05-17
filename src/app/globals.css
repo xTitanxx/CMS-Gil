@@ -64,3 +64,13 @@ a, button, [role="button"], input, select, textarea, label {
 @media (prefers-reduced-motion: reduce) {
   .feed-thumb-skeleton { animation: none; }
 }
+
+/* Mobile bottom sheet transitions (used by the sort/filter sheets). */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

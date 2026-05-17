@@ -566,9 +566,10 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
 
       {beforeList}
 
-      {/* Search + filter row */}
+      {/* Search + filter row. On mobile, search gets its own row so the filter
+          controls below have breathing room and 44pt touch targets. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <div className="relative min-w-0 flex-1">
             {aiMode ? (
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-purple-500" />
@@ -591,7 +592,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               onKeyDown={(e) => {
                 if (aiMode && e.key === "Enter") runAiSearch();
               }}
-              className={`h-9 w-full rounded-full border bg-white pl-10 pr-11 text-sm placeholder:text-gray-400 focus:outline-none ${
+              className={`h-10 w-full rounded-full border bg-white pl-10 pr-11 text-base placeholder:text-gray-400 focus:outline-none md:h-9 md:text-sm ${
                 aiMode
                   ? "border-purple-300 focus:border-purple-500"
                   : "border-gray-200 focus:border-gray-400"
@@ -611,21 +612,21 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
               <Sparkles className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-1.5">
             {aiMode && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={runAiSearch}
                 disabled={aiSearching || !aiQuery.trim()}
-                className="h-9 border-purple-200 px-3 text-purple-700 hover:bg-purple-50"
+                className="h-10 border-purple-200 px-3 text-purple-700 hover:bg-purple-50 md:h-9"
               >
                 {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 <span className="hidden sm:inline">Search</span>
               </Button>
             )}
             {aiResult && (
-              <Button variant="ghost" size="sm" onClick={clearAiSearch} className="h-9 px-2">
+              <Button variant="ghost" size="sm" onClick={clearAiSearch} className="h-10 px-2 md:h-9">
                 <X className="h-4 w-4" />
                 <span className="hidden sm:inline">Clear</span>
               </Button>

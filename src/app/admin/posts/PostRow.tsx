@@ -11,6 +11,8 @@ import {
   Video,
   ExternalLink,
 } from "lucide-react";
+import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
+import { FaLinkedin } from "react-icons/fa";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -84,6 +86,60 @@ function RowDeleteButton({
   );
 }
 
+type PlatformId =
+  | "INSTAGRAM"
+  | "LINKEDIN"
+  | "YOUTUBE"
+  | "TIKTOK"
+  | "FACEBOOK_PAGE"
+  | "FACEBOOK";
+
+// Brand-coloured chips for each platform a post was successfully published to.
+// Mirrors the palette used in ActivityList so the two views feel like the same
+// language at a glance.
+const PLATFORM_CHIP: Record<PlatformId, { bg: string; fg: string; label: string }> = {
+  INSTAGRAM: { bg: "bg-pink-50", fg: "text-pink-600", label: "Instagram" },
+  LINKEDIN: { bg: "bg-sky-50", fg: "text-sky-700", label: "LinkedIn" },
+  YOUTUBE: { bg: "bg-red-50", fg: "text-red-600", label: "YouTube" },
+  TIKTOK: { bg: "bg-gray-100", fg: "text-gray-900", label: "TikTok" },
+  FACEBOOK_PAGE: { bg: "bg-blue-50", fg: "text-blue-700", label: "Facebook Page" },
+  FACEBOOK: { bg: "bg-blue-50", fg: "text-blue-700", label: "Facebook" },
+};
+
+function platformIcon(platform: PlatformId, className: string) {
+  switch (platform) {
+    case "INSTAGRAM":
+      return <SiInstagram className={className} />;
+    case "LINKEDIN":
+      return <FaLinkedin className={className} />;
+    case "YOUTUBE":
+      return <SiYoutube className={className} />;
+    case "TIKTOK":
+      return <SiTiktok className={className} />;
+    case "FACEBOOK_PAGE":
+    case "FACEBOOK":
+      return <SiFacebook className={className} />;
+  }
+}
+
+// Dedupes per-platform so a post that was published twice to one platform
+// (e.g. retried) only renders one chip.
+function publishedPlatforms(
+  publishes: PostRowData["publishes"],
+): PlatformId[] {
+  const seen = new Set<PlatformId>();
+  const out: PlatformId[] = [];
+  for (const p of publishes) {
+    if (p.status !== "PUBLISHED") continue;
+    if (!(p.platform in PLATFORM_CHIP)) continue;
+    const id = p.platform as PlatformId;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 export interface PostRowProps {
   post: PostRowData;
   index: number;
@@ -94,6 +150,7 @@ export interface PostRowProps {
 }
 
 export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDeleted }: PostRowProps) {
+  const published = publishedPlatforms(post.publishes);
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm ring-1 ring-black/[0.02] transition-all hover:shadow-md md:gap-4 md:p-4 ${
@@ -196,6 +253,22 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
             <p className="mt-1 line-clamp-2 text-sm text-gray-700">{displayBody(post.body)}</p>
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
+          )}
+          {published.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {published.map((p) => {
+                const c = PLATFORM_CHIP[p];
+                return (
+                  <span
+                    key={p}
+                    title={`Published to ${c.label}`}
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${c.bg}`}
+                  >
+                    {platformIcon(p, `h-3 w-3 ${c.fg}`)}
+                  </span>
+                );
+              })}
+            </div>
           )}
         </div>
       </Link>

@@ -445,6 +445,11 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cleared, setCleared] = useState(false);
+  // Two-step "Mark posted": first click opens an inline URL field; second
+  // click on the same button submits with whatever's in the field. Empty URL
+  // is allowed (records the publish but the activity row won't have a link).
+  const [showUrlField, setShowUrlField] = useState(false);
+  const [pastedUrl, setPastedUrl] = useState("");
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -492,16 +497,21 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     }
   }
 
-  async function clearWithStatus(status: "PUBLISHED" | "CANCELLED") {
+  async function clearWithStatus(
+    status: "PUBLISHED" | "CANCELLED",
+    platformUrl?: string,
+  ) {
     if (marking || skipping || cleared) return;
     setActionError(null);
     if (status === "PUBLISHED") setMarking(true);
     else setSkipping(true);
     try {
+      const body: Record<string, unknown> = { platform: "FACEBOOK", status };
+      if (platformUrl) body.platformUrl = platformUrl;
       const res = await fetch(`/api/posts/${item.postId}/manual-publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: "FACEBOOK", status }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -516,6 +526,16 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
       setMarking(false);
       setSkipping(false);
     }
+  }
+
+  function handleMarkPostedClick() {
+    if (marking || skipping || cleared) return;
+    if (!showUrlField) {
+      setShowUrlField(true);
+      return;
+    }
+    const url = pastedUrl.trim();
+    void clearWithStatus("PUBLISHED", url || undefined);
   }
 
   const toneRing =
@@ -645,11 +665,43 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
         )}
       </button>
 
+      {showUrlField && (
+        <div className="flex flex-col gap-1.5 border-t border-black/[0.04] bg-blue-50/40 px-3 py-2">
+          <label className="text-[11px] font-medium text-gray-600">
+            Paste the FB post URL so it links from the post page
+          </label>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="url"
+              inputMode="url"
+              autoFocus
+              value={pastedUrl}
+              onChange={(e) => setPastedUrl(e.target.value)}
+              placeholder="https://www.facebook.com/…"
+              className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowUrlField(false);
+                setPastedUrl("");
+              }}
+              className="shrink-0 rounded-md px-2 py-1.5 text-[12px] font-medium text-gray-500 hover:bg-white"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-500">
+            Optional — leave blank to mark posted without a link.
+          </p>
+        </div>
+      )}
+
       {/* Secondary: every helper action accessible from the list */}
       <div className="flex items-stretch border-t border-black/[0.04] bg-white/60">
         <button
           type="button"
-          onClick={() => void clearWithStatus("PUBLISHED")}
+          onClick={handleMarkPostedClick}
           disabled={marking || cleared}
           className="flex flex-1 min-w-0 items-center justify-center gap-1 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40"
         >
@@ -658,7 +710,7 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
           ) : (
             <Check className="h-3.5 w-3.5" />
           )}
-          <span className="truncate">Mark posted</span>
+          <span className="truncate">{showUrlField ? "Save" : "Mark posted"}</span>
         </button>
         <button
           type="button"

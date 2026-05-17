@@ -8,7 +8,6 @@ import {
   FileText,
   CalendarClock,
   LogOut,
-  CheckSquare,
   Music,
   Sparkles,
   AlertCircle,
@@ -44,8 +43,6 @@ const nav: NavItem[] = [
     icon: CalendarClock,
     badge: "manual-fb",
   },
-  { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },
-
   { type: "section", label: "Content" },
   { type: "link", href: "/admin/posts", label: "All Posts", icon: FileText },
   { type: "link", href: "/admin/triage", label: "Triage", icon: AlertCircle, badge: "triage" },

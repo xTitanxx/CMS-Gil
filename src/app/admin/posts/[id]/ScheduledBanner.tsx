@@ -18,7 +18,7 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
   FACEBOOK_PAGE: "Facebook Page",
-  FACEBOOK: "Facebook",
+  FACEBOOK: "Facebook Personal profile",
 };
 
 function platformIcon(platform: Platform, className: string) {
@@ -144,11 +144,14 @@ export function ScheduledBanner({
             ))}
             {showManualSlot && (
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 ring-1 ring-inset ring-amber-200"
-                title="Facebook personal — you'll cross-post this manually"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-blue-400 bg-white px-2 py-0.5 text-[11px] font-medium text-blue-700"
+                title="Facebook Personal profile — you'll cross-post this manually"
               >
                 <SiFacebook className="h-3 w-3" />
-                Facebook (manual)
+                Facebook Personal
+                <span className="ml-0.5 rounded-sm bg-blue-50 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                  Manual
+                </span>
               </span>
             )}
           </div>

@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobilePageHeader } from "@/components/layout/MobilePageHeader";
+
+// Auth is gated at the edge by src/proxy.ts — every /admin/* request is
+// already rejected (or redirected to /login) before this layout renders.
+// We deliberately do NOT call auth() here so we don't pay a second JWT
+// decrypt + DB hit on every navigation.
 
 const DEV_ADMIN_FAVICON =
   "data:image/svg+xml," +
@@ -18,14 +21,11 @@ export const metadata: Metadata = {
       : { icon: "/admin/icon" },
 };
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session) redirect("/login");
-
   return (
     <div className="flex min-h-dvh flex-col md:h-screen md:flex-row md:overflow-hidden">
       <a

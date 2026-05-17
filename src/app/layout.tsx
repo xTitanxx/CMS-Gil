@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/lib/auth";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 
 const DEV_FAVICON =
   "data:image/svg+xml," +
@@ -45,6 +46,7 @@ export default async function RootLayout({
     <html lang="en" className="h-full antialiased" style={{ backgroundColor: "#ffffff" }}>
       <body className="min-h-full bg-white font-sans" style={{ backgroundColor: "#ffffff" }}>
         <SessionProvider session={session}>{children}</SessionProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

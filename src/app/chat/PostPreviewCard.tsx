@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Play } from "lucide-react";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
 import { postAudioState } from "@/lib/post-audio-state";
+import { posterUrlFor } from "@/components/LazyVideo";
 
 export interface PreviewPost {
   id: string;
@@ -32,43 +34,65 @@ function formatDate(iso: string): string {
 
 export function PostPreviewCard({ post }: { post: PreviewPost }) {
   const body = post.body?.trim() ?? "";
-  const truncated = body.length > 150 ? body.slice(0, 150).trimEnd() + "\u2026" : body;
+  const truncated = body.length > 150 ? body.slice(0, 150).trimEnd() + "…" : body;
   const isVideo = post.mediaMimeType?.startsWith("video/");
+  const [playing, setPlaying] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+  // For videos, use the pre-generated .poster.jpg as the still: browsers decode
+  // a low-quality preview from preload="metadata" on a bare <video>, which
+  // looked visibly pixelated in this card.
+  const posterSrc = post.mediaUrl ? posterUrlFor(post.mediaUrl) : null;
+  const stillSrc = isVideo && posterSrc && !posterFailed ? posterSrc : post.mediaUrl;
 
   return (
-    <Link
-      href={`/p/${post.id}`}
-      className="my-2 block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
-    >
-      {post.mediaUrl && (
+    <article className="my-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+      {post.mediaUrl && stillSrc && (
         <div className="relative aspect-video w-full overflow-hidden bg-gray-100">
-          {isVideo ? (
-            <>
-              <video
-                src={post.mediaUrl}
-                muted
-                playsInline
-                preload="metadata"
-                className="h-full w-full object-cover"
-              />
-              <AudioStateBadge
-                state={postAudioState([
-                  { mimeType: post.mediaMimeType, hasAudio: post.hasAudio, audioTrackId: post.audioTrackId },
-                ])}
-                className="absolute left-2 top-2"
-              />
-            </>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+          {isVideo && playing ? (
+            <video
               src={post.mediaUrl}
-              alt={post.mediaAltText ?? ""}
-              className="h-full w-full object-cover"
+              poster={posterSrc ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              className="h-full w-full bg-black object-contain"
             />
+          ) : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={stillSrc}
+                alt={post.mediaAltText ?? ""}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+                onError={isVideo && !posterFailed ? () => setPosterFailed(true) : undefined}
+              />
+              {isVideo && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setPlaying(true)}
+                    aria-label="Play video"
+                    className="absolute inset-0 flex items-center justify-center transition-colors hover:bg-black/10"
+                  >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white shadow-lg">
+                      <Play className="h-6 w-6 fill-current" />
+                    </span>
+                  </button>
+                  <AudioStateBadge
+                    state={postAudioState([
+                      { mimeType: post.mediaMimeType, hasAudio: post.hasAudio, audioTrackId: post.audioTrackId },
+                    ])}
+                    className="pointer-events-none absolute left-2 top-2"
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
       )}
-      <div className="px-3 py-2.5">
+      <Link href={`/p/${post.id}`} className="block px-3 py-2.5">
         {truncated && (
           <p className="text-sm leading-snug text-gray-800 line-clamp-3">{truncated}</p>
         )}
@@ -91,7 +115,7 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
             </button>
           )}
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 }

@@ -369,26 +369,29 @@ export function ActivityList({
                       <span className="text-[13px] font-medium text-gray-900">
                         {PLATFORM_LABEL[pr.platform]}
                       </span>
-                      {pr.platformUrl && (
-                        <a
-                          href={pr.platformUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-gray-400 transition-colors hover:text-blue-600"
-                          aria-label="Open published post"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
                     </div>
                     <p className="text-[11px] text-gray-500">{subtitle}</p>
                   </div>
 
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${badge.chip}`}
-                  >
-                    {badge.label}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {pr.status === "PUBLISHED" && pr.platformUrl && (
+                      <a
+                        href={pr.platformUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 ring-1 ring-inset ring-blue-100 transition-colors hover:bg-blue-100"
+                        aria-label="Open published post"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View
+                      </a>
+                    )}
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${badge.chip}`}
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
                 </div>
 
                 {showError && (

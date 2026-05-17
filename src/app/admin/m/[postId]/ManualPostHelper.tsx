@@ -73,6 +73,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
   const [marking, setMarking] = useState(false);
   const [marked, setMarked] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [postedUrl, setPostedUrl] = useState("");
   const [isIOS, setIsIOS] = useState(false);
   const autoCopyDoneRef = useRef(false);
 
@@ -192,10 +193,13 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     setMarking(true);
     setMarkError(null);
     try {
+      const trimmedUrl = postedUrl.trim();
+      const body: Record<string, unknown> = { platform: "FACEBOOK" };
+      if (trimmedUrl) body.platformUrl = trimmedUrl;
       const res = await fetch(`/api/posts/${postId}/manual-publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: "FACEBOOK" }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -413,6 +417,18 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             4. Confirm
           </div>
+          <label className="mb-1 block text-[11px] font-medium text-gray-600">
+            Paste the FB post URL (so it links from the post page)
+          </label>
+          <input
+            type="url"
+            inputMode="url"
+            value={postedUrl}
+            onChange={(e) => setPostedUrl(e.target.value)}
+            placeholder="https://www.facebook.com/…"
+            disabled={marked}
+            className="mb-2 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+          />
           <button
             onClick={handleMarkPosted}
             disabled={marking || marked}
@@ -431,7 +447,8 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           </button>
           {markError && <p className="mt-1.5 text-[11px] text-red-700">{markError}</p>}
           <p className="mt-1.5 text-[11px] text-gray-500">
-            Tracks the post as published so it leaves the manual-posts queue.
+            Optional — leave the URL blank to mark posted without a link. Either way,
+            this clears the post from the manual-posts queue.
           </p>
         </section>
       </div>

@@ -182,14 +182,16 @@ export default async function PostDetailPage({
         listHref={listHref}
         backLabel={
           fromParam === "planner"
-            ? "Back to planner"
+            ? "Planner"
             : fromParam === "assistant"
-              ? "Back to assistant"
-              : "Back to list"
+              ? "Assistant"
+              : "Posts"
         }
+        originalDate={post.originalDate}
+        platformUrl={post.platformUrl}
         actions={
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex">
+          <div className="flex items-center gap-1.5">
+            <span className="hidden md:inline-flex">
               <CopyIdChip id={id} />
             </span>
             <DeleteButton postId={id} />

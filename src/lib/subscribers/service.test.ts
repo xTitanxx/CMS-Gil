@@ -24,6 +24,7 @@ const { mockPrisma } = vi.hoisted(() => {
         const c = cond as Row;
         if ("startsWith" in c && (typeof v !== "string" || !v.startsWith(c.startsWith as string)))
           return false;
+        if ("not" in c && v === c.not) return false;
       } else if (v !== cond) {
         return false;
       }
@@ -233,5 +234,44 @@ describe("subscriber service", () => {
     });
     await deleteSubscriber(subscriber.id);
     expect(await prisma.subscriber.findUnique({ where: { id: subscriber.id } })).toBeNull();
+  });
+
+  it("derives a simple lowercase code from the subscriber name", async () => {
+    const { code } = await createSubscriber({
+      name: "test-sub-Bob",
+      createdById: adminId,
+    });
+    // No random suffix, no uppercase — exact name-based code.
+    expect(code).toBe("gil-testsubbob");
+  });
+
+  it("findSubscriberByCode is case-insensitive on the typed code", async () => {
+    const { code } = await createSubscriber({
+      name: "test-sub-case",
+      createdById: adminId,
+    });
+    expect(code).toBe("gil-testsubcase");
+    expect((await findSubscriberByCode(code))?.name).toBe("test-sub-case");
+    expect((await findSubscriberByCode(code.toUpperCase()))?.name).toBe("test-sub-case");
+    expect((await findSubscriberByCode("Gil-TestSubCase"))?.name).toBe("test-sub-case");
+    expect((await findSubscriberByCode("  gil-testsubcase  "))?.name).toBe("test-sub-case");
+  });
+
+  it("rejects an unrelated code regardless of case", async () => {
+    await createSubscriber({ name: "test-sub-isolation", createdById: adminId });
+    expect(await findSubscriberByCode("gil-NoSuchCode")).toBeNull();
+    expect(await findSubscriberByCode("GIL-NOSUCHCODE")).toBeNull();
+  });
+
+  it("regenerateCode produces a different plaintext than the current one", async () => {
+    const { code: c1, subscriber } = await createSubscriber({
+      name: "test-sub-rotate",
+      createdById: adminId,
+    });
+    const { code: c2 } = await regenerateCode(subscriber.id);
+    expect(c2).not.toBe(c1);
+    // Old code no longer signs in.
+    expect(await findSubscriberByCode(c1)).toBeNull();
+    expect((await findSubscriberByCode(c2))?.id).toBe(subscriber.id);
   });
 });

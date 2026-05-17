@@ -1,4 +1,8 @@
-export function buildInviteMessage(name: string, code: string): string {
+export function buildInviteMessage(name: string, code: string, baseUrl: string): string {
+  // Trailing slashes on baseUrl would yield `https://gilalter.com//welcome` — strip.
+  const root = baseUrl.replace(/\/+$/, "");
+  const autoLoginUrl = `${root}/welcome?code=${encodeURIComponent(code)}`;
+
   return `Hey ${name} 👋
 
 I've been quietly building something new — and you're one of the first people I want to invite.
@@ -7,7 +11,11 @@ gilalter.com is now live as an experimental archive of my posts and content. It'
 
 The thing I'm most excited about: there's an Archivist you can chat with — an AI that knows my archive and can help you find anything I've ever posted.
 
-To get in, go to gilalter.com/welcome and enter your personal access code:
+The easiest way in — just tap this link and it'll sign you in automatically:
+
+${autoLoginUrl}
+
+Or, if you'd rather type it yourself, go to gilalter.com/welcome and enter your personal access code:
 
 ${code}
 

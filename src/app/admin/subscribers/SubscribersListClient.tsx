@@ -20,7 +20,9 @@ type Subscriber = {
 };
 
 function deriveCodeFromName(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9]/g, "");
+  // Match server-side `deriveCodeFromName` — lowercase so the preview the
+  // admin sees matches the code actually issued.
+  const cleaned = name.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
   return cleaned ? `gil-${cleaned}` : "";
 }
 
@@ -56,7 +58,9 @@ export function SubscribersListClient() {
   }
 
   function handlePasswordChange(value: string) {
-    setPassword(value);
+    // Server stores codes lowercased — reflect that in the input so the admin
+    // sees the exact code the subscriber will receive.
+    setPassword(value.toLowerCase());
     setPasswordEdited(true);
   }
 
@@ -147,7 +151,11 @@ export function SubscribersListClient() {
                     ? Math.min(100, Math.round((s.cycleUsedUsd / s.monthlyBudgetUsd) * 100))
                     : 100;
                 const msg = inviteCode[s.id]
-                  ? buildInviteMessage(s.name, inviteCode[s.id])
+                  ? buildInviteMessage(
+                      s.name,
+                      inviteCode[s.id],
+                      typeof window !== "undefined" ? window.location.origin : "https://gilalter.com",
+                    )
                   : null;
                 return (
                   <Fragment key={s.id}>
@@ -258,7 +266,7 @@ export function SubscribersListClient() {
               type="text"
               value={password}
               onChange={(e) => handlePasswordChange(e.target.value)}
-              placeholder="gil-Name"
+              placeholder="gil-name"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>

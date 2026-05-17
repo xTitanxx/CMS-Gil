@@ -128,14 +128,30 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
               const mimeType = guessMimeType(filename);
               const key = mediaKey(userId, filename);
 
-              const { url: storageKey, hasAudio } = await uploadBuffer(key, fileBuffer, {
+              // Compress oversized videos before they ever hit R2 — saves both
+              // storage and an extra read/write round-trip vs. compressing
+              // after upload. Falls back to the original buffer on failure.
+              let uploadBufferBytes = fileBuffer;
+              if (mimeType.startsWith("video/")) {
+                try {
+                  const { compressVideo } = await import("@/lib/video-processing");
+                  const compressed = await compressVideo(fileBuffer);
+                  if (compressed.length < fileBuffer.length) {
+                    uploadBufferBytes = compressed;
+                  }
+                } catch (err) {
+                  errors.push(`Compression failed for ${parsed.sourceId}: ${String(err)}`);
+                }
+              }
+
+              const { url: storageKey, hasAudio } = await uploadBuffer(key, uploadBufferBytes, {
                 contentType: mimeType,
               });
 
               if (mimeType.startsWith("video/")) {
                 try {
                   const { extractPoster } = await import("@/lib/video-processing");
-                  const posterBuffer = await extractPoster(fileBuffer);
+                  const posterBuffer = await extractPoster(uploadBufferBytes);
                   const posterPath = key.replace(/\.[^/.]+$/, "") + ".poster.jpg";
                   await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
                 } catch (err) {
@@ -149,7 +165,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                   storageKey,
                   originalUri: uri,
                   mimeType,
-                  sizeBytes: fileBuffer.length,
+                  sizeBytes: uploadBufferBytes.length,
                   hasAudio,
                 },
               });

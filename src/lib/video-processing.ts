@@ -153,6 +153,87 @@ export async function mixAudioOntoVideo(
   });
 }
 
+// Target audio bitrate for compressed output. 128 kbps AAC is the standard
+// "voice + light music" tier and what every phone-shot clip in this repo
+// realistically needs.
+const COMPRESS_AUDIO_BITRATE = 128_000;
+
+// Floor for video bitrate. Below ~200 kbps even 480p H.264 is a smear, so we
+// accept overshooting the size budget for very-long videos rather than
+// producing a file the user can't actually watch.
+const COMPRESS_MIN_VIDEO_BITRATE = 200_000;
+
+// Don't upscale. Phone-shot vertical video is already ≥1080px on the long edge,
+// and 1280px on the long edge is plenty for a phone-width feed.
+const COMPRESS_LONG_EDGE_MAX = 1280;
+
+const DEFAULT_TARGET_BYTES = 20 * 1024 * 1024;
+
+export interface CompressVideoOptions {
+  targetBytes?: number;
+}
+
+// Re-encode an input video to roughly `targetBytes` (default 20 MB). Returns
+// the original buffer unchanged if it's already at or under the target — or
+// if the re-encode somehow ends up larger (can happen for already-tiny clips).
+// Throws on ffmpeg failure; callers decide whether to fall back to original.
+export async function compressVideo(
+  videoBuffer: Buffer,
+  opts: CompressVideoOptions = {}
+): Promise<Buffer> {
+  const targetBytes = opts.targetBytes ?? DEFAULT_TARGET_BYTES;
+  if (videoBuffer.length <= targetBytes) return videoBuffer;
+
+  return withTempDir(async (dir) => {
+    const inputPath = join(dir, "input.mp4");
+    const outputPath = join(dir, "output.mp4");
+    writeFileSync(inputPath, videoBuffer);
+
+    const duration = await probeDuration(inputPath);
+
+    // Reserve the audio budget out of the total before sizing video.
+    const totalBits = targetBytes * 8;
+    const audioBits = COMPRESS_AUDIO_BITRATE * duration;
+    const videoBitrate = Math.max(
+      COMPRESS_MIN_VIDEO_BITRATE,
+      Math.floor((totalBits - audioBits) / duration)
+    );
+
+    // CRF caps quality; maxrate+bufsize cap the actual size growth so the
+    // output stays near the bitrate target. Without maxrate/bufsize, CRF
+    // alone can overshoot wildly on noisy/grainy source material.
+    const maxrate = Math.floor(videoBitrate * 1.2);
+    const bufsize = videoBitrate * 2;
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions([
+          "-c:v libx264",
+          "-preset veryfast",
+          "-crf 28",
+          `-maxrate ${maxrate}`,
+          `-bufsize ${bufsize}`,
+          // Scale so the long edge is ≤ COMPRESS_LONG_EDGE_MAX, preserving aspect
+          // ratio, only downscaling. yuv420p needs even dimensions, hence -2.
+          `-vf scale='if(gt(iw,ih),min(${COMPRESS_LONG_EDGE_MAX},iw),-2)':'if(gt(iw,ih),-2,min(${COMPRESS_LONG_EDGE_MAX},ih))'`,
+          "-pix_fmt yuv420p",
+          "-movflags +faststart",
+          "-c:a aac",
+          `-b:a ${COMPRESS_AUDIO_BITRATE}`,
+        ])
+        .on("end", () => resolve())
+        .on("error", reject)
+        .save(outputPath);
+    });
+
+    const out = readFileSync(outputPath);
+    if (out.length === 0) throw new Error("ffmpeg produced 0-byte output");
+    // Already-small or odd inputs can re-encode larger than they started.
+    // Keep the smaller of the two.
+    return out.length < videoBuffer.length ? out : videoBuffer;
+  });
+}
+
 export async function probeHasAudio(videoBuffer: Buffer): Promise<boolean> {
   return withTempDir(async (dir) => {
     const inputPath = join(dir, "input.mp4");

@@ -5,7 +5,7 @@
 //   - application/json with { key, filename, mimeType } (large files: client
 //     PUT directly to R2 via /api/media/[id]/replace/presign)
 // On success returns { id, storageKey, mimeType, sizeBytes, hasAudio }.
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -18,6 +18,10 @@ import {
 import { refreshReadiness } from "@/lib/readiness-service";
 import { detectMimeType } from "@/lib/magic-byte";
 import { probeHasAudio } from "@/lib/video-processing";
+
+// Match POST /api/posts/[id]/media — large iPhone videos can trip the
+// platform default while the after() chain (compress + poster) settles.
+export const maxDuration = 300;
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -129,6 +133,48 @@ export async function POST(
   });
 
   await refreshReadiness(existing.postId);
+
+  if (mimeType.startsWith("video/")) {
+    // Compress + extract poster off the new file. Same pattern as
+    // POST /api/posts/[id]/media — work happens post-response; failures
+    // leave the original in R2 for a backfill to retry.
+    const replacedMediaId = updated.id;
+    const finalKey = pathname;
+    after(async () => {
+      let workingBuffer = buffer;
+      try {
+        const { compressVideo } = await import("@/lib/video-processing");
+        const compressed = await compressVideo(buffer);
+        if (compressed !== buffer && compressed.length < buffer.length) {
+          await uploadBuffer(finalKey, compressed, { contentType: mimeType });
+          await prisma.media.update({
+            where: { id: replacedMediaId },
+            data: { sizeBytes: compressed.length },
+          });
+          workingBuffer = compressed;
+        }
+      } catch (err) {
+        console.error(
+          `[compress] FAILED for ${finalKey}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+
+      try {
+        const { extractPoster } = await import("@/lib/video-processing");
+        const posterBuffer = await extractPoster(workingBuffer);
+        const posterPath = finalKey.replace(/\.[^/.]+$/, "") + ".poster.jpg";
+        await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
+      } catch (err) {
+        console.error(
+          `[posters] FAILED to generate poster for ${finalKey}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    });
+  }
 
   return NextResponse.json(updated);
 }

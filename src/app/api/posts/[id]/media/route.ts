@@ -141,14 +141,36 @@ export async function POST(
     });
 
     if (mimeType.startsWith("video/")) {
-      // Poster extraction is the long pole — up to 4 ffmpeg passes, each
-      // re-writing the full video buffer to /tmp. Run it after the response
-      // so the composer doesn't time out on large videos. If it fails, the
-      // backfill script can recover posters later.
+      // Compression + poster extraction both run post-response. Compress
+      // first, then extract the poster from the compressed buffer so the
+      // poster reflects what'll actually be served. If compression fails,
+      // the original stays in R2 and we still try poster extraction; a
+      // backfill can retry compression later.
+      const mediaId = media.id;
       after(async () => {
+        let workingBuffer = buffer;
+        try {
+          const { compressVideo } = await import("@/lib/video-processing");
+          const compressed = await compressVideo(buffer);
+          if (compressed !== buffer && compressed.length < buffer.length) {
+            await uploadBuffer(pathname, compressed, { contentType: mimeType });
+            await prisma.media.update({
+              where: { id: mediaId },
+              data: { sizeBytes: compressed.length },
+            });
+            workingBuffer = compressed;
+          }
+        } catch (err) {
+          console.error(
+            `[compress] FAILED for ${pathname}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+
         try {
           const { extractPoster } = await import("@/lib/video-processing");
-          const posterBuffer = await extractPoster(buffer);
+          const posterBuffer = await extractPoster(workingBuffer);
           const posterPath = pathname.replace(/\.[^/.]+$/, "") + ".poster.jpg";
           await uploadBuffer(posterPath, posterBuffer, { contentType: "image/jpeg" });
         } catch (err) {

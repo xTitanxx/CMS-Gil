@@ -24,6 +24,11 @@ import { formatSlotHour } from "@/lib/planner/format-slot";
 import { displayBody } from "@/lib/post-body";
 import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
+import {
+  PostingListView,
+  type PostingSortDef,
+  type PostingFilterDef,
+} from "../_shared/PostingListView";
 
 type StatusKind = "scheduled" | "proposed" | "published";
 
@@ -58,10 +63,23 @@ function dayLabel(dayKey: string, todayKey: string): string {
   return format(dt, "EEE, MMM d");
 }
 
+function slotMoment(slot: PlanSlotData): number {
+  // Sort key: day + hour. Hour defaults to 0 if missing (shouldn't happen in
+  // practice but we keep it deterministic).
+  const [y, m, d] = slot.day.split("-").map(Number);
+  return Date.UTC(y, m - 1, d) + (slot.hour ?? 0) * 3600_000;
+}
+
+interface Item {
+  slot: PlanSlotData;
+  fbPending: boolean;
+}
+
 export function ScheduledListView() {
   const [plan, setPlan] = useState<WeeklyPlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"clear" | "schedule-all" | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   // Set of postIds that still need a manual FB cross-post. Populated from the
   // same endpoint the Manual FB tab uses so the two views stay in sync.
   const [fbPendingPostIds, setFbPendingPostIds] = useState<Set<string>>(new Set());
@@ -93,31 +111,28 @@ export function ScheduledListView() {
   // still needs a manual FB cross-post (the post has fired on API platforms
   // but the user hasn't pasted to FB Personal yet). Everything else moves to
   // the Published tab, so this list only ever shows "still to do".
-  const upcoming = useMemo(() => {
+  const items = useMemo<Item[]>(() => {
     if (!plan) return [];
     return plan.slots
       .filter((s) => s.day >= todayKey)
       .filter((s) => !s.published || fbPendingPostIds.has(s.postId))
-      .sort((a, b) => {
-        if (a.day !== b.day) return a.day < b.day ? -1 : 1;
-        const ha = a.hour ?? -1;
-        const hb = b.hour ?? -1;
-        return ha - hb;
-      });
+      .map((slot) => ({ slot, fbPending: fbPendingPostIds.has(slot.postId) }));
   }, [plan, todayKey, fbPendingPostIds]);
 
   const activeSlots = useMemo(
-    () => upcoming.filter((s) => s.status === "PROPOSED" || s.status === "APPROVED"),
-    [upcoming],
+    () => items.filter((i) => i.slot.status === "PROPOSED" || i.slot.status === "APPROVED"),
+    [items],
   );
   const clearableSlots = useMemo(
     () =>
-      upcoming.filter(
-        (s) =>
-          !s.published &&
-          (s.status === "PROPOSED" || s.status === "APPROVED" || s.status === "SCHEDULED"),
+      items.filter(
+        (i) =>
+          !i.slot.published &&
+          (i.slot.status === "PROPOSED" ||
+            i.slot.status === "APPROVED" ||
+            i.slot.status === "SCHEDULED"),
       ),
-    [upcoming],
+    [items],
   );
 
   const handleUnschedule = useCallback(
@@ -181,71 +196,147 @@ export function ScheduledListView() {
     }
   }, [plan, refreshPlan]);
 
-  if (loading && !plan) {
-    return (
-      <div className="flex h-40 items-center justify-center gap-2 text-gray-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading…</span>
-      </div>
-    );
-  }
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshPlan(), refreshFbPending()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshPlan, refreshFbPending]);
+
+  const sortOptions = useMemo<PostingSortDef<Item>[]>(
+    () => [
+      {
+        value: "date_asc",
+        label: "Soonest first",
+        compare: (a, b) => slotMoment(a.slot) - slotMoment(b.slot),
+      },
+      {
+        value: "date_desc",
+        label: "Latest first",
+        compare: (a, b) => slotMoment(b.slot) - slotMoment(a.slot),
+      },
+      {
+        value: "status",
+        label: "Status",
+        compare: (a, b) => {
+          const order: Record<StatusKind, number> = {
+            scheduled: 0,
+            proposed: 1,
+            published: 2,
+          };
+          return order[statusKind(a.slot)] - order[statusKind(b.slot)];
+        },
+      },
+    ],
+    [],
+  );
+
+  const filters = useMemo<PostingFilterDef<Item>[]>(
+    () => [
+      {
+        id: "status",
+        title: "Status",
+        options: [
+          { value: "proposed", label: "Proposed" },
+          { value: "scheduled", label: "Scheduled" },
+          { value: "published", label: "Published (needs FB)" },
+        ],
+        valueFor: (i) => statusKind(i.slot),
+      },
+      {
+        id: "platform",
+        title: "Platform",
+        options: [
+          { value: "FACEBOOK", label: "Facebook" },
+          { value: "INSTAGRAM", label: "Instagram" },
+          { value: "TIKTOK", label: "TikTok" },
+          { value: "YOUTUBE", label: "YouTube" },
+          { value: "LINKEDIN", label: "LinkedIn" },
+        ],
+        valueFor: (i) =>
+          dedupePlatforms(i.slot.platforms).map((p) =>
+            p.toUpperCase() === "FACEBOOK_PAGE" ? "FACEBOOK" : p.toUpperCase(),
+          ),
+      },
+      {
+        id: "fb",
+        title: "Manual FB",
+        options: [
+          { value: "pending", label: "Needs FB cross-post" },
+          { value: "ok", label: "Doesn't need FB" },
+        ],
+        valueFor: (i) => (i.fbPending ? "pending" : "ok"),
+      },
+    ],
+    [],
+  );
+
+  const bulkBar = clearableSlots.length > 0 ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        onClick={handleClearAll}
+        disabled={busy !== null}
+        size="sm"
+        variant="outline"
+        className="h-9 gap-1.5 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
+      >
+        {busy === "clear" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+        <span>Clear all ({clearableSlots.length})</span>
+      </Button>
+      {activeSlots.length > 0 && (
+        <Button
+          onClick={handleScheduleAll}
+          disabled={busy !== null}
+          size="sm"
+          className="ml-auto h-9 gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60"
+        >
+          {busy === "schedule-all" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <CalendarCheck className="h-4 w-4" />
+          )}
+          <span>Schedule all ({activeSlots.length})</span>
+        </Button>
+      )}
+    </div>
+  ) : null;
 
   return (
-    <div className="flex h-full flex-col">
-      {clearableSlots.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Button
-            onClick={handleClearAll}
-            disabled={busy !== null}
-            size="sm"
-            variant="outline"
-            className="h-9 gap-1.5 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
-          >
-            {busy === "clear" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-            <span>Clear all ({clearableSlots.length})</span>
-          </Button>
-          {activeSlots.length > 0 && (
-            <Button
-              onClick={handleScheduleAll}
-              disabled={busy !== null}
-              size="sm"
-              className="ml-auto h-9 gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60"
-            >
-              {busy === "schedule-all" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CalendarCheck className="h-4 w-4" />
-              )}
-              <span>Schedule all ({activeSlots.length})</span>
-            </Button>
-          )}
-        </div>
-      )}
-
-      {upcoming.length === 0 ? (
+    <PostingListView<Item>
+      title="Scheduled"
+      subtitle="Upcoming queue"
+      items={items}
+      loading={loading}
+      onRefresh={refresh}
+      refreshing={refreshing}
+      itemNoun={{ singular: "slot", plural: "slots" }}
+      getId={(i) => i.slot.id}
+      searchKeys={(i) => [i.slot.post.body, ...(i.slot.post.tags ?? [])]}
+      sortOptions={sortOptions}
+      filters={filters}
+      beforeList={bulkBar}
+      emptyState={
         <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white text-sm text-gray-500">
           Nothing scheduled.
         </div>
-      ) : (
-        <div className="space-y-2">
-          {upcoming.map((slot, index) => (
-            <ScheduledRow
-              key={slot.id}
-              slot={slot}
-              queueIndex={index + 1}
-              todayKey={todayKey}
-              fbPending={fbPendingPostIds.has(slot.postId)}
-              onUnschedule={handleUnschedule}
-              onSchedule={handleScheduleOne}
-            />
-          ))}
-        </div>
+      }
+      renderRow={(item, index) => (
+        <ScheduledRow
+          slot={item.slot}
+          queueIndex={index + 1}
+          todayKey={todayKey}
+          fbPending={item.fbPending}
+          onUnschedule={handleUnschedule}
+          onSchedule={handleScheduleOne}
+        />
       )}
-    </div>
+    />
   );
 }
 
@@ -392,7 +483,7 @@ function ScheduledRow({
             )}
           </div>
           {displayBody(post.body) ? (
-            <p className="mt-1 line-clamp-2 text-sm text-gray-700">{displayBody(post.body)}</p>
+            <p className="mt-1 line-clamp-2 break-words text-sm text-gray-700">{displayBody(post.body)}</p>
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}

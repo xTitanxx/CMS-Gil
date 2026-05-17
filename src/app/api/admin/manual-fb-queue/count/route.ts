@@ -26,6 +26,7 @@ export async function GET(_req: NextRequest) {
       plan: { userId },
       status: { in: ["APPROVED", "SCHEDULED"] },
       day: { gte: lookbackDayKey },
+      platforms: { has: "FACEBOOK_PERSONAL" },
     },
     select: {
       id: true,

@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
       reminderSentAt: null,
       hour: { not: null },
       day: { gte: startDay, lte: endDay },
+      // Opt-in: only slots where the user picked the FB Personal chip get a
+      // push reminder. Mirrors the manual-fb-queue filter.
+      platforms: { has: "FACEBOOK_PERSONAL" },
     },
     include: {
       plan: { select: { userId: true } },

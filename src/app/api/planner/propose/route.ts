@@ -10,6 +10,10 @@ const ALLOWED_PLATFORMS = new Set([
   "LINKEDIN",
   "TIKTOK",
   "YOUTUBE",
+  // UI-only marker. Stored on slot.platforms so the manual-fb queue and
+  // push-reminders cron can opt in slots the user wants a reminder for.
+  // Stripped from auto-publish below — it's not a real Platform enum value.
+  "FACEBOOK_PERSONAL",
 ]);
 
 export async function POST(req: NextRequest) {
@@ -150,10 +154,13 @@ export async function POST(req: NextRequest) {
 
   if (scheduleNow && hour != null) {
     const scheduledAt = buildSlotDate(dayDate, hour);
-    // Personal FACEBOOK is handled by the push-reminder flow, not by
-    // PublishRecord — drop it from the auto-schedule set. ALLOWED_PLATFORMS
-    // already excludes plain "FACEBOOK" but keep the guard explicit.
-    const autoPlatforms = platforms.filter((p) => p !== "FACEBOOK");
+    // FACEBOOK_PERSONAL is a UI-only marker for the manual queue + reminder
+    // flow, not a real Platform enum value — drop it before creating
+    // PublishRecords. Plain "FACEBOOK" is excluded as a belt-and-suspenders
+    // guard against legacy data.
+    const autoPlatforms = platforms.filter(
+      (p) => p !== "FACEBOOK" && p !== "FACEBOOK_PERSONAL",
+    );
 
     if (autoPlatforms.length > 0) {
       // Sequential awaits (no $transaction) — pgbouncer transaction-pool mode

@@ -179,6 +179,18 @@ function UnmarkFbButton({
   );
 }
 
+// Stable display order for the pill row, so a post that went to FB+IG+TT
+// always shows them in the same sequence (FB Personal first because it's the
+// only manual one and the only one that has an Unmark control wired to it).
+const PLATFORM_ORDER = [
+  "FACEBOOK",
+  "FACEBOOK_PAGE",
+  "INSTAGRAM",
+  "TIKTOK",
+  "YOUTUBE",
+  "LINKEDIN",
+] as const;
+
 function PlatformPills({
   pills,
   postId,
@@ -191,12 +203,37 @@ function PlatformPills({
   onUnmarkedFb: () => void;
 }) {
   if (pills.length === 0 && !hasFbManual) return null;
+  const byPlatform = new Map(pills.map((p) => [p.platform, p]));
+  const ordered: string[] = [
+    ...PLATFORM_ORDER.filter((p) => byPlatform.has(p)),
+    // Any platform we forgot to put in PLATFORM_ORDER falls back to the end,
+    // sorted alphabetically so the order at least stays stable across renders.
+    ...[...byPlatform.keys()]
+      .filter((p) => !(PLATFORM_ORDER as readonly string[]).includes(p))
+      .sort(),
+  ];
+  // If FB Personal isn't already in the list but we still need to render Unmark
+  // (defensive — hasFbManual implies a FACEBOOK pill in practice), prepend it
+  // so Unmark has something to anchor next to.
+  const hasFbPill = ordered.includes("FACEBOOK");
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {pills.map((p) => (
-        <PlatformPill key={p.platform} pill={p} />
-      ))}
-      {hasFbManual && (
+      {ordered.map((platform) => {
+        const pill = byPlatform.get(platform);
+        if (!pill) return null;
+        // Group FB Personal + Unmark as a connected pair: same function,
+        // shouldn't get split by other pills on wider rows.
+        if (platform === "FACEBOOK" && hasFbManual) {
+          return (
+            <span key={platform} className="inline-flex items-center gap-1">
+              <PlatformPill pill={pill} />
+              <UnmarkFbButton postId={postId} onUnmarked={onUnmarkedFb} />
+            </span>
+          );
+        }
+        return <PlatformPill key={platform} pill={pill} />;
+      })}
+      {hasFbManual && !hasFbPill && (
         <UnmarkFbButton postId={postId} onUnmarked={onUnmarkedFb} />
       )}
     </div>

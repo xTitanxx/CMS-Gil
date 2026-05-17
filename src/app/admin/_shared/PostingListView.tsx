@@ -27,6 +27,10 @@ interface PostingListViewProps<T> {
   title: string;
   subtitle?: ReactNode;
   headerActions?: ReactNode;
+  /** Skip rendering the PageHeader. Use when the parent already owns the
+   *  title (e.g. Scheduled List, which shares its title with Calendar /
+   *  Planner via ScheduledTabs). */
+  hideHeader?: boolean;
   /** Optional row of banners/CTAs rendered above the toolbar. */
   beforeToolbar?: ReactNode;
   /** Optional row rendered between the toolbar and the list (e.g. bulk action bar). */
@@ -63,6 +67,7 @@ export function PostingListView<T>(props: PostingListViewProps<T>) {
     title,
     subtitle,
     headerActions,
+    hideHeader,
     beforeToolbar,
     beforeList,
     items,
@@ -159,7 +164,9 @@ export function PostingListView<T>(props: PostingListViewProps<T>) {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      <PageHeader title={title} subtitle={computedSubtitle} actions={headerActions} />
+      {!hideHeader && (
+        <PageHeader title={title} subtitle={computedSubtitle} actions={headerActions} />
+      )}
 
       {beforeToolbar}
 

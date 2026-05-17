@@ -15,7 +15,6 @@ const TITLES: Record<string, string> = {
   "/admin/import": "Import",
   "/admin/audio": "Audio",
   "/admin/settings": "Settings",
-  "/admin/todo": "To-Do",
   "/admin/trash": "Trash",
 };
 

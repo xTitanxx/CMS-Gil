@@ -33,11 +33,41 @@ interface Props {
 }
 
 const PUBLISHABLE_PLATFORMS = [
-  { key: "FACEBOOK_PAGE", label: "FB Page", Icon: SiFacebook, color: "text-[#1877F2]" },
-  { key: "INSTAGRAM", label: "Instagram", Icon: SiInstagram, color: "text-[#E1306C]" },
-  { key: "LINKEDIN", label: "LinkedIn", Icon: FaLinkedin, color: "text-[#0A66C2]" },
-  { key: "YOUTUBE", label: "YouTube", Icon: SiYoutube, color: "text-[#FF0000]" },
-  { key: "TIKTOK", label: "TikTok", Icon: SiTiktok, color: "text-[#111111]" },
+  {
+    key: "FACEBOOK_PAGE",
+    label: "FB Page",
+    Icon: SiFacebook,
+    color: "text-[#1877F2]",
+    activeClasses: "border-[#1877F2] bg-[#1877F2]/10 text-[#1877F2]",
+  },
+  {
+    key: "INSTAGRAM",
+    label: "Instagram",
+    Icon: SiInstagram,
+    color: "text-[#E1306C]",
+    activeClasses: "border-[#E1306C] bg-[#E1306C]/10 text-[#E1306C]",
+  },
+  {
+    key: "LINKEDIN",
+    label: "LinkedIn",
+    Icon: FaLinkedin,
+    color: "text-[#0A66C2]",
+    activeClasses: "border-[#0A66C2] bg-[#0A66C2]/10 text-[#0A66C2]",
+  },
+  {
+    key: "YOUTUBE",
+    label: "YouTube",
+    Icon: SiYoutube,
+    color: "text-[#FF0000]",
+    activeClasses: "border-[#FF0000] bg-[#FF0000]/10 text-[#FF0000]",
+  },
+  {
+    key: "TIKTOK",
+    label: "TikTok",
+    Icon: SiTiktok,
+    color: "text-[#111111]",
+    activeClasses: "border-gray-900 bg-gray-900 text-white",
+  },
 ] as const;
 
 function formatSlotParts(day: string, hour: number): { when: string; weekday: string; date: string; time: string } {
@@ -299,10 +329,17 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         Publish to
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color }) => {
+        {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color, activeClasses }) => {
           const active = platforms.includes(key);
           const reason = ineligibilityReason(key, shape);
           const disabled = reason !== null;
+          const iconColor = disabled
+            ? "text-gray-300"
+            : active
+              ? key === "TIKTOK"
+                ? "text-white"
+                : color
+              : color;
           return (
             <button
               key={key}
@@ -314,15 +351,11 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
                 disabled
                   ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
                   : active
-                    ? "border-gray-900 bg-gray-900 text-white"
+                    ? activeClasses
                     : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
               }`}
             >
-              <Icon
-                className={`h-3.5 w-3.5 shrink-0 ${
-                  disabled ? "text-gray-300" : active ? "text-white" : color
-                }`}
-              />
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} />
               <span className="truncate">{label}</span>
             </button>
           );

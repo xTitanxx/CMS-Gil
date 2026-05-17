@@ -11,7 +11,8 @@ import {
   AlertCircle,
   VolumeX,
   Music,
-  Calendar,
+  Copy,
+  Download,
   ExternalLink,
   Link as LinkIcon,
   ChevronDown,
@@ -85,18 +86,6 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatDatePretty(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
 export function PostEditor({
   postId,
   initialBody,
@@ -125,9 +114,23 @@ export function PostEditor({
   const [tagInput, setTagInput] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [mediaError, setMediaError] = useState("");
-  const [editingDate, setEditingDate] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [copiedCaption, setCopiedCaption] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copyCaption = useCallback(async () => {
+    if (!body) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopiedCaption(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedCaption(false), 2000);
+    } catch {
+      // Silent fail — clipboard permissions denied. The button briefly does nothing.
+    }
+  }, [body]);
   const CAPTION_COLLAPSE_THRESHOLD = 500;
   const isLong = body.length > CAPTION_COLLAPSE_THRESHOLD;
   const PLATFORM_CHAR_LIMITS = [
@@ -282,52 +285,10 @@ export function PostEditor({
           </div>
         )}
 
-        {/* Compact meta bar */}
-        <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-2.5 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <Calendar className="h-3 w-3 text-gray-400" />
-            {editingDate ? (
-              <input
-                type="datetime-local"
-                value={date}
-                autoFocus
-                onBlur={() => setEditingDate(false)}
-                onChange={(e) => setDate(e.target.value)}
-                className="rounded-md border border-gray-200 px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditingDate(true)}
-                className="whitespace-nowrap rounded px-1 py-0.5 text-gray-700 hover:bg-gray-100"
-              >
-                {formatDatePretty(date) || "Set date"}
-              </button>
-            )}
-          </span>
-          <span className="text-gray-300">·</span>
-          <span className="whitespace-nowrap rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-            {postType === "POST" ? "Post" : postType === "REEL" ? "Reel" : "Story"}
-          </span>
-          {currentPlatformUrl && (
-            <>
-              <span className="text-gray-300">·</span>
-              <a
-                href={currentPlatformUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 whitespace-nowrap text-blue-600 hover:underline"
-              >
-                Original <ExternalLink className="h-3 w-3" />
-              </a>
-            </>
-          )}
-        </div>
-
         {/* Media gallery — full bleed */}
         {hasMedia && (
           <div className="relative">
-            <MediaGallery media={media} onDelete={deleteMedia} onSetAudio={setMediaAudio} />
+            <MediaGallery media={media} onDelete={deleteMedia} onSetAudio={setMediaAudio} postId={postId} />
             <div className="absolute bottom-3 left-3 z-10">
               <UploadButton
                 onSelect={(files) => onDrop(Array.from(files))}
@@ -381,18 +342,38 @@ export function PostEditor({
               className="w-full resize-none overflow-hidden border-0 bg-transparent text-sm leading-relaxed text-gray-800 placeholder:text-gray-400 focus:outline-none"
             />
           </div>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            {isLong ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+              {isLong && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  className="rounded-md px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700"
+                >
+                  {expanded ? "See less" : "See more"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                onClick={() => void copyCaption()}
+                disabled={!body}
+                aria-label={copiedCaption ? "Caption copied" : "Copy caption"}
+                title={copiedCaption ? "Copied" : "Copy caption"}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {expanded ? "See less" : "See more"}
+                {copiedCaption ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={3} />
+                    <span>Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy</span>
+                  </>
+                )}
               </button>
-            ) : (
-              <span />
-            )}
+            </div>
             <div
               aria-live="polite"
               className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-[11px] text-gray-400"
@@ -520,6 +501,18 @@ export function PostEditor({
                   className="min-w-[4rem] rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
+            </div>
+
+            {/* Date — read-only display lives in the top toolbar; this row
+                keeps editing reachable without crowding the editor. */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-gray-500">Date</span>
+              <input
+                type="datetime-local"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="min-w-0 rounded-md border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
             </div>
 
             {/* Rating */}
@@ -691,10 +684,12 @@ function MediaGallery({
   media,
   onDelete,
   onSetAudio,
+  postId,
 }: {
   media: MediaItem[];
   onDelete: (id: string) => void;
   onSetAudio: (id: string, audioTrackId: string | null) => void;
+  postId: string;
 }) {
   const count = media.length;
 
@@ -702,6 +697,8 @@ function MediaGallery({
     return (
       <MediaHero
         media={media[0]}
+        postId={postId}
+        index={0}
         onDelete={() => onDelete(media[0].id)}
         onSetAudio={(tid) => onSetAudio(media[0].id, tid)}
       />
@@ -711,10 +708,12 @@ function MediaGallery({
   if (count === 2) {
     return (
       <div className="grid grid-cols-2 gap-1 p-1">
-        {media.map((m) => (
+        {media.map((m, i) => (
           <MediaTile
             key={m.id}
             media={m}
+            postId={postId}
+            index={i}
             onDelete={() => onDelete(m.id)}
             onSetAudio={(tid) => onSetAudio(m.id, tid)}
             aspect="aspect-[4/5]"
@@ -730,16 +729,20 @@ function MediaGallery({
         <div className="flex-1">
           <MediaTile
             media={media[0]}
+            postId={postId}
+            index={0}
             onDelete={() => onDelete(media[0].id)}
             onSetAudio={(tid) => onSetAudio(media[0].id, tid)}
             aspect="aspect-[3/4]"
           />
         </div>
         <div className="flex flex-1 flex-col gap-1">
-          {[media[1], media[2]].map((m) => (
+          {[media[1], media[2]].map((m, i) => (
             <MediaTile
               key={m.id}
               media={m}
+              postId={postId}
+              index={i + 1}
               onDelete={() => onDelete(m.id)}
               onSetAudio={(tid) => onSetAudio(m.id, tid)}
               aspect="aspect-[3/2]"
@@ -754,10 +757,12 @@ function MediaGallery({
   const cols = count === 4 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3";
   return (
     <div className={`grid ${cols} gap-1 p-1`}>
-      {media.map((m) => (
+      {media.map((m, i) => (
         <MediaTile
           key={m.id}
           media={m}
+          postId={postId}
+          index={i}
           onDelete={() => onDelete(m.id)}
           onSetAudio={(tid) => onSetAudio(m.id, tid)}
           aspect={aspect}
@@ -767,14 +772,52 @@ function MediaGallery({
   );
 }
 
+function extFromMime(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+  if (m === "image/png") return "png";
+  if (m === "image/gif") return "gif";
+  if (m === "image/webp") return "webp";
+  if (m === "image/heic") return "heic";
+  if (m === "video/mp4") return "mp4";
+  if (m === "video/quicktime") return "mov";
+  if (m === "video/webm") return "webm";
+  if (m.startsWith("image/")) return "img";
+  if (m.startsWith("video/")) return "mp4";
+  return "bin";
+}
+
+async function downloadMediaItem(media: MediaItem, postId: string, index: number) {
+  if (!media.url) return;
+  try {
+    const res = await fetch(`/api/media/${media.id}/download`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = `post-${postId}-${index + 1}.${extFromMime(media.mimeType)}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    // Silent fail — user can retry.
+  }
+}
+
 function MediaHero({
   media,
   onDelete,
   onSetAudio,
+  postId,
+  index,
 }: {
   media: MediaItem;
   onDelete: () => void;
   onSetAudio: (audioTrackId: string | null) => void;
+  postId: string;
+  index: number;
 }) {
   const isVideo = media.mimeType.startsWith("video");
   const isSilentVideo = isVideo && media.hasAudio === false;
@@ -840,6 +883,11 @@ function MediaHero({
           />
         </div>
       )}
+      <MediaDownloadButton
+        onDownload={() => void downloadMediaItem(media, postId, index)}
+        disabled={!media.url}
+        size="lg"
+      />
       <MediaDeleteButton onDelete={onDelete} size="lg" />
     </div>
   );
@@ -849,11 +897,15 @@ function MediaTile({
   media,
   onDelete,
   onSetAudio,
+  postId,
+  index,
   aspect = "aspect-square",
 }: {
   media: MediaItem;
   onDelete: () => void;
   onSetAudio: (audioTrackId: string | null) => void;
+  postId: string;
+  index: number;
   aspect?: string;
 }) {
   const isVideo = media.mimeType.startsWith("video");
@@ -912,8 +964,73 @@ function MediaTile({
           />
         </div>
       )}
+      <MediaDownloadButton
+        onDownload={() => void downloadMediaItem(media, postId, index)}
+        disabled={!media.url}
+        size="sm"
+      />
       <MediaDeleteButton onDelete={onDelete} size="sm" />
     </div>
+  );
+}
+
+function MediaDownloadButton({
+  onDownload,
+  disabled,
+  size,
+}: {
+  onDownload: () => void;
+  disabled?: boolean;
+  size: "sm" | "lg";
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const trigger = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled || downloading) return;
+    setDownloading(true);
+    try {
+      await onDownload();
+      setDone(true);
+      setTimeout(() => setDone(false), 1500);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (size === "sm") {
+    return (
+      <button
+        onClick={trigger}
+        disabled={disabled || downloading}
+        aria-label={done ? "Downloaded" : "Download media"}
+        title={done ? "Downloaded" : "Download media"}
+        className={`absolute right-1 top-1 mr-6 rounded-full p-0.5 backdrop-blur-sm transition-colors ${
+          done
+            ? "bg-emerald-600 text-white"
+            : "bg-black/60 text-white hover:bg-black/80"
+        } disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        {done ? <Check className="h-3 w-3" strokeWidth={3} /> : <Download className="h-3 w-3" />}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={trigger}
+      disabled={disabled || downloading}
+      aria-label={done ? "Downloaded" : "Download media"}
+      title={done ? "Downloaded" : "Download media"}
+      className={`absolute right-3 top-3 mr-10 rounded-full p-1.5 backdrop-blur-sm transition-all ${
+        done
+          ? "bg-emerald-600 text-white shadow-lg"
+          : "bg-gray-900/70 text-white hover:bg-black/80"
+      } disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      {done ? <Check className="h-4 w-4" strokeWidth={3} /> : <Download className="h-4 w-4" />}
+    </button>
   );
 }
 

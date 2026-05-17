@@ -827,7 +827,10 @@ export function ReshuffleButton({
  * user sees their choice without having to open the menu. Falls back to
  * generic "Sort" if the value somehow doesn't match a known option.
  */
-function shortSortLabel(sort: string): string {
+function shortSortLabel(sort: string, options?: SortOption[]): string {
+  if (options) {
+    return options.find((o) => o.value === sort)?.label ?? "Sort";
+  }
   switch (sort) {
     case "originalDate_desc": return "Newest";
     case "originalDate_asc": return "Oldest";
@@ -839,12 +842,19 @@ function shortSortLabel(sort: string): string {
   }
 }
 
+export interface SortOption {
+  value: string;
+  label: string;
+}
+
 export function SortMenu({
   sort,
   setSort,
+  options,
 }: {
   sort: string;
   setSort: (s: string) => void;
+  options?: SortOption[];
 }) {
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -860,7 +870,8 @@ export function SortMenu({
     return () => document.removeEventListener("mousedown", onClick);
   }, [open, isMobile]);
 
-  const currentLabel = shortSortLabel(sort);
+  const currentLabel = shortSortLabel(sort, options);
+  const sortChoices = options ?? SORT_OPTIONS;
   const handleSelect = (value: string) => {
     setSort(value);
     setOpen(false);
@@ -868,7 +879,7 @@ export function SortMenu({
 
   const optionList = (
     <div className="flex flex-col">
-      {SORT_OPTIONS.map((o) => {
+      {sortChoices.map((o) => {
         const isSelected = sort === o.value;
         return (
           <button

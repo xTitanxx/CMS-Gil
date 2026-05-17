@@ -11,7 +11,10 @@ import {
   Images,
   FileText,
   ChevronDown,
+  ExternalLink,
   Hand,
+  Loader2,
+  Undo2,
 } from "lucide-react";
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
@@ -61,30 +64,141 @@ const PLATFORM_META: Record<
   },
 };
 
-function PlatformPills({ platforms }: { platforms: string[] }) {
-  if (platforms.length === 0) return null;
+interface PlatformPillData {
+  platform: string;
+  platformUrl: string | null;
+}
+
+function PlatformPill({ pill }: { pill: PlatformPillData }) {
+  const meta = PLATFORM_META[pill.platform];
+  if (!meta) return null;
+  const Icon = meta.icon;
+  const baseCls = `inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+    meta.manual
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : "border-gray-200 bg-gray-50 text-gray-600"
+  }`;
+  const inner = (
+    <>
+      <Icon className={`h-3 w-3 shrink-0 ${meta.iconColor}`} />
+      <span className="truncate">{meta.label}</span>
+      {meta.manual && <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />}
+      {pill.platformUrl && <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />}
+    </>
+  );
+  // Linkable when the PublishRecord captured a permalink (API platforms always;
+  // FB personal only when the user pasted the URL in the manual-post helper).
+  if (pill.platformUrl) {
+    return (
+      <a
+        href={pill.platformUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={`${baseCls} hover:brightness-95 active:brightness-90`}
+        title={
+          meta.manual
+            ? `Manually posted to ${meta.label} — open on Facebook`
+            : `Posted to ${meta.label} — open`
+        }
+      >
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <span
+      className={baseCls}
+      title={meta.manual ? `Manually posted to ${meta.label}` : `Posted to ${meta.label}`}
+    >
+      {inner}
+    </span>
+  );
+}
+
+function UnmarkFbButton({
+  postId,
+  onUnmarked,
+}: {
+  postId: string;
+  onUnmarked: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function doUnmark() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/posts/${postId}/manual-publish?platform=FACEBOOK`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErr(data?.error ?? "Couldn't unmark");
+        return;
+      }
+      onUnmarked();
+    } catch {
+      setErr("Network error");
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (confirming) void doUnmark();
+          else setConfirming(true);
+        }}
+        disabled={busy}
+        className={`inline-flex h-5 items-center gap-0.5 rounded-full border px-1.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+          confirming
+            ? "border-red-300 bg-red-100 text-red-800 hover:bg-red-200"
+            : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
+        }`}
+        title={confirming ? "Click again to confirm" : "Unmark as posted on FB Personal"}
+        aria-label={confirming ? "Confirm unmark" : "Unmark as posted"}
+      >
+        {busy ? (
+          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        ) : (
+          <Undo2 className="h-2.5 w-2.5" />
+        )}
+        <span>{confirming ? "Sure?" : "Unmark"}</span>
+      </button>
+      {err && <span className="text-[10px] text-red-600">{err}</span>}
+    </>
+  );
+}
+
+function PlatformPills({
+  pills,
+  postId,
+  hasFbManual,
+  onUnmarkedFb,
+}: {
+  pills: PlatformPillData[];
+  postId: string;
+  hasFbManual: boolean;
+  onUnmarkedFb: () => void;
+}) {
+  if (pills.length === 0 && !hasFbManual) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {platforms.map((p) => {
-        const meta = PLATFORM_META[p];
-        if (!meta) return null;
-        const Icon = meta.icon;
-        return (
-          <span
-            key={p}
-            className={`inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-              meta.manual
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-gray-200 bg-gray-50 text-gray-600"
-            }`}
-            title={meta.manual ? `Manually posted to ${meta.label}` : `Posted to ${meta.label}`}
-          >
-            <Icon className={`h-3 w-3 shrink-0 ${meta.iconColor}`} />
-            <span className="truncate">{meta.label}</span>
-            {meta.manual && <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />}
-          </span>
-        );
-      })}
+      {pills.map((p) => (
+        <PlatformPill key={p.platform} pill={p} />
+      ))}
+      {hasFbManual && (
+        <UnmarkFbButton postId={postId} onUnmarked={onUnmarkedFb} />
+      )}
     </div>
   );
 }
@@ -203,59 +317,84 @@ function PublishTimeBlock({ events }: { events: PublishEvent[] }) {
   );
 }
 
+function buildPills(post: PostRowData): PlatformPillData[] {
+  // Keep only PUBLISHED records; one pill per distinct platform; prefer the
+  // record that actually has a permalink (so the pill becomes an external
+  // link rather than an inert chip).
+  const byPlatform = new Map<string, PlatformPillData>();
+  for (const p of post.publishes) {
+    if (p.status !== "PUBLISHED") continue;
+    const existing = byPlatform.get(p.platform);
+    if (!existing || (!existing.platformUrl && p.platformUrl)) {
+      byPlatform.set(p.platform, { platform: p.platform, platformUrl: p.platformUrl });
+    }
+  }
+  return [...byPlatform.values()];
+}
+
 export function PublishedPostRow({ post, index, href }: Props) {
   const events = collectPublishEvents(post);
-  const platforms = [...new Set(events.map((e) => e.platform))];
   const body = displayBody(post.body);
+
+  // Local optimistic state: when the user clicks "Unmark" on the FB Personal
+  // pill, drop it from the list right away. The post stays in the Published
+  // tab as long as some other platform is still PUBLISHED (the server uses
+  // hubPublishCount > 0, not a single-platform flag).
+  const [fbUnmarked, setFbUnmarked] = useState(false);
+  const visiblePills = buildPills(post).filter(
+    (p) => !(fbUnmarked && p.platform === "FACEBOOK"),
+  );
+  const hasFbManual =
+    !fbUnmarked && post.publishes.some((p) => p.platform === "FACEBOOK" && p.status === "PUBLISHED");
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-sm md:items-center md:gap-4 md:p-4">
       <Link
         href={href}
-        className="flex min-w-0 flex-1 items-start gap-3 md:items-center md:gap-4"
+        className="relative block h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28"
       >
-        <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28">
-          {post.thumbUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={post.thumbUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <ImageIcon className="h-6 w-6 text-gray-300" />
-            </div>
-          )}
-          {post.isVideo && (
-            <div
-              className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
-              title="Video"
-            >
-              <Video className="h-3 w-3 text-white" />
-            </div>
-          )}
-          {post.audioState === "silent" && (
-            <div
-              className="absolute bottom-0.5 right-0.5 rounded-full bg-orange-500/85 p-0.5"
-              title="Silent video — no audio track."
-            >
-              <VolumeX className="h-3 w-3 text-white" />
-            </div>
-          )}
-          {post.audioState === "music-added" && (
-            <div
-              className="absolute bottom-0.5 right-0.5 rounded-full bg-blue-500/85 p-0.5"
-              title="Silent video with custom audio attached."
-            >
-              <Music className="h-3 w-3 text-white" />
-            </div>
-          )}
-        </div>
+        {post.thumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={post.thumbUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <ImageIcon className="h-6 w-6 text-gray-300" />
+          </div>
+        )}
+        {post.isVideo && (
+          <div
+            className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
+            title="Video"
+          >
+            <Video className="h-3 w-3 text-white" />
+          </div>
+        )}
+        {post.audioState === "silent" && (
+          <div
+            className="absolute bottom-0.5 right-0.5 rounded-full bg-orange-500/85 p-0.5"
+            title="Silent video — no audio track."
+          >
+            <VolumeX className="h-3 w-3 text-white" />
+          </div>
+        )}
+        {post.audioState === "music-added" && (
+          <div
+            className="absolute bottom-0.5 right-0.5 rounded-full bg-blue-500/85 p-0.5"
+            title="Silent video with custom audio attached."
+          >
+            <Music className="h-3 w-3 text-white" />
+          </div>
+        )}
+      </Link>
 
-        <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
+        <Link href={href} className="block">
           <div className="flex flex-wrap items-center gap-1 md:gap-2">
             <span
               className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-400"
@@ -271,11 +410,16 @@ export function PublishedPostRow({ post, index, href }: Props) {
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}
-          <div className="mt-1.5">
-            <PlatformPills platforms={platforms} />
-          </div>
+        </Link>
+        <div className="mt-1.5">
+          <PlatformPills
+            pills={visiblePills}
+            postId={post.id}
+            hasFbManual={hasFbManual}
+            onUnmarkedFb={() => setFbUnmarked(true)}
+          />
         </div>
-      </Link>
+      </div>
     </div>
   );
 }

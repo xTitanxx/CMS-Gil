@@ -6,6 +6,14 @@ import { PostingHubTabs } from "@/app/admin/_shared/PostingHubTabs";
 import type { PostRowData } from "@/app/admin/posts/PostRow";
 import { PublishedPostRow } from "./PublishedPostRow";
 
+// Only publish-date sorts make sense here — everything in this list has been
+// published, so the user only ever wants to scrub the timeline. The first
+// entry's value is the default when there's no `?sort=` query param.
+const PUBLISHED_SORT_OPTIONS = [
+  { value: "lastPublishedViaHubAt_desc", label: "Recently published" },
+  { value: "lastPublishedViaHubAt_asc", label: "Oldest published" },
+];
+
 export function PublishedListView() {
   const [, setPosts] = useState<PostRowData[]>([]);
 
@@ -15,12 +23,8 @@ export function PublishedListView() {
       <PostListShell<PostRowData>
         apiEndpoint="/api/posts"
         // The publishedViaHub flag narrows to Post.hubPublishCount > 0 server-side.
-        // The sort surfaces the most-recently-pushed posts first, matching the
-        // mental model "what did we just ship?".
-        extraParams={{
-          publishedViaHub: "true",
-          sort: "lastPublishedViaHubAt_desc",
-        }}
+        extraParams={{ publishedViaHub: "true" }}
+        sortOptions={PUBLISHED_SORT_OPTIONS}
         title="Published"
         itemNoun={{ singular: "post", plural: "posts" }}
         hideKindTabs

@@ -264,9 +264,10 @@ export function serializeSet<T extends string>(
   return [...set].join(",");
 }
 
-/** Count how many filter groups are actively narrowing results. */
+/** Count how many filter groups are actively narrowing results. Sort is
+ *  intentionally not counted — it reorders the same set of rows, it doesn't
+ *  hide any. */
 export function countActiveFilters(filters: {
-  sort: string;
   content: Set<ContentCategory>;
   audio: Set<AudioCategory>;
   link: Set<LinkValue>;
@@ -278,7 +279,6 @@ export function countActiveFilters(filters: {
   enriched: Set<EnrichedValue>;
 }): number {
   let n = 0;
-  if (filters.sort !== "originalDate_desc") n++;
   if (filters.content.size !== CONTENT_CATEGORIES.length) n++;
   if (filters.audio.size !== AUDIO_CATEGORIES.length) n++;
   if (filters.link.size !== LINK_VALUES.length) n++;

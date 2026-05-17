@@ -68,13 +68,26 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
   const [autoCopiedBanner, setAutoCopiedBanner] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadedId, setDownloadedId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [marked, setMarked] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [isIOS, setIsIOS] = useState(false);
   const autoCopyDoneRef = useRef(false);
 
   const active = media[activeIdx] ?? null;
   const isVideo = active?.mimeType.startsWith("video/") ?? false;
+
+  // UA-sniff once on mount: on iPhone/iPad we want `fb://composer` (drops the
+  // user straight into a fresh FB post draft) and the Web Share API with
+  // files (iOS share sheet → Save to Photos). On Mac/desktop both of those
+  // are useless, so we route to facebook.com and direct browser download.
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      setIsIOS(/iPhone|iPad|iPod/.test(navigator.userAgent));
+    }
+  }, []);
 
   // Auto-copy the caption on mount so the user can paste in Facebook
   // immediately — works whether they came from a push notification or
@@ -100,11 +113,13 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     }
   }
 
-  async function handleDownload(item: Media) {
-    if (!item.url) return;
+  async function handleDownload(item: Media): Promise<boolean> {
+    if (!item.url) return false;
     setDownloading(item.id);
+    setDownloadError(null);
     try {
       const res = await fetch(item.url);
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
       const ext = item.mimeType.split("/")[1] ?? "bin";
@@ -117,6 +132,12 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setDownloadedId(item.id);
+      setTimeout(() => setDownloadedId(null), 2500);
+      return true;
+    } catch {
+      setDownloadError("Download failed — open the media in a new tab and right-click → Save.");
+      return false;
     } finally {
       setDownloading(null);
     }
@@ -129,23 +150,40 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
       canShare?: (data: { files?: File[] }) => boolean;
     };
     const nav = navigator as NavWithShare;
-    if (!nav.share) {
-      await handleDownload(item);
-      return;
-    }
-    try {
-      const res = await fetch(item.url);
-      const blob = await res.blob();
-      const ext = item.mimeType.split("/")[1] ?? "bin";
-      const fname = filenameFromUrl(item.url, `gil-alter-${postId}.${ext}`);
-      const file = new File([blob], fname, { type: item.mimeType });
-      if (nav.canShare?.({ files: [file] })) {
-        await nav.share({ files: [file], text: body });
-        return;
+
+    // Only attempt Web Share when it can actually carry the file. On macOS
+    // `navigator.share` exists but `canShare({files})` is false, and
+    // `share({url, text})` just opens an OS sheet with no useful targets for
+    // posting to FB — feels like "the button does nothing". So on anything
+    // that's not iOS, go straight to a real file download.
+    if (isIOS && nav.share && nav.canShare) {
+      try {
+        const res = await fetch(item.url);
+        if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+        const blob = await res.blob();
+        const ext = item.mimeType.split("/")[1] ?? "bin";
+        const fname = filenameFromUrl(item.url, `gil-alter-${postId}.${ext}`);
+        const file = new File([blob], fname, { type: item.mimeType });
+        if (nav.canShare({ files: [file] })) {
+          await nav.share({ files: [file], text: body });
+          return;
+        }
+      } catch {
+        // fall through to download
       }
-      await nav.share({ url: item.url, text: body });
-    } catch {
-      // User cancelled or share failed — silent no-op.
+    }
+
+    await handleDownload(item);
+  }
+
+  function handleOpenFacebook() {
+    // iOS: deep-link straight into a fresh post draft in the FB app.
+    // Anywhere else: a regular https://facebook.com tab — composer at the
+    // top of the feed.
+    if (isIOS) {
+      window.location.href = "fb://composer";
+    } else {
+      window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
     }
   }
 
@@ -291,28 +329,57 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
               </div>
             )}
 
-            {/* Primary CTA: Share / Save (iOS hits Photos sheet reliably) */}
+            {/* Primary CTA — Share to Photos on iOS, plain Download elsewhere. */}
             <button
               onClick={() => active && handleShare(active)}
-              disabled={!active?.url}
+              disabled={!active?.url || downloading === active?.id}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
             >
-              <Share2 className="h-4 w-4" />
-              Share / Save to Photos
+              {downloading === active?.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : downloadedId === active?.id ? (
+                <Check className="h-4 w-4" strokeWidth={2.5} />
+              ) : isIOS ? (
+                <Share2 className="h-4 w-4" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="min-w-0 break-words">
+                {downloading === active?.id
+                  ? "Downloading…"
+                  : downloadedId === active?.id
+                    ? isIOS
+                      ? "Saved"
+                      : "Downloaded"
+                    : isIOS
+                      ? "Share / Save to Photos"
+                      : isVideo
+                        ? "Download video"
+                        : "Download image"}
+              </span>
             </button>
 
-            {/* Secondary download */}
-            <button
-              onClick={() => active && handleDownload(active)}
-              disabled={!active?.url || downloading === active?.id}
-              className="mt-1.5 inline-flex w-full items-center justify-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 disabled:opacity-60"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Or download to Files
-            </button>
+            {/* Secondary: only useful on iOS where the primary opens a share
+                sheet — gives an alternate "save the raw file" path. */}
+            {isIOS && (
+              <button
+                onClick={() => active && handleDownload(active)}
+                disabled={!active?.url || downloading === active?.id}
+                className="mt-1.5 inline-flex w-full items-center justify-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 disabled:opacity-60"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="break-words">Or download to Files</span>
+              </button>
+            )}
 
-            <p className="mt-2 text-[11px] text-gray-500">
-              {'On iOS, tap "Share / Save" → "Save Image" / "Save Video" to drop it into your Photos.'}
+            {downloadError && (
+              <p className="mt-2 break-words text-[11px] text-red-700">{downloadError}</p>
+            )}
+
+            <p className="mt-2 break-words text-[11px] text-gray-500">
+              {isIOS
+                ? 'Tap "Share / Save" → "Save Image" / "Save Video" to drop it into Photos.'
+                : 'File goes to your Downloads folder — drag it from there into the Facebook composer.'}
             </p>
           </section>
         )}
@@ -322,21 +389,19 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
           <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
             3. Post on Facebook
           </div>
-          <p className="mb-2 text-sm text-blue-900">
-            Open Facebook, paste the caption, and attach the saved media.
+          <p className="mb-2 break-words text-sm text-blue-900">
+            {isIOS
+              ? "Opens a fresh post draft in the Facebook app — paste the caption and attach the saved media."
+              : "Opens facebook.com in a new tab — paste the caption into the composer and drag the downloaded file in."}
           </p>
-          <a
-            href="https://www.facebook.com/"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={handleOpenFacebook}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1877F2] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
           >
             <SiFacebook className="h-4 w-4" />
-            Open Facebook
-          </a>
-          <p className="mt-1.5 text-[11px] text-blue-800/80">
-            {"(On iPhone this opens the Facebook app via Apple's universal-link handling; in a desktop browser it opens facebook.com in a new tab.)"}
-          </p>
+            <span className="break-words">Open Facebook</span>
+          </button>
         </section>
 
         {/* Step 4: I posted it */}

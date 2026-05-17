@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
-import { getGoogleIntegration } from "@/lib/google-integration";
 import { postToInstagram } from "@/lib/platforms/instagram";
 import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
@@ -143,20 +142,15 @@ export async function publishNow(
       where: { userId_platform: { userId, platform } },
     });
 
-    // YouTube reads from GoogleIntegration; everything else from PlatformToken.
-    let accessToken: string;
-    let refreshToken: string | undefined;
+    // YouTube and TikTok handle their own token fetch/refresh inside the
+    // platform module (Google's googleapis client + getValidTikTokAccessToken
+    // respectively), so they don't need the PlatformToken row here. Everything
+    // else uses the access token straight from PlatformToken.
+    let accessToken: string = "";
     let platformUserId: string | undefined;
-
-    if (platform === "YOUTUBE") {
-      const integration = await getGoogleIntegration(userId);
-      if (!integration) throw new Error("YouTube not connected");
-      accessToken = integration.accessToken;
-      refreshToken = integration.refreshToken ?? undefined;
-    } else {
+    if (platform !== "YOUTUBE" && platform !== "TIKTOK") {
       if (!token) throw new Error(`No ${platform} token found`);
       accessToken = decrypt(token.accessToken);
-      refreshToken = token.refreshToken ? decrypt(token.refreshToken) : undefined;
       platformUserId = token.platformUserId ?? undefined;
     }
 
@@ -191,12 +185,10 @@ export async function publishNow(
         );
         break;
       case "YOUTUBE":
-        result = await postToYouTube(
-          { accessToken, refreshToken },
-          post.body,
-          post.body,
-          mediaKeys
-        );
+        // postToYouTube uses buildGoogleOAuthClient internally so the googleapis
+        // client knows the access token's expiry, refreshes proactively, and
+        // persists the rotated token back to the GoogleIntegration row.
+        result = await postToYouTube(userId, post.body, post.body, mediaKeys);
         break;
       case "TIKTOK": {
         // Refresh-or-return; access token is ~24h, refresh token is ~365d and

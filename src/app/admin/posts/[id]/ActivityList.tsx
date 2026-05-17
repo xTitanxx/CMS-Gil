@@ -71,17 +71,33 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   YOUTUBE: "YouTube",
   TIKTOK: "TikTok",
   FACEBOOK_PAGE: "Facebook Page",
-  FACEBOOK: "Facebook",
+  FACEBOOK: "Facebook Personal profile",
+};
+
+// True for manually-posted platforms (no API publish path) — drives the
+// dashed-outline avatar + Manual badge in the activity row, matching the
+// SchedulePanel chip language.
+const PLATFORM_MANUAL: Record<Platform, boolean> = {
+  INSTAGRAM: false,
+  LINKEDIN: false,
+  YOUTUBE: false,
+  TIKTOK: false,
+  FACEBOOK_PAGE: false,
+  FACEBOOK: true,
 };
 
 // Brand-tinted icon backgrounds. Soft enough not to dominate the row.
-const PLATFORM_TINT: Record<Platform, { bg: string; fg: string }> = {
+const PLATFORM_TINT: Record<Platform, { bg: string; fg: string; border?: string }> = {
   INSTAGRAM: { bg: "bg-pink-50", fg: "text-pink-500" },
   LINKEDIN: { bg: "bg-sky-50", fg: "text-sky-600" },
   YOUTUBE: { bg: "bg-red-50", fg: "text-red-500" },
   TIKTOK: { bg: "bg-gray-100", fg: "text-gray-900" },
   FACEBOOK_PAGE: { bg: "bg-blue-50", fg: "text-blue-600" },
-  FACEBOOK: { bg: "bg-blue-50", fg: "text-blue-600" },
+  FACEBOOK: {
+    bg: "bg-white",
+    fg: "text-blue-600",
+    border: "border border-dashed border-blue-400",
+  },
 };
 
 function PlatformIcon({
@@ -341,7 +357,7 @@ export function ActivityList({
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint.bg}`}
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.border ?? ""}`}
                     >
                       <PlatformIcon platform={pr.platform} className={`h-4 w-4 ${tint.fg}`} />
                     </div>
@@ -365,10 +381,15 @@ export function ActivityList({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[13px] font-medium text-gray-900">
                         {PLATFORM_LABEL[pr.platform]}
                       </span>
+                      {PLATFORM_MANUAL[pr.platform] && (
+                        <span className="rounded-sm bg-blue-50 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                          Manual
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-gray-500">{subtitle}</p>
                   </div>

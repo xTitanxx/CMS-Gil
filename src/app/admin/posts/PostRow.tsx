@@ -97,13 +97,26 @@ type PlatformId =
 // Brand-coloured chips for each platform a post was successfully published to.
 // Mirrors the palette used in ActivityList so the two views feel like the same
 // language at a glance.
-const PLATFORM_CHIP: Record<PlatformId, { bg: string; fg: string; label: string }> = {
+//
+// Facebook is split: FACEBOOK_PAGE is the API-published Page post (filled blue
+// chip) while FACEBOOK is the manual personal-profile post (dashed-outline
+// chip). Side-by-side they need to read as obviously different — they share
+// the same icon but the chip frame tells the user "this one was hand-posted".
+const PLATFORM_CHIP: Record<
+  PlatformId,
+  { bg: string; fg: string; label: string; border?: string }
+> = {
   INSTAGRAM: { bg: "bg-pink-50", fg: "text-pink-600", label: "Instagram" },
   LINKEDIN: { bg: "bg-sky-50", fg: "text-sky-700", label: "LinkedIn" },
   YOUTUBE: { bg: "bg-red-50", fg: "text-red-600", label: "YouTube" },
   TIKTOK: { bg: "bg-gray-100", fg: "text-gray-900", label: "TikTok" },
   FACEBOOK_PAGE: { bg: "bg-blue-50", fg: "text-blue-700", label: "Facebook Page" },
-  FACEBOOK: { bg: "bg-blue-50", fg: "text-blue-700", label: "Facebook" },
+  FACEBOOK: {
+    bg: "bg-white",
+    fg: "text-blue-700",
+    label: "Facebook Personal profile",
+    border: "border border-dashed border-blue-400",
+  },
 };
 
 function platformIcon(platform: PlatformId, className: string) {
@@ -262,7 +275,7 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
                   <span
                     key={p}
                     title={`Published to ${c.label}`}
-                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${c.bg}`}
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${c.bg} ${c.border ?? ""}`}
                   >
                     {platformIcon(p, `h-3 w-3 ${c.fg}`)}
                   </span>

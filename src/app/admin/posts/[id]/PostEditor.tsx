@@ -19,6 +19,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  Calendar,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { ReanalyzeButton } from "./PostInteractions";
@@ -80,6 +81,18 @@ interface PostEditorProps {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+function formatDatePretty(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
 
 function toDatetimeLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -284,6 +297,18 @@ export function PostEditor({
             )}
           </div>
         )}
+
+        {/* Mobile-only meta line: date sits "on top of the post" since the
+            mobile action pills no longer carry it. Desktop shows it inline in
+            the sticky PostNavBar. */}
+        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 text-xs text-gray-500 md:hidden">
+          <Calendar className="h-3 w-3 shrink-0 text-gray-400" />
+          <span className="min-w-0 truncate tabular-nums">{formatDatePretty(date) || "—"}</span>
+          <span className="text-gray-300">·</span>
+          <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+            {postType === "POST" ? "Post" : postType === "REEL" ? "Reel" : "Story"}
+          </span>
+        </div>
 
         {/* Media gallery — full bleed */}
         {hasMedia && (

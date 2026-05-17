@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Sparkles, RefreshCw, MoreHorizontal } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { Spinner } from "@/components/ui/spinner";
@@ -69,22 +69,6 @@ export function AllPostsView(_props: AllPostsViewProps) {
   const lastSelectedIndexRef = useRef<number | null>(null);
 
   const bulkDelete = useAsync();
-  const bulkAnalyze = useAsync();
-  const bulkCaption = useAsync();
-  const [analyzeQueued, setAnalyzeQueued] = useState<number | null>(null);
-  const [analyzeJob, setAnalyzeJob] = useState<{
-    id: string;
-    status: "RUNNING" | "CANCELLED" | "DONE";
-    total: number;
-    completed: number;
-  } | null>(null);
-  const [captionQueued, setCaptionQueued] = useState<number | null>(null);
-  const [captionJob, setCaptionJob] = useState<{
-    id: string;
-    status: "RUNNING" | "CANCELLED" | "DONE";
-    total: number;
-    completed: number;
-  } | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
   const allSelected = posts.length > 0 && posts.every((p) => selectedIds.has(p.id));
@@ -189,49 +173,6 @@ export function AllPostsView(_props: AllPostsViewProps) {
     [detailQueryString],
   );
 
-  // Poll for tagging / caption jobs
-  useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      try {
-        const res = await fetch("/api/posts/bulk-analyze");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setAnalyzeJob(data.job ?? null);
-      } catch {}
-    }
-    check();
-    const interval = setInterval(() => {
-      if (analyzeJob?.status === "RUNNING") check();
-    }, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [analyzeJob?.status]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function checkCaption() {
-      try {
-        const res = await fetch("/api/posts/bulk-caption-analyze");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setCaptionJob(data.job ?? null);
-      } catch {}
-    }
-    checkCaption();
-    const interval = setInterval(() => {
-      if (captionJob?.status === "RUNNING") checkCaption();
-    }, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [captionJob?.status]);
-
   const handleBulkDelete = useCallback(async () => {
     const count = selectAllMode ? filteredTotal : selectedIds.size;
     await bulkDelete.run(async () => {
@@ -249,64 +190,9 @@ export function AllPostsView(_props: AllPostsViewProps) {
 
   const { confirming: bulkConfirming, trigger: triggerBulkDelete } = useConfirm(handleBulkDelete);
 
-  const startAnalyze = useCallback(async () => {
-    await bulkAnalyze.run(async () => {
-      const res = await fetch("/api/posts/bulk-analyze", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to start analysis");
-      const data = await res.json();
-      setAnalyzeQueued(data.queued);
-      setAnalyzeJob(data.job ?? null);
-    });
-  }, [bulkAnalyze]);
-
-  const cancelAnalyze = useCallback(async () => {
-    await fetch("/api/posts/bulk-analyze", { method: "DELETE" });
-    const res = await fetch("/api/posts/bulk-analyze");
-    const data = await res.json();
-    setAnalyzeJob(data.job ?? null);
-  }, []);
-
-  const startCaption = useCallback(async () => {
-    await bulkCaption.run(async () => {
-      const body = selectedIds.size > 0 ? { postIds: Array.from(selectedIds) } : {};
-      const res = await fetch("/api/posts/bulk-caption-analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Failed to start caption analysis");
-      const data = await res.json();
-      setCaptionQueued(data.queued);
-      setCaptionJob(data.job ?? null);
-    });
-  }, [bulkCaption, selectedIds]);
-
-  const cancelCaption = useCallback(async () => {
-    await fetch("/api/posts/bulk-caption-analyze", { method: "DELETE" });
-    const res = await fetch("/api/posts/bulk-caption-analyze");
-    const data = await res.json();
-    setCaptionJob(data.job ?? null);
-  }, []);
-
   const headerActions = (
     <>
-      <div className="inline-flex shrink-0 items-center rounded-md border border-gray-200 bg-white">
-        <ViewToggle className="rounded-none border-0" />
-        <div className="w-px self-stretch bg-gray-200" />
-        <ActionsMenu
-          embedded
-          analyzeRunning={analyzeJob?.status === "RUNNING"}
-          analyzeProgress={analyzeJob ? `${analyzeJob.completed}/${analyzeJob.total}` : null}
-          analyzeStarting={bulkAnalyze.isLoading}
-          onStartAnalyze={startAnalyze}
-          onCancelAnalyze={cancelAnalyze}
-          captionRunning={captionJob?.status === "RUNNING"}
-          captionProgress={captionJob ? `${captionJob.completed}/${captionJob.total}` : null}
-          captionStarting={bulkCaption.isLoading}
-          onStartCaption={startCaption}
-          onCancelCaption={cancelCaption}
-        />
-      </div>
+      <ViewToggle />
       <Link href="/admin/posts/new">
         <Button size="sm" className="h-9 px-3">
           <Plus className="h-4 w-4 shrink-0" />
@@ -359,55 +245,6 @@ export function AllPostsView(_props: AllPostsViewProps) {
           {bulkDelete.isLoading ? <Spinner /> : <Trash2 className="h-4 w-4 shrink-0" />}
           {bulkDelete.isLoading ? "Trashing..." : bulkConfirming ? "Sure?" : "Trash"}
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={bulkAnalyze.isLoading}
-          onClick={async () => {
-            await bulkAnalyze.run(async () => {
-              const res = await fetch("/api/posts/bulk-analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ postIds: [...selectedIds] }),
-              });
-              if (!res.ok) throw new Error("Failed to start analysis");
-              const data = await res.json();
-              setAnalyzeQueued(data.queued);
-            });
-          }}
-        >
-          {bulkAnalyze.isLoading ? (
-            <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4 shrink-0" />
-          )}
-          {bulkAnalyze.isLoading ? "Starting..." : "Tag"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={bulkCaption.isLoading}
-          onClick={async () => {
-            await bulkCaption.run(async () => {
-              const res = await fetch("/api/posts/bulk-caption-analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ postIds: [...selectedIds] }),
-              });
-              if (!res.ok) throw new Error("Failed");
-              const data = await res.json();
-              setCaptionQueued(data.queued);
-              setCaptionJob(data.job ?? null);
-            });
-          }}
-        >
-          {bulkCaption.isLoading ? (
-            <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4 shrink-0" />
-          )}
-          {bulkCaption.isLoading ? "Starting..." : "Rate Captions"}
-        </Button>
         <button
           className="ml-auto text-sm text-blue-600 hover:underline"
           onClick={() => {
@@ -428,27 +265,6 @@ export function AllPostsView(_props: AllPostsViewProps) {
     </div>
   ) : null;
 
-  const bannerRow = (
-    <>
-      {analyzeQueued !== null && (
-        <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-800">
-          <Sparkles className="h-4 w-4 shrink-0 text-purple-500" />
-          {analyzeQueued > 0
-            ? `AI tagging started for ${analyzeQueued} untagged posts. Tags will appear as they're processed.`
-            : "All posts already have tags."}
-        </div>
-      )}
-      {captionQueued !== null && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          <Sparkles className="h-4 w-4 shrink-0 text-amber-500" />
-          {captionQueued > 0
-            ? `Caption analysis started for ${captionQueued} posts. Phase A rates all captions, Phase B generates rewrite suggestions for low-quality ones.`
-            : "All media posts already analyzed."}
-        </div>
-      )}
-    </>
-  );
-
   return (
     <PostListShell<PostRowData>
       apiEndpoint="/api/posts"
@@ -459,7 +275,6 @@ export function AllPostsView(_props: AllPostsViewProps) {
         plural: kind === "stories" ? "stories" : "posts",
       }}
       headerActions={headerActions}
-      beforeList={bannerRow}
       bulkBar={bulkBar}
       getPostId={(p) => p.id}
       showSelectAll
@@ -488,148 +303,3 @@ export function AllPostsView(_props: AllPostsViewProps) {
   );
 }
 
-interface ActionsMenuProps {
-  embedded?: boolean;
-  analyzeRunning: boolean;
-  analyzeProgress: string | null;
-  analyzeStarting: boolean;
-  onStartAnalyze: () => void;
-  onCancelAnalyze: () => void;
-  captionRunning: boolean;
-  captionProgress: string | null;
-  captionStarting: boolean;
-  onStartCaption: () => void;
-  onCancelCaption: () => void;
-}
-
-function ActionsMenu(props: ActionsMenuProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  const anyRunning = props.analyzeRunning || props.captionRunning;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="More actions"
-        title="More actions"
-        className={`relative inline-flex h-9 w-9 items-center justify-center text-gray-600 transition-colors hover:bg-gray-50 ${
-          props.embedded
-            ? `rounded-r-md ${open ? "bg-gray-50" : ""}`
-            : `rounded-md border border-gray-200 bg-white ${open ? "bg-gray-50" : ""}`
-        }`}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-        {anyRunning && (
-          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-purple-500 ring-2 ring-white" />
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-60 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-          <ActionRow
-            icon={
-              props.analyzeRunning || props.analyzeStarting ? (
-                <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-purple-500" />
-              ) : (
-                <Sparkles className="h-4 w-4 shrink-0 text-purple-500" />
-              )
-            }
-            label={
-              props.analyzeRunning
-                ? `Tagging ${props.analyzeProgress}`
-                : props.analyzeStarting
-                  ? "Starting…"
-                  : "AI tag all"
-            }
-            trailing={
-              props.analyzeRunning ? (
-                <span className="text-xs font-medium text-red-500">Cancel</span>
-              ) : null
-            }
-            onClick={() => {
-              if (props.analyzeRunning) {
-                props.onCancelAnalyze();
-              } else if (!props.analyzeStarting) {
-                props.onStartAnalyze();
-              }
-              setOpen(false);
-            }}
-          />
-          <ActionRow
-            icon={
-              props.captionRunning || props.captionStarting ? (
-                <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-amber-500" />
-              ) : (
-                <Sparkles className="h-4 w-4 shrink-0 text-amber-500" />
-              )
-            }
-            label={
-              props.captionRunning
-                ? `Rating ${props.captionProgress}`
-                : props.captionStarting
-                  ? "Starting…"
-                  : "Rate captions"
-            }
-            trailing={
-              props.captionRunning ? (
-                <span className="text-xs font-medium text-red-500">Cancel</span>
-              ) : null
-            }
-            onClick={() => {
-              if (props.captionRunning) {
-                props.onCancelCaption();
-              } else if (!props.captionStarting) {
-                props.onStartCaption();
-              }
-              setOpen(false);
-            }}
-          />
-          <div className="border-t border-gray-100" />
-          <Link
-            href="/admin/trash"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <Trash2 className="h-4 w-4 shrink-0 text-gray-400" />
-            <span>Open trash</span>
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ActionRow({
-  icon,
-  label,
-  trailing,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  trailing?: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
-    >
-      {icon}
-      <span className="flex-1 truncate">{label}</span>
-      {trailing}
-    </button>
-  );
-}

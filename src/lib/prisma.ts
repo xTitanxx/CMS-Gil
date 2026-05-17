@@ -27,9 +27,16 @@ function createPrismaClient() {
   const pool = new pg.Pool({
     connectionString: cleanUrl.toString(),
     ssl: isLocalhost ? false : { rejectUnauthorized: false },
-    max: 10,                       // posts API fires 9+ parallel queries
-    idleTimeoutMillis: 0,          // never drop idle connections
-    connectionTimeoutMillis: 15000, // fail fast instead of 30s default
+    // Supavisor caps client connections at 200. Under Fluid Compute, instances
+    // stay warm for minutes — any idle connection we hold is a client slot the
+    // rest of the fleet can't use. With ~20 warm instances × max:10, idle
+    // conns previously piled up and we hit `FATAL: max client connections
+    // reached`. Keep burst capacity for the posts API's 9 parallel queries,
+    // but release idle conns so the pool shrinks between requests.
+    max: 10,
+    idleTimeoutMillis: 10_000,
+    allowExitOnIdle: true,
+    connectionTimeoutMillis: 15000,
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({

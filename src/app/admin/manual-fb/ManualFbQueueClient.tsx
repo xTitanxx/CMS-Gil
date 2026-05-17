@@ -9,12 +9,15 @@ import {
   Clock,
   Copy,
   Loader2,
-  RefreshCw,
   Share2,
   Trash2,
 } from "lucide-react";
-import { PageHeader } from "../_shared/PageHeader";
 import { PostingHubTabs } from "../_shared/PostingHubTabs";
+import {
+  PostingListView,
+  type PostingFilterDef,
+  type PostingSortDef,
+} from "../_shared/PostingListView";
 
 export type QueueItem = {
   // slotId is null for ad-hoc items (not on the weekly planner).
@@ -62,7 +65,9 @@ function formatScheduled(iso: string): string {
   return `${d.toLocaleDateString([], dateOpts)} · ${d.toLocaleTimeString([], timeOpts)}`;
 }
 
-function relativeStatus(iso: string): { label: string; tone: "overdue" | "soon" | "future" } {
+type Tone = "overdue" | "soon" | "future";
+
+function relativeStatus(iso: string): { label: string; tone: Tone } {
   const t = new Date(iso).getTime();
   const now = Date.now();
   const diffMin = Math.round((t - now) / 60_000);
@@ -167,8 +172,6 @@ async function shareToFb(opts: {
   const fallbackName = `gil-${opts.postId}`;
 
   // Mobile path: Web Share API with files + text → iOS share sheet → FB app.
-  // UA-sniff so macOS Safari (which also exposes navigator.share but won't
-  // accept files in any useful way) goes straight to the desktop path.
   if (isMobileUserAgent() && nav.share && nav.canShare) {
     const files = await buildShareFiles(opts.media, fallbackName);
     const payload = { text: opts.body, files };
@@ -187,9 +190,6 @@ async function shareToFb(opts: {
   const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
   await copyTextToClipboard(opts.body);
 
-  // Download every media file to the user's Downloads folder so they can
-  // drag-and-drop into the FB composer. Browsers happily run multiple
-  // .download anchor clicks back-to-back when triggered from a single gesture.
   for (const m of opts.media) {
     if (!m.url) continue;
     try {
@@ -232,9 +232,61 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
     setItems((prev) => prev.filter((i) => i.postId !== postId));
   }
 
+  const sortOptions = useMemo<PostingSortDef<QueueItem>[]>(
+    () => [
+      {
+        value: "due_asc",
+        label: "Most overdue first",
+        compare: (a, b) =>
+          new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+      },
+      {
+        value: "due_desc",
+        label: "Furthest out first",
+        compare: (a, b) =>
+          new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
+      },
+    ],
+    [],
+  );
+
+  const filters = useMemo<PostingFilterDef<QueueItem>[]>(
+    () => [
+      {
+        id: "tone",
+        title: "Timing",
+        options: [
+          { value: "overdue", label: "Overdue" },
+          { value: "soon", label: "Due soon (< 24h)" },
+          { value: "future", label: "Further out" },
+        ],
+        valueFor: (i) => relativeStatus(i.scheduledAt).tone,
+      },
+      {
+        id: "source",
+        title: "Source",
+        options: [
+          { value: "planner", label: "Weekly planner" },
+          { value: "adhoc", label: "Ad-hoc / Post now" },
+        ],
+        valueFor: (i) => (i.slotId == null ? "adhoc" : "planner"),
+      },
+      {
+        id: "media",
+        title: "Media",
+        options: [
+          { value: "with", label: "Has media" },
+          { value: "none", label: "Caption only" },
+        ],
+        valueFor: (i) => (i.media.length > 0 ? "with" : "none"),
+      },
+    ],
+    [],
+  );
+
   const subtitle =
     items.length === 0
-      ? "Nothing waiting — you're caught up. Posts marked as posted move to Published."
+      ? "Nothing waiting — you're caught up."
       : overdueCount > 0
         ? `${overdueCount} overdue · ${items.length} total`
         : `${items.length} waiting`;
@@ -242,46 +294,29 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
   return (
     <>
       <PostingHubTabs />
-      <PageHeader
+      <PostingListView<QueueItem>
         title="Manual FB"
         subtitle={subtitle}
-        actions={
-          <button
-            type="button"
-            onClick={() => void refetchQueue()}
-            disabled={refreshing}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-50"
-            aria-label="Refresh"
-          >
-            {refreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </button>
-        }
+        items={items}
+        onRefresh={refetchQueue}
+        refreshing={refreshing}
+        itemNoun={{ singular: "post", plural: "posts" }}
+        getId={(i) => i.slotId ?? `post:${i.postId}`}
+        searchKeys={(i) => [i.body]}
+        sortOptions={sortOptions}
+        filters={filters}
+        emptyState={<EmptyQueue />}
+        renderRow={(item) => (
+          <QueueRow item={item} onCleared={() => removeQueueItem(item.postId)} />
+        )}
       />
-
-      {items.length === 0 ? (
-        <EmptyQueue />
-      ) : (
-        <ul className="mx-auto w-full max-w-2xl space-y-2.5">
-          {items.map((item) => (
-            <QueueRow
-              key={item.slotId ?? `post:${item.postId}`}
-              item={item}
-              onCleared={() => removeQueueItem(item.postId)}
-            />
-          ))}
-        </ul>
-      )}
     </>
   );
 }
 
 function EmptyQueue() {
   return (
-    <div className="mx-auto w-full max-w-2xl rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
+    <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
         <Check className="h-6 w-6 text-emerald-700" strokeWidth={2.5} />
       </div>
@@ -417,7 +452,7 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
   const helperHref = item.slotId ? `/admin/m/${item.postId}?slot=${item.slotId}` : `/admin/m/${item.postId}`;
 
   return (
-    <li
+    <div
       className={`overflow-hidden rounded-2xl border shadow-sm transition-all ${toneRing} ${
         cleared ? "translate-x-2 opacity-0" : "opacity-100"
       }`}
@@ -611,7 +646,6 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
           {shareError ?? actionError}
         </p>
       )}
-    </li>
+    </div>
   );
 }
-

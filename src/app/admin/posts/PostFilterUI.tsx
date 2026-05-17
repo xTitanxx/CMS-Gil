@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import {
   SlidersHorizontal,
   ArrowUpDown,
@@ -13,138 +12,11 @@ import {
   X,
   Check,
 } from "lucide-react";
-
-/**
- * Clamps a `right-0`-anchored dropdown so it stays within the viewport.
- * Returns the inline `right` value (in px) to apply to the menu element.
- * Falls back to 0 (button-anchored) when the dropdown already fits.
- */
-function useClampedDropdown(
-  open: boolean,
-  parentRef: React.RefObject<HTMLDivElement | null>,
-  menuRef: React.RefObject<HTMLDivElement | null>,
-) {
-  const [right, setRight] = useState(0);
-  useLayoutEffect(() => {
-    if (!open) return;
-    function update() {
-      const parent = parentRef.current;
-      const menu = menuRef.current;
-      if (!parent || !menu) return;
-      const parentRect = parent.getBoundingClientRect();
-      const menuWidth = menu.offsetWidth;
-      const margin = 8;
-      const vw = window.innerWidth;
-      // dropdown.right (screen) = parent.right - r; dropdown.left = parent.right - r - menuWidth
-      // want dropdown.right <= vw - margin → r >= parent.right - vw + margin (minR)
-      // want dropdown.left >= margin     → r <= parent.right - menuWidth - margin (maxR)
-      const minR = parentRect.right - vw + margin;
-      const maxR = parentRect.right - menuWidth - margin;
-      let r = 0;
-      if (r < minR) r = minR;
-      if (r > maxR) r = maxR;
-      setRight(r);
-    }
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [open, parentRef, menuRef]);
-  return right;
-}
-
-/**
- * Tailwind's `md` breakpoint (768px) as a media query. Used to render the
- * filter/sort dropdowns as a proper bottom sheet on mobile while keeping
- * the desktop dropdown UX untouched.
- */
-function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const update = () => setMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-  return mobile;
-}
-
-/**
- * Mobile bottom sheet: fixed full-width panel that slides up from below.
- * Renders via portal so parent overflow doesn't clip it and the body
- * scrolls are locked while open.
- */
-function BottomSheet({
-  open,
-  onClose,
-  title,
-  rightAction,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  rightAction?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open, onClose]);
-
-  if (!open || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center md:hidden">
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/40 animate-[fade-in_0.15s_ease-out]"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative flex max-h-[88vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl animate-[slide-up_0.18s_cubic-bezier(0.32,0.72,0,1)]"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
-      >
-        <div className="flex justify-center pt-2.5 pb-1">
-          <span aria-hidden className="h-1.5 w-10 rounded-full bg-gray-300" />
-        </div>
-        <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 pb-3 pt-1">
-          <span className="min-w-0 truncate text-base font-semibold text-gray-900">
-            {title}
-          </span>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            {rightAction}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3">
-          {children}
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
+import {
+  BottomSheet,
+  useClampedDropdown,
+  useIsMobile,
+} from "@/app/admin/_shared/MenuPrimitives";
 import {
   CONTENT_CATEGORIES,
   AUDIO_CATEGORIES,

@@ -10,11 +10,10 @@ import {
   Copy,
   Loader2,
   RefreshCw,
-  RotateCcw,
   Share2,
   Trash2,
 } from "lucide-react";
-import { SiFacebook } from "react-icons/si";
+import { PageHeader } from "../_shared/PageHeader";
 import { PostingHubTabs } from "../_shared/PostingHubTabs";
 
 export type QueueItem = {
@@ -28,17 +27,6 @@ export type QueueItem = {
   platformUrl: string | null;
   media: { id: string; mimeType: string; url: string | null }[];
 };
-
-export type HistoryItem = {
-  publishRecordId: string;
-  postId: string;
-  body: string;
-  recordedAt: string;
-  status: "PUBLISHED" | "CANCELLED";
-  media: { id: string; mimeType: string; url: string | null }[];
-};
-
-type Tab = "queue" | "history";
 
 function posterUrl(media: { mimeType: string; url: string | null }[]): string | null {
   const first = media[0];
@@ -88,16 +76,6 @@ function relativeStatus(iso: string): { label: string; tone: "overdue" | "soon" 
   if (diffMin < 60) return { label: `In ${diffMin || 0}m`, tone: "soon" };
   if (diffMin < 60 * 24) return { label: `In ${Math.round(diffMin / 60)}h`, tone: "soon" };
   return { label: `In ${Math.round(diffMin / (60 * 24))}d`, tone: "future" };
-}
-
-function relativeAgo(iso: string): string {
-  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const h = Math.round(diffMin / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -230,10 +208,7 @@ async function shareToFb(opts: {
 
 export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[] }) {
   const [items, setItems] = useState<QueueItem[]>(initialItems);
-  const [tab, setTab] = useState<Tab>("queue");
   const [refreshing, setRefreshing] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[] | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   const overdueCount = useMemo(
     () => items.filter((i) => new Date(i.scheduledAt).getTime() < Date.now()).length,
@@ -253,155 +228,60 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
     }
   }, []);
 
-  const refetchHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    try {
-      const res = await fetch("/api/admin/manual-fb-queue/history", { cache: "no-store" });
-      if (res.ok) {
-        const data = (await res.json()) as { items: HistoryItem[] };
-        setHistory(data.items);
-      }
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  // Lazy-load history on first switch.
-  useEffect(() => {
-    if (tab === "history" && history === null && !historyLoading) {
-      void refetchHistory();
-    }
-  }, [tab, history, historyLoading, refetchHistory]);
-
-  const refresh = tab === "queue" ? refetchQueue : refetchHistory;
-  const refreshingNow = tab === "queue" ? refreshing : historyLoading;
-
   function removeQueueItem(postId: string) {
     setItems((prev) => prev.filter((i) => i.postId !== postId));
   }
 
-  function removeHistoryItem(postId: string) {
-    setHistory((prev) => (prev ? prev.filter((i) => i.postId !== postId) : prev));
-  }
+  const subtitle =
+    items.length === 0
+      ? "Nothing waiting — you're caught up. Posts marked as posted move to Published."
+      : overdueCount > 0
+        ? `${overdueCount} overdue · ${items.length} total`
+        : `${items.length} waiting`;
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-3 py-2 md:py-0">
+    <>
       <PostingHubTabs />
-      <header className="flex items-center justify-between gap-3 px-1 pt-1 md:pt-0">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">
-            <SiFacebook className="h-5 w-5 shrink-0 text-[#1877F2]" />
-            <span className="truncate">Manual FB queue</span>
-          </h1>
-          <p className="mt-0.5 truncate text-[13px] text-gray-500">
-            {tab === "queue"
-              ? items.length === 0
-                ? "Nothing waiting — you're caught up."
-                : overdueCount > 0
-                  ? `${overdueCount} overdue · ${items.length} total`
-                  : `${items.length} scheduled`
-              : history === null
-                ? "Loading history…"
-                : history.length === 0
-                  ? "No recent activity."
-                  : `${history.length} cleared in the last 30 days`}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={refreshingNow}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-50"
-          aria-label="Refresh"
-        >
-          {refreshingNow ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-        </button>
-      </header>
+      <PageHeader
+        title="Manual FB"
+        subtitle={subtitle}
+        actions={
+          <button
+            type="button"
+            onClick={() => void refetchQueue()}
+            disabled={refreshing}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-50"
+            aria-label="Refresh"
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </button>
+        }
+      />
 
-      <Tabs tab={tab} setTab={setTab} queueCount={items.length} historyCount={history?.length ?? null} />
-
-      {tab === "queue" ? (
-        items.length === 0 ? (
-          <EmptyQueue />
-        ) : (
-          <ul className="space-y-2.5">
-            {items.map((item) => (
-              <QueueRow
-                key={item.slotId ?? `post:${item.postId}`}
-                item={item}
-                onCleared={() => removeQueueItem(item.postId)}
-              />
-            ))}
-          </ul>
-        )
-      ) : history === null || historyLoading ? (
-        <HistorySkeleton />
-      ) : history.length === 0 ? (
-        <EmptyHistory />
+      {items.length === 0 ? (
+        <EmptyQueue />
       ) : (
-        <ul className="space-y-2.5">
-          {history.map((item) => (
-            <HistoryRow
-              key={item.publishRecordId}
+        <ul className="mx-auto w-full max-w-2xl space-y-2.5">
+          {items.map((item) => (
+            <QueueRow
+              key={item.slotId ?? `post:${item.postId}`}
               item={item}
-              onUndone={() => {
-                removeHistoryItem(item.postId);
-                void refetchQueue();
-              }}
+              onCleared={() => removeQueueItem(item.postId)}
             />
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-function Tabs({
-  tab,
-  setTab,
-  queueCount,
-  historyCount,
-}: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  queueCount: number;
-  historyCount: number | null;
-}) {
-  return (
-    <div className="flex w-full gap-1 rounded-xl bg-gray-100 p-1 text-[13px] font-medium">
-      <button
-        type="button"
-        onClick={() => setTab("queue")}
-        className={`flex flex-1 min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-1.5 transition-colors ${
-          tab === "queue" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-        }`}
-      >
-        <span className="truncate">Queue</span>
-        <span className="rounded-full bg-gray-200/80 px-1.5 text-[11px] text-gray-700">{queueCount}</span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setTab("history")}
-        className={`flex flex-1 min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-1.5 transition-colors ${
-          tab === "history" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-        }`}
-      >
-        <span className="truncate">History</span>
-        {historyCount !== null && (
-          <span className="rounded-full bg-gray-200/80 px-1.5 text-[11px] text-gray-700">{historyCount}</span>
-        )}
-      </button>
-    </div>
+    </>
   );
 }
 
 function EmptyQueue() {
   return (
-    <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
+    <div className="mx-auto w-full max-w-2xl rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
         <Check className="h-6 w-6 text-emerald-700" strokeWidth={2.5} />
       </div>
@@ -409,26 +289,6 @@ function EmptyQueue() {
       <p className="mt-1 text-[13px] text-gray-500">
         No scheduled posts are waiting to be cross-posted to Facebook personal.
       </p>
-    </div>
-  );
-}
-
-function EmptyHistory() {
-  return (
-    <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
-      <h2 className="text-base font-semibold text-gray-900">No history yet</h2>
-      <p className="mt-1 text-[13px] text-gray-500">
-        Items you mark as posted or skip will appear here so you can undo them.
-      </p>
-    </div>
-  );
-}
-
-function HistorySkeleton() {
-  return (
-    <div className="mt-4 flex items-center justify-center py-8 text-gray-500">
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-      <span className="text-[13px]">Loading history…</span>
     </div>
   );
 }
@@ -755,98 +615,3 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
   );
 }
 
-function HistoryRow({ item, onUndone }: { item: HistoryItem; onUndone: () => void }) {
-  const poster = posterUrl(item.media);
-  const [undoing, setUndoing] = useState(false);
-  const [undone, setUndone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const removeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (removeTimer.current) clearTimeout(removeTimer.current);
-    };
-  }, []);
-
-  async function handleUndo() {
-    if (undoing || undone) return;
-    setUndoing(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/posts/${item.postId}/manual-publish?platform=FACEBOOK`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data?.error ?? "Couldn't undo");
-        return;
-      }
-      setUndone(true);
-      removeTimer.current = setTimeout(onUndone, 450);
-    } catch {
-      setError("Network error");
-    } finally {
-      setUndoing(false);
-    }
-  }
-
-  const isPosted = item.status === "PUBLISHED";
-  const statusPill = isPosted
-    ? "bg-emerald-100 text-emerald-800"
-    : "bg-gray-200 text-gray-700";
-  const statusIcon = isPosted ? <Check className="h-3 w-3" strokeWidth={2.5} /> : <Ban className="h-3 w-3" />;
-  const statusLabel = isPosted ? "Posted" : "Skipped";
-
-  return (
-    <li
-      className={`overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all ${
-        undone ? "translate-x-2 opacity-0" : "opacity-100"
-      }`}
-    >
-      <div className="flex gap-3 p-3">
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-200">
-          {poster ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={poster} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-gray-400">
-              No media
-            </div>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span
-              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusPill}`}
-            >
-              {statusIcon}
-              {statusLabel}
-            </span>
-            <span className="truncate text-[11px] text-gray-500">{relativeAgo(item.recordedAt)}</span>
-          </div>
-          <p className="mt-1 line-clamp-2 break-words text-[13px] leading-snug text-gray-800">
-            {item.body || <span className="italic text-gray-400">No caption.</span>}
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={handleUndo}
-        disabled={undoing || undone}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-black/[0.04] bg-white/60 py-2.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-60"
-      >
-        {undoing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : undone ? (
-          <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
-        ) : (
-          <RotateCcw className="h-3.5 w-3.5" />
-        )}
-        {undone ? "Restored to queue" : isPosted ? "Unmark posted" : "Restore to queue"}
-      </button>
-      {error && (
-        <p className="border-t border-red-100 bg-red-50 px-3 py-1.5 text-[11px] text-red-700">{error}</p>
-      )}
-    </li>
-  );
-}

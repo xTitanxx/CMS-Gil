@@ -5,6 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import {
   CalendarCheck,
+  ChevronRight,
   Image as ImageIcon,
   Loader2,
   Music,
@@ -13,6 +14,7 @@ import {
   Video,
   VolumeX,
 } from "lucide-react";
+import { SiFacebook } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/useAsync";
@@ -60,29 +62,49 @@ export function ScheduledListView() {
   const [plan, setPlan] = useState<WeeklyPlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"clear" | "schedule-all" | null>(null);
+  // Set of postIds that still need a manual FB cross-post. Populated from the
+  // same endpoint the Manual FB tab uses so the two views stay in sync.
+  const [fbPendingPostIds, setFbPendingPostIds] = useState<Set<string>>(new Set());
 
   const refreshPlan = useCallback(async () => {
     const res = await fetch("/api/planner/current");
     if (res.ok) setPlan((await res.json()) as WeeklyPlanData);
   }, []);
 
+  const refreshFbPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/manual-fb-queue", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { items: { postId: string }[] };
+      setFbPendingPostIds(new Set(data.items.map((i) => i.postId)));
+    } catch {
+      // best-effort; absence just means "no decoration", not a fatal error
+    }
+  }, []);
+
   useEffect(() => {
     void refreshPlan().finally(() => setLoading(false));
-  }, [refreshPlan]);
+    void refreshFbPending();
+  }, [refreshPlan, refreshFbPending]);
 
   const todayKey = todayUTCKey();
 
+  // A slot stays on Scheduled if it hasn't been published yet, OR if its post
+  // still needs a manual FB cross-post (the post has fired on API platforms
+  // but the user hasn't pasted to FB Personal yet). Everything else moves to
+  // the Published tab, so this list only ever shows "still to do".
   const upcoming = useMemo(() => {
     if (!plan) return [];
     return plan.slots
       .filter((s) => s.day >= todayKey)
+      .filter((s) => !s.published || fbPendingPostIds.has(s.postId))
       .sort((a, b) => {
         if (a.day !== b.day) return a.day < b.day ? -1 : 1;
         const ha = a.hour ?? -1;
         const hb = b.hour ?? -1;
         return ha - hb;
       });
-  }, [plan, todayKey]);
+  }, [plan, todayKey, fbPendingPostIds]);
 
   const activeSlots = useMemo(
     () => upcoming.filter((s) => s.status === "PROPOSED" || s.status === "APPROVED"),
@@ -216,6 +238,7 @@ export function ScheduledListView() {
               slot={slot}
               queueIndex={index + 1}
               todayKey={todayKey}
+              fbPending={fbPendingPostIds.has(slot.postId)}
               onUnschedule={handleUnschedule}
               onSchedule={handleScheduleOne}
             />
@@ -230,11 +253,21 @@ interface ScheduledRowProps {
   slot: PlanSlotData;
   queueIndex: number;
   todayKey: string;
+  /** True when the post has been auto-published to API platforms but still
+   *  needs a manual FB Personal cross-post. Drives the in-row CTA. */
+  fbPending: boolean;
   onUnschedule: (slot: PlanSlotData) => Promise<void>;
   onSchedule: (slotId: string) => Promise<void>;
 }
 
-function ScheduledRow({ slot, queueIndex, todayKey, onUnschedule, onSchedule }: ScheduledRowProps) {
+function ScheduledRow({
+  slot,
+  queueIndex,
+  todayKey,
+  fbPending,
+  onUnschedule,
+  onSchedule,
+}: ScheduledRowProps) {
   const kind = statusKind(slot);
   const { post } = slot;
   const platforms = dedupePlatforms(slot.platforms);
@@ -261,13 +294,20 @@ function ScheduledRow({ slot, queueIndex, todayKey, onUnschedule, onSchedule }: 
   const isPublished = kind === "published";
   const showSchedule = kind === "proposed";
   const showRemove = !isPublished;
+  // A published slot that's still in the FB queue is the one case we keep on
+  // this tab — surface that loudly with an amber border + CTA, so the user
+  // can tell at a glance which scheduled item is blocked on them.
+  const outerCls = fbPending
+    ? "border-amber-300 ring-amber-200 hover:border-amber-400"
+    : isPublished
+      ? "border-gray-100 opacity-60"
+      : "border-gray-100 hover:border-gray-200";
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm ring-1 ring-black/[0.02] transition-all hover:shadow-md md:gap-4 md:p-4 ${
-        isPublished ? "border-gray-100 opacity-60" : "border-gray-100 hover:border-gray-200"
-      }`}
+      className={`overflow-hidden rounded-2xl border bg-white shadow-sm ring-1 ring-black/[0.02] transition-all hover:shadow-md ${outerCls}`}
     >
+    <div className="flex items-center gap-3 p-3 md:gap-4 md:p-4">
       <Link href={href} className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-20 md:w-20">
           {post.thumbUrl ? (
@@ -324,9 +364,13 @@ function ScheduledRow({ slot, queueIndex, todayKey, onUnschedule, onSchedule }: 
               )}
             </span>
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_PILL[kind]}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                fbPending
+                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
+                  : STATUS_PILL[kind]
+              }`}
             >
-              {STATUS_LABEL[kind]}
+              {fbPending ? "Needs FB" : STATUS_LABEL[kind]}
             </span>
             {platforms.length > 0 && (
               <span className="flex items-center gap-1">
@@ -404,6 +448,23 @@ function ScheduledRow({ slot, queueIndex, todayKey, onUnschedule, onSchedule }: 
           </>
         )}
       </div>
+    </div>
+    {fbPending && (
+      <Link
+        href={`/admin/m/${post.id}`}
+        className="flex items-center justify-between gap-2 border-t border-amber-200 bg-amber-50/60 px-3 py-2 text-[13px] font-medium text-amber-900 hover:bg-amber-100/70 active:bg-amber-100 md:px-4"
+        title="Open the manual FB posting helper"
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <SiFacebook className="h-3.5 w-3.5 shrink-0 text-[#1877F2]" />
+          <span className="truncate">Still needs manual FB cross-post</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5 text-amber-800">
+          <span className="hidden sm:inline">Open helper</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      </Link>
+    )}
     </div>
   );
 }

@@ -33,7 +33,7 @@ export interface PostRowData {
   platformUrl: string | null;
   share: { url?: string; source?: string; name?: string } | null;
   media: { id: string; mimeType: string; hasAudio: boolean | null; audioTrackId: string | null }[];
-  publishes: { platform: string; status: string; publishedAt: string | null }[];
+  publishes: { platform: string; status: string; publishedAt: string | null; platformUrl: string | null }[];
   analytics: { platform: string; reactions: number | null; comments: number | null; shares: number | null }[];
   rating: { stars: number } | null;
   captionQuality: number | null;

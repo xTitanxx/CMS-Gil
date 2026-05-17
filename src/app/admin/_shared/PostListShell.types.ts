@@ -11,6 +11,7 @@ import type {
   QualityValue,
   CaptionQualityValue,
   EnrichedValue,
+  SortOption,
 } from "@/app/admin/posts/PostFilterUI";
 
 export type KindFilter = "posts" | "stories";
@@ -56,6 +57,10 @@ export interface PostListShellProps<TPost> {
   renderRow: (post: TPost, index: number) => ReactNode;
   listClassName?: string;
   hideKindTabs?: boolean;
+  /** Restrict the sort menu to a specific subset of options. Defaults to the
+   *  global SORT_OPTIONS list when omitted. The first entry's value is used
+   *  as the default sort if no `?sort=` query param is present. */
+  sortOptions?: SortOption[];
   showSelectAll?: boolean;
   onSelectAllToggle?: (selectAll: boolean, visiblePosts: TPost[]) => void;
   allSelected?: boolean;

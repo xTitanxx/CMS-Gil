@@ -94,6 +94,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     renderRow,
     listClassName,
     hideKindTabs,
+    sortOptions,
     showSelectAll,
     onSelectAllToggle,
     allSelected,
@@ -113,7 +114,8 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
     : "all";
 
   const initialSearch = searchParams.get("search") ?? "";
-  const initialSort = searchParams.get("sort") ?? "originalDate_desc";
+  const defaultSort = sortOptions?.[0]?.value ?? "originalDate_desc";
+  const initialSort = searchParams.get("sort") ?? defaultSort;
   const initialTagsParam = searchParams.get("tags");
   const initialTags = initialTagsParam ? initialTagsParam.split(",").filter(Boolean) : [];
 
@@ -629,7 +631,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
                 <span className="hidden sm:inline">Clear</span>
               </Button>
             )}
-            <SortMenu sort={sort} setSort={setSort} />
+            <SortMenu sort={sort} setSort={setSort} options={sortOptions} />
             <ReshuffleButton
               sort={sort}
               onDone={() => {

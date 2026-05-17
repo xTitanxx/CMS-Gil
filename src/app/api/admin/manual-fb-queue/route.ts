@@ -44,6 +44,9 @@ export async function GET(req: NextRequest) {
       plan: { userId },
       status: { in: ["APPROVED", "SCHEDULED"] },
       day: { gte: lookbackDayKey },
+      // Opt-in: only slots where the user picked the FB Personal chip in the
+      // suggester or post page. Pre-marker slots are excluded by design.
+      platforms: { has: "FACEBOOK_PERSONAL" },
     },
     select: {
       id: true,

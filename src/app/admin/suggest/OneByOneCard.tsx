@@ -11,7 +11,7 @@ import {
   ChevronRight,
   Volume2,
   VolumeX,
-  Bell,
+  HelpCircle,
 } from "lucide-react";
 import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
@@ -32,7 +32,18 @@ interface Props {
   onAccept: (input: { body: string; platforms: string[]; slot: SuggestedSlot }) => Promise<void>;
 }
 
-const PUBLISHABLE_PLATFORMS = [
+const FB_PERSONAL = "FACEBOOK_PERSONAL";
+
+type ChipDef = {
+  key: string;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  activeClasses: string;
+  manual?: boolean;
+};
+
+const AUTO_PLATFORMS: ChipDef[] = [
   {
     key: "FACEBOOK_PAGE",
     label: "FB Page",
@@ -66,9 +77,21 @@ const PUBLISHABLE_PLATFORMS = [
     label: "TikTok",
     Icon: SiTiktok,
     color: "text-[#111111]",
-    activeClasses: "border-gray-900 bg-gray-900 text-white",
+    activeClasses: "border-gray-900 bg-gray-100 text-gray-900",
   },
-] as const;
+];
+
+const FB_PERSONAL_CHIP: ChipDef = {
+  key: FB_PERSONAL,
+  label: "FB Personal",
+  Icon: SiFacebook,
+  color: "text-[#1877F2]",
+  activeClasses:
+    "border-dashed border-[#1877F2] bg-[#1877F2]/5 text-[#1877F2]",
+  manual: true,
+};
+
+const ALL_CHIPS: ChipDef[] = [...AUTO_PLATFORMS, FB_PERSONAL_CHIP];
 
 function formatSlotParts(day: string, hour: number): { when: string; weekday: string; date: string; time: string } {
   const d = new Date(day + "T00:00:00Z");
@@ -94,19 +117,23 @@ const MAX_ROTATION_DEG = 6;
 export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip, onAccept }: Props) {
   // Eligibility is derived from the candidate's media-type mix, not from
   // `requiresVideo` per platform — the rules differ (IG needs media-of-any-
-  // kind, FB/LI accept text). Defaults select every eligible platform so the
-  // user only has to deselect; ineligible chips are disabled.
+  // kind, FB/LI accept text). FB Personal is manual so it bypasses eligibility.
+  // Defaults: every eligible auto platform + FB Personal (opt-out model).
   const shape = mediaShapeFromMimeTypes(candidate.media.map((m) => m.mimeType));
-  const eligible = eligiblePlatforms(shape, PUBLISHABLE_PLATFORMS.map((p) => p.key));
-  const defaultPlatforms =
-    initialPlatforms.length > 0
-      ? initialPlatforms.filter((p) => eligible.includes(p))
-      : eligible;
+  const eligibleAuto = eligiblePlatforms(shape, AUTO_PLATFORMS.map((p) => p.key));
+  const defaultPlatforms = (() => {
+    if (initialPlatforms.length > 0) {
+      const kept = initialPlatforms.filter(
+        (p) => p === FB_PERSONAL || eligibleAuto.includes(p),
+      );
+      return kept.includes(FB_PERSONAL) ? kept : [...kept, FB_PERSONAL];
+    }
+    return [...eligibleAuto, FB_PERSONAL];
+  })();
 
   const [body, setBody] = useState(candidate.body);
   const [editing, setEditing] = useState(false);
   const [platforms, setPlatforms] = useState<string[]>(defaultPlatforms);
-  const [reminderFb, setReminderFb] = useState(true);
   const [mediaIdx, setMediaIdx] = useState(0);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -122,7 +149,6 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
     setBody(candidate.body);
     setEditing(false);
     setPlatforms(defaultPlatforms);
-    setReminderFb(true);
     setMediaIdx(0);
     setAccepted(false);
     setMuted(true);
@@ -139,9 +165,11 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
   const hasMultipleMedia = candidate.media.length > 1;
 
   const togglePlatform = (key: string) => {
-    if (!isPlatformEligible(key, shape)) return;
+    if (key !== FB_PERSONAL && !isPlatformEligible(key, shape)) return;
     setPlatforms((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
   };
+
+  const hasFbPersonal = platforms.includes(FB_PERSONAL);
 
   const fireAccept = async () => {
     if (accepting || accepted) return;
@@ -329,55 +357,61 @@ export function OneByOneCard({ candidate, initialSlot, initialPlatforms, onSkip,
         Publish to
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {PUBLISHABLE_PLATFORMS.map(({ key, label, Icon, color, activeClasses }) => {
-          const active = platforms.includes(key);
-          const reason = ineligibilityReason(key, shape);
+        {ALL_CHIPS.map((chip) => {
+          const active = platforms.includes(chip.key);
+          const reason = chip.manual ? null : ineligibilityReason(chip.key, shape);
           const disabled = reason !== null;
-          const iconColor = disabled
-            ? "text-gray-300"
-            : active
-              ? key === "TIKTOK"
-                ? "text-white"
-                : color
-              : color;
           return (
             <button
-              key={key}
-              onClick={() => togglePlatform(key)}
+              key={chip.key}
+              type="button"
+              onClick={() => togglePlatform(chip.key)}
               disabled={disabled}
-              title={reason ?? undefined}
+              title={
+                reason ??
+                (chip.manual
+                  ? "Manual — get a push reminder to post yourself"
+                  : undefined)
+              }
+              aria-pressed={active}
               aria-disabled={disabled}
-              className={`flex min-w-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                disabled
+              className={`group inline-flex min-w-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                reason
                   ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300"
                   : active
-                    ? activeClasses
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    ? chip.activeClasses
+                    : chip.manual
+                      ? "border-dashed border-gray-300 bg-white text-gray-600 hover:border-[#1877F2]/40 hover:bg-[#1877F2]/5 hover:text-[#1877F2]"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
               }`}
             >
-              <Icon className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} />
-              <span className="truncate">{label}</span>
+              <chip.Icon
+                className={`h-3.5 w-3.5 shrink-0 ${reason ? "text-gray-300" : chip.color}`}
+              />
+              <span className="truncate">{chip.label}</span>
+              {chip.manual && (
+                <span
+                  className={`shrink-0 rounded-sm px-1 py-px text-[8px] font-bold uppercase tracking-wider ${
+                    active
+                      ? "bg-[#1877F2]/15 text-[#1877F2]"
+                      : "bg-gray-100 text-gray-400 group-hover:bg-[#1877F2]/10 group-hover:text-[#1877F2]"
+                  }`}
+                >
+                  Manual
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-      <label className="mt-2.5 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-[12px] text-amber-900">
-        <input
-          type="checkbox"
-          checked={reminderFb}
-          onChange={(e) => setReminderFb(e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-amber-300"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1 font-semibold">
-            <Bell className="h-3 w-3 shrink-0" />
-            FB personal reminder
+      {hasFbPersonal && (
+        <div className="mt-2 flex items-start gap-1.5 text-[11px] text-gray-500">
+          <HelpCircle className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
+          <span className="min-w-0 break-words">
+            FB Personal posts manually — you&apos;ll get a push reminder 15 minutes before the slot.
           </span>
-          <span className="block text-[11px] text-amber-800">
-            Get a notification before this slot to manually post on Facebook personal.
-          </span>
-        </span>
-      </label>
+        </div>
+      )}
     </div>
   );
 

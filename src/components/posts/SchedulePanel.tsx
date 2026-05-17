@@ -89,7 +89,7 @@ const AUTO_PLATFORMS: ChipDef[] = [
     label: "TikTok",
     Icon: SiTiktok,
     iconColor: "text-[#111111]",
-    activeClasses: "border-gray-900 bg-gray-900 text-white",
+    activeClasses: "border-gray-900 bg-gray-100 text-gray-900",
   },
 ];
 
@@ -310,8 +310,7 @@ export function SchedulePanel({ postId, media, onChanged }: SchedulePanelProps) 
               ? null
               : ineligibilityReason(chip.key, shape);
             const disabled = reason !== null || scheduled || busy !== null;
-            const iconColor =
-              chip.key === "TIKTOK" && active ? "text-white" : chip.iconColor;
+            const iconColor = chip.iconColor;
             return (
               <button
                 key={chip.key}

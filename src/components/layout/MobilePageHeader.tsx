@@ -8,9 +8,9 @@ import { usePathname } from "next/navigation";
 const TITLES: Record<string, string> = {
   "/admin/posts": "Posts",
   "/admin/triage": "Triage",
-  "/admin/scheduled": "Scheduled",
-  "/admin/manual-fb": "Manual FB",
-  "/admin/published": "Published",
+  "/admin/scheduled": "Posting",
+  "/admin/manual-fb": "Posting",
+  "/admin/published": "Posting",
   "/admin/connections": "Connections",
   "/admin/import": "Import",
   "/admin/audio": "Audio",

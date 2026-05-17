@@ -11,10 +11,83 @@ import {
   Images,
   FileText,
   ChevronDown,
+  Hand,
 } from "lucide-react";
+import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
+import { FaLinkedin } from "react-icons/fa";
 import { PlatformIcons } from "@/app/admin/scheduled/PlatformIcons";
 import { displayBody } from "@/lib/post-body";
 import type { PostRowData } from "@/app/admin/posts/PostRow";
+
+type PlatformIconComponent = React.ComponentType<{ className?: string }>;
+
+const PLATFORM_META: Record<
+  string,
+  { label: string; icon: PlatformIconComponent; iconColor: string; manual?: boolean }
+> = {
+  // FACEBOOK = personal profile. The hub has no API path to a personal
+  // profile, so every PublishRecord with platform=FACEBOOK was recorded
+  // after the user manually pasted into Facebook themselves.
+  FACEBOOK: {
+    label: "FB Personal",
+    icon: SiFacebook as PlatformIconComponent,
+    iconColor: "text-[#1877F2]",
+    manual: true,
+  },
+  FACEBOOK_PAGE: {
+    label: "FB Page",
+    icon: SiFacebook as PlatformIconComponent,
+    iconColor: "text-[#1877F2]",
+  },
+  INSTAGRAM: {
+    label: "Instagram",
+    icon: SiInstagram as PlatformIconComponent,
+    iconColor: "text-pink-600",
+  },
+  LINKEDIN: {
+    label: "LinkedIn",
+    icon: FaLinkedin as PlatformIconComponent,
+    iconColor: "text-blue-700",
+  },
+  YOUTUBE: {
+    label: "YouTube",
+    icon: SiYoutube as PlatformIconComponent,
+    iconColor: "text-red-600",
+  },
+  TIKTOK: {
+    label: "TikTok",
+    icon: SiTiktok as PlatformIconComponent,
+    iconColor: "text-gray-900",
+  },
+};
+
+function PlatformPills({ platforms }: { platforms: string[] }) {
+  if (platforms.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {platforms.map((p) => {
+        const meta = PLATFORM_META[p];
+        if (!meta) return null;
+        const Icon = meta.icon;
+        return (
+          <span
+            key={p}
+            className={`inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+              meta.manual
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-gray-200 bg-gray-50 text-gray-600"
+            }`}
+            title={meta.manual ? `Manually posted to ${meta.label}` : `Posted to ${meta.label}`}
+          >
+            <Icon className={`h-3 w-3 shrink-0 ${meta.iconColor}`} />
+            <span className="truncate">{meta.label}</span>
+            {meta.manual && <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 interface Props {
   post: PostRowData;
@@ -198,13 +271,10 @@ export function PublishedPostRow({ post, index, href }: Props) {
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}
+          <div className="mt-1.5">
+            <PlatformPills platforms={platforms} />
+          </div>
         </div>
-
-        <PlatformIcons
-          platforms={platforms}
-          size={18}
-          className="hidden flex-shrink-0 gap-2 md:flex"
-        />
       </Link>
     </div>
   );

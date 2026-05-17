@@ -15,6 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
+import { PostingHubTabs } from "../_shared/PostingHubTabs";
 
 export type QueueItem = {
   // slotId is null for ad-hoc items (not on the weekly planner).
@@ -285,6 +286,7 @@ export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-3 py-2 md:py-0">
+      <PostingHubTabs />
       <header className="flex items-center justify-between gap-3 px-1 pt-1 md:pt-0">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900">

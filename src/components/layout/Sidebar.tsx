@@ -18,7 +18,6 @@ import {
   Users,
   Layers,
 } from "lucide-react";
-import { SiFacebook } from "react-icons/si";
 import { signOut } from "next-auth/react";
 
 type IconComponent = React.ComponentType<{ className?: string }>;
@@ -38,13 +37,11 @@ const nav: NavItem[] = [
   { type: "section", label: "Work" },
   { type: "link", href: "/admin/assistant", label: "Assistant", icon: Sparkles },
   { type: "link", href: "/admin/suggest", label: "Suggester", icon: Layers },
-  { type: "link", href: "/admin/scheduled", label: "Scheduled", icon: CalendarClock },
   {
     type: "link",
-    href: "/admin/manual-fb",
-    label: "Manual FB",
-    icon: SiFacebook,
-    iconColor: "text-[#1877F2]",
+    href: "/admin/scheduled",
+    label: "Posting",
+    icon: CalendarClock,
     badge: "manual-fb",
   },
   { type: "link", href: "/admin/todo", label: "To-Do", icon: CheckSquare },

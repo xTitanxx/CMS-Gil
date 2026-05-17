@@ -5,6 +5,7 @@ import { CalendarDays, LayoutList, List } from "lucide-react";
 import { ContentCalendar } from "./ContentCalendar";
 import { ScheduledListView } from "./ScheduledListView";
 import { PlannerPanel } from "../_shared/PlannerPanel";
+import { PostingHubTabs } from "../_shared/PostingHubTabs";
 import { SegmentedControl } from "../_shared/SegmentedControl";
 
 type Mode = "list" | "calendar" | "planner";
@@ -48,6 +49,7 @@ export function ScheduledTabs() {
 
   return (
     <div className="flex h-full flex-col">
+      <PostingHubTabs />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="hidden text-2xl font-bold text-gray-900 md:block">{header.title}</h1>

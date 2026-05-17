@@ -4,6 +4,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { google } from "googleapis";
 import { getObject } from "@/lib/storage";
+import {
+  buildGoogleOAuthClient,
+  getGoogleIntegration,
+} from "@/lib/google-integration";
 import { Readable } from "stream";
 
 const anthropic = new Anthropic();
@@ -13,13 +17,8 @@ interface PublishResult {
   platformUrl?: string;
 }
 
-interface YouTubeCredentials {
-  accessToken: string;
-  refreshToken?: string;
-}
-
 export async function postToYouTube(
-  creds: YouTubeCredentials,
+  userId: string,
   title: string,
   body: string,
   mediaKeys: string[]
@@ -31,14 +30,15 @@ export async function postToYouTube(
     throw new Error("YouTube requires a video file");
   }
 
-  const auth = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
-  auth.setCredentials({
-    access_token: creds.accessToken,
-    refresh_token: creds.refreshToken,
-  });
+  // buildGoogleOAuthClient sets expiry_date (so googleapis refreshes
+  // proactively, not just on 401) AND attaches a `tokens` listener that
+  // persists the refreshed access_token back to the DB. Constructing the
+  // client manually here previously skipped both, so a >1h-old access token
+  // was sent as-is, failed with "invalid authentication credentials," and
+  // the user had to manually reconnect.
+  const integration = await getGoogleIntegration(userId);
+  if (!integration) throw new Error("YouTube not connected");
+  const auth = buildGoogleOAuthClient(userId, integration);
 
   const youtube = google.youtube({ version: "v3", auth });
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encrypt";
 import { getGoogleIntegration } from "@/lib/google-integration";
+import { getValidTikTokAccessToken } from "@/lib/platforms/tiktok-auth";
 import { fetchAnalytics } from "./index";
 import type { Platform } from "@prisma/client";
 
@@ -124,6 +125,11 @@ async function getAccessToken(
     if (!integration) throw new Error("No YouTube/Google token");
     return integration.accessToken;
   }
+
+  // TikTok access tokens expire after 24h; the helper refreshes via the
+  // stored refresh token instead of leaving every >24h analytics fetch silently
+  // failing as "access token invalid".
+  if (platform === "TIKTOK") return getValidTikTokAccessToken(userId);
 
   const token = await prisma.platformToken.findUnique({
     where: { userId_platform: { userId, platform } },

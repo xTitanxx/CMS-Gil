@@ -18,6 +18,11 @@ export function getSuggesterCandidateWhere(userId: string): Prisma.PostWhereInpu
     // hidden from rotation (ARCHIVED). UNCHECKED posts surface so they can be
     // triaged in-context; everything else flows through.
     readiness: { notIn: ["NOT_READY", "ARCHIVED"] },
+    // Don't re-suggest a post that's already on the calendar. Re-suggesting
+    // would let the user double-book the same post into two slots or fire an
+    // immediate publish on top of a scheduled one.
+    publishes: { none: { status: { in: ["PENDING", "PROCESSING"] } } },
+    planSlots: { none: { status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] } } },
   };
 }
 

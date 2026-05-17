@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { DeleteButton, SchedulePanelWithRefresh } from "./PostInteractions";
 import { ActivityList } from "./ActivityList";
+import { ScheduledBanner } from "./ScheduledBanner";
+import { buildSlotDate } from "@/lib/planner/fixed-slots";
+import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
@@ -65,6 +68,31 @@ export default async function PostDetailPage({
   });
 
   if (!post) notFound();
+
+  // Earliest active planner slot for this post — used by ScheduledBanner to
+  // surface "Facebook (manual)" alongside any API-scheduled publishes. We pick
+  // the soonest so the banner's headline time matches what the user will see
+  // hit first in the queue.
+  const activePlannerSlot = await prisma.weeklyPlanSlot.findFirst({
+    where: {
+      postId: post.id,
+      plan: { userId: session.user.id },
+      status: { in: ["APPROVED", "SCHEDULED"] },
+    },
+    orderBy: [{ day: "asc" }, { hour: "asc" }],
+    select: { day: true, hour: true },
+  });
+  const manualSlot = activePlannerSlot
+    ? {
+        scheduledAt: buildSlotDate(
+          activePlannerSlot.day,
+          activePlannerSlot.hour ?? FIXED_SLOT_HOURS[0],
+        ).toISOString(),
+        fbPublished: post.publishes.some(
+          (p) => p.platform === "FACEBOOK" && p.status === "PUBLISHED",
+        ),
+      }
+    : null;
 
   const filters = parsePostsFilters(sp);
   const postIdAllowlist =
@@ -197,6 +225,16 @@ export default async function PostDetailPage({
             </span>
           </div>
         )}
+
+        <ScheduledBanner
+          publishes={post.publishes.map((p) => ({
+            platform: p.platform,
+            status: p.status,
+            scheduledAt: p.scheduledAt ? p.scheduledAt.toISOString() : null,
+            publishedAt: p.publishedAt ? p.publishedAt.toISOString() : null,
+          }))}
+          manualSlot={manualSlot}
+        />
 
         <PostEditor
           postId={id}

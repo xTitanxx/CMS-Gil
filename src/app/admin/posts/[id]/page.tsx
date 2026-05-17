@@ -11,6 +11,7 @@ import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
 import { PostEditor } from "./PostEditor";
 import { PostNavBar } from "./PostNavBar";
 import { PostNavKeys } from "./PostNavKeys";
+import { MobilePostActions } from "./MobilePostActions";
 import {
   buildNeighborQueries,
   buildPostsQuery,
@@ -176,6 +177,13 @@ export default async function PostDetailPage({
 
   return (
     <div>
+      <MobilePostActions
+        postId={id}
+        listHref={listHref}
+        prevHref={prevHref}
+        nextHref={nextHref}
+        platformUrl={post.platformUrl}
+      />
       <PostNavBar
         prevHref={prevHref}
         nextHref={nextHref}
@@ -191,9 +199,7 @@ export default async function PostDetailPage({
         platformUrl={post.platformUrl}
         actions={
           <div className="flex items-center gap-1.5">
-            <span className="hidden md:inline-flex">
-              <CopyIdChip id={id} />
-            </span>
+            <CopyIdChip id={id} />
             <DeleteButton postId={id} />
           </div>
         }

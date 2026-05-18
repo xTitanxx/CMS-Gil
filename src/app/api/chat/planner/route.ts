@@ -82,47 +82,63 @@ export async function POST(req: NextRequest) {
 
     if (block.name === "plan_week") {
       const picks = (input.picks as { day: string; postId: string; reasoning: string }[]) ?? [];
+      // Chat planner only operates on the MAIN queue — YT/TT are handled by
+      // a separate automatic pass in /api/planner/generate. Scope all mutations
+      // to slotGroup=MAIN so VIDEO slots aren't blown away.
       await prisma.weeklyPlanSlot.deleteMany({
-        where: { planId, status: "PROPOSED" },
+        where: { planId, status: "PROPOSED", slotGroup: "MAIN" },
       });
 
       for (const pick of picks) {
         const candidate = candidateMap.get(pick.postId);
         const platforms = candidate
-          ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
+          ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms, "MAIN")
           : [];
 
-        await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(pick.day) } });
+        await prisma.weeklyPlanSlot.deleteMany({
+          where: { planId, day: new Date(pick.day), slotGroup: "MAIN" },
+        });
         await prisma.weeklyPlanSlot.create({
-          data: { planId, postId: pick.postId, day: new Date(pick.day), reasoning: pick.reasoning, platforms },
+          data: {
+            planId,
+            postId: pick.postId,
+            day: new Date(pick.day),
+            reasoning: pick.reasoning,
+            platforms,
+            slotGroup: "MAIN",
+          },
         });
       }
     } else if (block.name === "swap_day") {
       const { day, postId, reasoning } = input as { day: string; postId: string; reasoning: string };
       const candidate = candidateMap.get(postId);
       const platforms = candidate
-        ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
+        ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms, "MAIN")
         : [];
 
-      await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(day) } });
+      await prisma.weeklyPlanSlot.deleteMany({
+        where: { planId, day: new Date(day), slotGroup: "MAIN" },
+      });
       await prisma.weeklyPlanSlot.create({
-        data: { planId, postId, day: new Date(day), reasoning, platforms },
+        data: { planId, postId, day: new Date(day), reasoning, platforms, slotGroup: "MAIN" },
       });
     } else if (block.name === "remove_day") {
       const { day } = input as { day: string };
       await prisma.weeklyPlanSlot.deleteMany({
-        where: { planId, day: new Date(day) },
+        where: { planId, day: new Date(day), slotGroup: "MAIN" },
       });
     } else if (block.name === "assign_post") {
       const { day, postId, reasoning } = input as { day: string; postId: string; reasoning: string };
       const candidate = candidateMap.get(postId);
       const platforms = candidate
-        ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms)
+        ? getEligiblePlatforms(candidate.mediaTypes, connectedPlatforms, "MAIN")
         : [];
 
-      await prisma.weeklyPlanSlot.deleteMany({ where: { planId, day: new Date(day) } });
+      await prisma.weeklyPlanSlot.deleteMany({
+        where: { planId, day: new Date(day), slotGroup: "MAIN" },
+      });
       await prisma.weeklyPlanSlot.create({
-        data: { planId, postId, day: new Date(day), reasoning, platforms },
+        data: { planId, postId, day: new Date(day), reasoning, platforms, slotGroup: "MAIN" },
       });
     }
   }

@@ -1,8 +1,11 @@
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/lib/prisma";
 import { FIXED_SLOT_HOURS, SCHEDULE_TZ } from "./slot-constants";
+import type { SlotGroup } from "./platform-assignment";
 
 export { FIXED_SLOT_HOURS, SCHEDULE_TZ };
+
+const VIDEO_PLATFORM_NAMES = ["YOUTUBE", "TIKTOK"] as const;
 
 /** Build a UTC `Date` for `hour:00` on `dayInTZ` (a date interpreted as Asia/Jerusalem). */
 export function buildSlotDate(dayInTZ: Date, hour: number): Date {
@@ -12,11 +15,13 @@ export function buildSlotDate(dayInTZ: Date, hour: number): Date {
 }
 
 /** Returns the next 12/15/18/21 (Asia/Jerusalem) datetime that has no PENDING
- *  PublishRecord at exactly that scheduledAt for any of the user's posts.
- *  Searches up to 14 days forward. */
+ *  PublishRecord for the requested slot group at exactly that scheduledAt.
+ *  MAIN and VIDEO occupy independent grids (a MAIN record at Tue 15:00 does
+ *  not block a VIDEO record at the same time). Searches up to 14 days forward. */
 export async function findNextAvailableSlot(
   userId: string,
   fromDate: Date = new Date(),
+  slotGroup: SlotGroup = "MAIN",
 ): Promise<Date> {
   const SEARCH_DAYS = 14;
   const horizon = new Date(fromDate.getTime() + SEARCH_DAYS * 24 * 60 * 60 * 1000);
@@ -26,6 +31,10 @@ export async function findNextAvailableSlot(
       status: "PENDING",
       post: { userId },
       scheduledAt: { gte: fromDate, lte: horizon },
+      platform:
+        slotGroup === "VIDEO"
+          ? { in: [...VIDEO_PLATFORM_NAMES] }
+          : { notIn: [...VIDEO_PLATFORM_NAMES] },
     },
     select: { scheduledAt: true },
   });

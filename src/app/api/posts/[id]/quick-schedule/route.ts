@@ -65,7 +65,12 @@ export async function POST(
     );
   }
 
-  const scheduledAt = await findNextAvailableSlot(userId);
+  // Quick-schedule stays a single-slot, all-eligible-platforms shortcut — it's
+  // the "I want this out the door now" path, not the planner. The MAIN/VIDEO
+  // queue split is for /api/planner/generate. Slot group=MAIN with whatever
+  // platforms have tokens (incl. YT/TT if the post is a video the platform
+  // accepts; the publish layer rejects on the platform side if not).
+  const scheduledAt = await findNextAvailableSlot(userId, new Date(), "MAIN");
   const dayDate = utcMidnightOf(scheduledAt);
   const weekStart = getMondayUTC(dayDate);
 
@@ -94,10 +99,12 @@ export async function POST(
       day: dayDate,
       status: "SCHEDULED",
       platforms,
+      slotGroup: "MAIN",
     },
     update: {
       status: "SCHEDULED",
       platforms,
+      slotGroup: "MAIN",
     },
     select: { id: true },
   });

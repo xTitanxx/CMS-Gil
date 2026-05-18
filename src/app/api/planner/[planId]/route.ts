@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getCandidatePosts } from "@/lib/planner/candidates";
-import { getEligiblePlatforms } from "@/lib/planner/platform-assignment";
+import {
+  getCandidatePosts,
+  getVideoCandidatePosts,
+} from "@/lib/planner/candidates";
+import {
+  getEligiblePlatforms,
+  type SlotGroup,
+} from "@/lib/planner/platform-assignment";
 import { getConnectedPlatforms } from "@/lib/connected-platforms";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
 
@@ -14,8 +20,9 @@ async function slideAndRefillFromIndex(
   planId: string,
   userId: string,
   rejectedPostId: string,
-  slots: Array<{ id: string; postId: string; platforms: string[] }>,
-  idx: number
+  slots: Array<{ id: string; postId: string; platforms: string[]; slotGroup: SlotGroup }>,
+  idx: number,
+  slotGroup: SlotGroup,
 ) {
   // Slide: copy slots[i+1] onto slots[i] for i from idx to len-2.
   for (let i = idx; i < slots.length - 1; i++) {
@@ -35,24 +42,34 @@ async function slideAndRefillFromIndex(
   const usedPostIds = new Set(slots.slice(0, slots.length - 1).map((s) => s.postId));
 
   // Exclude posts already pinned in this user's other DRAFT/PARTIAL plans
+  // for the SAME slot group — a video pinned to a VIDEO slot elsewhere shouldn't
+  // block reuse on a MAIN refill (different audiences, different queue).
   const adjacentSlots = await prisma.weeklyPlanSlot.findMany({
     where: {
       plan: { userId, status: { in: ["DRAFT", "PARTIAL"] } },
       status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+      slotGroup,
       NOT: { planId },
     },
     select: { postId: true },
   });
   for (const s of adjacentSlots) usedPostIds.add(s.postId);
 
-  const candidates = await getCandidatePosts(userId);
+  const candidates =
+    slotGroup === "VIDEO"
+      ? await getVideoCandidatePosts(userId)
+      : await getCandidatePosts(userId);
   const refill = candidates.find(
-    (c) => !usedPostIds.has(c.id) && c.id !== rejectedPostId
+    (c) => !usedPostIds.has(c.id) && c.id !== rejectedPostId,
   );
 
   if (refill) {
     const connectedPlatforms = await getConnectedPlatforms(userId);
-    const platforms = getEligiblePlatforms(refill.mediaTypes, connectedPlatforms);
+    const platforms = getEligiblePlatforms(
+      refill.mediaTypes,
+      connectedPlatforms,
+      slotGroup,
+    );
 
     await prisma.weeklyPlanSlot.update({
       where: { id: lastSlot.id },
@@ -139,7 +156,7 @@ export async function PATCH(
       // SCHEDULED slot only flips the planner UI — the post still publishes.
       const slot = await prisma.weeklyPlanSlot.findFirst({
         where: { id: slotId, planId },
-        select: { postId: true, platforms: true, status: true },
+        select: { postId: true, platforms: true, status: true, slotGroup: true },
       });
       if (!slot) break;
 
@@ -155,13 +172,19 @@ export async function PATCH(
       }
 
       if (plan.mode === "DUMB" && slot.status !== "SCHEDULED") {
-        // Recycle queue: shift subsequent slots up and pull the next-oldest
-        // candidate into the trailing slot. SCHEDULED slots stay parked
-        // (their PublishRecords are real); falls through to SKIPPED below.
+        // Recycle queue: shift subsequent slots within the SAME group up and
+        // pull the next-oldest candidate (from the matching queue) into the
+        // trailing slot. The other group's slots are unaffected — MAIN and
+        // VIDEO cycle independently. SCHEDULED slots stay parked (their
+        // PublishRecords are real); falls through to SKIPPED below.
         const slidableSlots = await prisma.weeklyPlanSlot.findMany({
-          where: { planId, status: { in: ["PROPOSED", "APPROVED"] } },
+          where: {
+            planId,
+            slotGroup: slot.slotGroup,
+            status: { in: ["PROPOSED", "APPROVED"] },
+          },
           orderBy: { day: "asc" },
-          select: { id: true, postId: true, platforms: true },
+          select: { id: true, postId: true, platforms: true, slotGroup: true },
         });
         const idx = slidableSlots.findIndex((s) => s.id === slotId);
         if (idx !== -1) {
@@ -170,7 +193,8 @@ export async function PATCH(
             plan.userId,
             slot.postId,
             slidableSlots,
-            idx
+            idx,
+            slot.slotGroup,
           );
           break;
         }
@@ -187,6 +211,9 @@ export async function PATCH(
       if (!slotId || !postId) {
         return NextResponse.json({ error: "slotId and postId required" }, { status: 400 });
       }
+      // swap preserves the existing slotGroup — the caller can supply platforms
+      // that match the group, but we don't try to migrate a slot across groups
+      // (that's a remove + new propose).
       await prisma.weeklyPlanSlot.updateMany({
         where: { id: slotId, planId },
         data: {
@@ -262,9 +289,16 @@ export async function PATCH(
         return NextResponse.json({ error: "postId and day required" }, { status: 400 });
       }
       const dayDate = new Date(day + "T00:00:00.000Z");
-      // Remove any existing slot for this day, then create the new one
+      // Infer group from the supplied platforms so pinning a YT/TT-only post
+      // doesn't blow away a MAIN slot on the same day (and vice versa). Empty
+      // or text/photo-only platform lists default to MAIN.
+      const { inferSlotGroup } = await import("@/lib/planner/platform-assignment");
+      const pinGroup =
+        inferSlotGroup(
+          (platforms ?? []).filter((p) => p !== "FACEBOOK_PERSONAL"),
+        ) ?? "MAIN";
       await prisma.weeklyPlanSlot.deleteMany({
-        where: { planId, day: dayDate },
+        where: { planId, day: dayDate, slotGroup: pinGroup },
       });
       await prisma.weeklyPlanSlot.create({
         data: {
@@ -274,6 +308,7 @@ export async function PATCH(
           status: "PROPOSED",
           reasoning: reasoning ?? null,
           platforms: platforms ?? [],
+          slotGroup: pinGroup,
         },
       });
       break;

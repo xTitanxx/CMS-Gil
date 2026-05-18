@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "ids parameter required" }, { status: 400 });
   }
 
-  const ids = idsParam.split(",").slice(0, 3);
+  const ids = idsParam.split(",").slice(0, 5);
 
   const gilUserId = process.env.GIL_USER_ID;
   if (!gilUserId) {

@@ -156,9 +156,10 @@ async function photoPost(
     // but the page post didn't land — fail instead of recording a broken URL.
     throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
   }
+  const id = composite(pageId, data.post_id);
   return {
-    platformPostId: data.post_id,
-    platformUrl: await fetchPermalink(data.post_id, accessToken),
+    platformPostId: id,
+    platformUrl: await fetchPermalink(id, accessToken),
   };
 }
 
@@ -183,10 +184,10 @@ async function videoPost(
   // via `?fields=post_id` and use that to fetch the post's permalink so
   // "Take me to the post" lands on the actual feed entry.
   const wallPostId = await fetchVideoPostId(data.id, accessToken);
-  const idForPermalink = wallPostId ?? data.id;
+  const id = composite(pageId, wallPostId ?? data.id);
   return {
-    platformPostId: wallPostId ?? data.id,
-    platformUrl: await fetchPermalink(idForPermalink, accessToken),
+    platformPostId: id,
+    platformUrl: await fetchPermalink(id, accessToken),
   };
 }
 
@@ -270,9 +271,10 @@ async function reelPost(
     throw new Error(`Facebook reel publish failed: ${JSON.stringify(publishData)}`);
   }
 
+  const id = composite(pageId, initData.video_id);
   return {
-    platformPostId: initData.video_id,
-    platformUrl: await fetchPermalink(initData.video_id, accessToken),
+    platformPostId: id,
+    platformUrl: await fetchPermalink(id, accessToken),
   };
 }
 
@@ -300,9 +302,10 @@ async function storyPost(
   }
 
   const postId = data.post_id ?? data.id;
+  const id = postId ? composite(pageId, postId) : "story";
   return {
-    platformPostId: postId ?? "story",
-    platformUrl: postId ? await fetchPermalink(postId, accessToken) : undefined,
+    platformPostId: id,
+    platformUrl: postId ? await fetchPermalink(id, accessToken) : undefined,
   };
 }
 
@@ -352,11 +355,20 @@ async function multiPhotoPost(
   };
 }
 
+// Graph API rejects permalink and insights lookups against a bare numeric
+// post id with `(#12) singular statuses API is deprecated for versions v2.4
+// and higher`. The composite `{pageId}_{postId}` form is the only one that
+// resolves cleanly. /feed and /photos return composite ids already; /videos
+// and /video_reels return bare numerics, so we glue the pageId on.
+function composite(pageId: string, postId: string): string {
+  return postId.includes("_") ? postId : `${pageId}_${postId}`;
+}
+
 // Fetches the canonical permalink for a Facebook post id. Hand-constructing
-// URLs is brittle — feed posts use `{pageId}_{numeric}`, photos/videos use
-// bare numeric ids, and the visible URL shape depends on whether the page has
-// a vanity handle. Asking Graph API for it directly mirrors the Instagram
-// publish flow (see instagram.ts:124).
+// URLs is brittle — the visible URL shape depends on whether the page has a
+// vanity handle, and feed videos can resolve to a /reel/ permalink under the
+// hood. Asking Graph API for it directly mirrors the Instagram publish flow
+// (see instagram.ts:124). Caller must pass the composite id (see `composite`).
 async function fetchPermalink(
   postId: string,
   accessToken: string

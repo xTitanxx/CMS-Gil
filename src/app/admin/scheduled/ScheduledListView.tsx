@@ -5,7 +5,6 @@ import Link from "next/link";
 import { format } from "date-fns";
 import {
   CalendarCheck,
-  ChevronRight,
   Image as ImageIcon,
   Loader2,
   Music,
@@ -14,12 +13,11 @@ import {
   Video,
   VolumeX,
 } from "lucide-react";
-import { SiFacebook } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
-import { dedupePlatforms, PLATFORM_META } from "@/lib/planner/platforms";
+import { dedupePlatforms } from "@/lib/planner/platforms";
 import { formatSlotHour } from "@/lib/planner/format-slot";
 import { displayBody } from "@/lib/post-body";
 import { utcDateString } from "@/lib/planner/week";
@@ -29,6 +27,13 @@ import {
   type PostingSortDef,
   type PostingFilterDef,
 } from "../_shared/PostingListView";
+import {
+  PlatformBadgeRow,
+  PLATFORM_ORDER,
+  isEligible,
+  type PlatformBadgeState,
+  type PostKind,
+} from "../_shared/PlatformBadgeRow";
 
 type StatusKind = "scheduled" | "proposed" | "published";
 
@@ -352,6 +357,12 @@ interface ScheduledRowProps {
   onSchedule: (slotId: string) => Promise<void>;
 }
 
+function slotPostKind(post: PlanSlotData["post"]): PostKind {
+  if (post.hasVideo) return "video";
+  if (post.mediaCount > 0) return "image";
+  return "text";
+}
+
 function ScheduledRow({
   slot,
   queueIndex,
@@ -366,6 +377,31 @@ function ScheduledRow({
   const href = `/admin/posts/${post.id}?from=scheduled`;
   const dayText = dayLabel(slot.day, todayKey);
   const slotText = slot.hour != null ? formatSlotHour(slot.hour) : null;
+
+  const postKind = slotPostKind(post);
+  // Normalize selected platforms to the canonical six-slot keys used by the
+  // shared badge row. The planner stores them mixed-case; the badge layer is
+  // strictly uppercase.
+  const selectedPlatforms = new Set(
+    platforms.map((p) =>
+      p.toUpperCase() === "FACEBOOK_PAGE" ? "FACEBOOK_PAGE" : p.toUpperCase(),
+    ),
+  );
+  // FB Personal is never in slot.platforms (it's not an API target). The
+  // manual-FB queue is the source of truth for "this slot will also need a
+  // hand-posted FB Personal cross-post" — surface it as a scheduled badge.
+  if (fbPending) selectedPlatforms.add("FACEBOOK");
+
+  const stateByPlatform: Partial<Record<string, PlatformBadgeState>> = {};
+  for (const platform of PLATFORM_ORDER) {
+    if (selectedPlatforms.has(platform)) {
+      stateByPlatform[platform] = "scheduled";
+    } else if (isEligible(platform, postKind)) {
+      stateByPlatform[platform] = "skipped";
+    } else {
+      stateByPlatform[platform] = "na";
+    }
+  }
 
   const remove = useAsync();
   const schedule = useAsync();
@@ -391,45 +427,48 @@ function ScheduledRow({
       className={`overflow-hidden rounded-2xl border bg-white shadow-sm ring-1 ring-black/[0.02] transition-all hover:shadow-md ${outerCls}`}
     >
     <div className="flex items-center gap-3 p-3 md:gap-4 md:p-4">
-      <Link href={href} className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
-        <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-20 md:w-20">
-          {post.thumbUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={post.thumbUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <ImageIcon className="h-6 w-6 text-gray-300" />
-            </div>
-          )}
-          {post.hasVideo && (
-            <div
-              className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
-              title="Video"
-            >
-              {post.hasAudio ? (
-                <Video className="h-3 w-3 text-white" />
-              ) : (
-                <VolumeX className="h-3 w-3 text-white" />
-              )}
-            </div>
-          )}
-          {post.hasVideo && !post.hasAudio && (
-            <div
-              className="pointer-events-none absolute inset-0 flex items-center justify-center"
-              aria-hidden
-            >
-              <Play className="h-5 w-5 text-white/90 drop-shadow" fill="currentColor" />
-            </div>
-          )}
-        </div>
+      <Link
+        href={href}
+        className="relative block h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-20 md:w-20"
+      >
+        {post.thumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={post.thumbUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <ImageIcon className="h-6 w-6 text-gray-300" />
+          </div>
+        )}
+        {post.hasVideo && (
+          <div
+            className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
+            title="Video"
+          >
+            {post.hasAudio ? (
+              <Video className="h-3 w-3 text-white" />
+            ) : (
+              <VolumeX className="h-3 w-3 text-white" />
+            )}
+          </div>
+        )}
+        {post.hasVideo && !post.hasAudio && (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            aria-hidden
+          >
+            <Play className="h-5 w-5 text-white/90 drop-shadow" fill="currentColor" />
+          </div>
+        )}
+      </Link>
 
-        <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
+        <Link href={href} className="block">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-500"
@@ -451,15 +490,6 @@ function ScheduledRow({
             >
               {STATUS_LABEL[kind]}
             </span>
-            {platforms.length > 0 && (
-              <span className="flex items-center gap-1">
-                {platforms.map((p) => {
-                  const meta = PLATFORM_META[p];
-                  if (!meta) return null;
-                  return <meta.Icon key={p} className={`h-3.5 w-3.5 shrink-0 ${meta.color}`} />;
-                })}
-              </span>
-            )}
             {post.hasVideo && !post.hasAudio && (
               <span
                 className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 ring-1 ring-orange-200"
@@ -475,8 +505,15 @@ function ScheduledRow({
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}
+        </Link>
+        <div className="mt-1.5">
+          <PlatformBadgeRow
+            postId={post.id}
+            kind={postKind}
+            stateByPlatform={stateByPlatform}
+          />
         </div>
-      </Link>
+      </div>
 
       <div className="flex flex-shrink-0 items-center gap-1 self-center">
         {showSchedule && (
@@ -524,22 +561,6 @@ function ScheduledRow({
         </button>
       </div>
     </div>
-    {fbPending && (
-      <Link
-        href={`/admin/m/${post.id}`}
-        className="flex items-center justify-between gap-2 border-t border-blue-100 bg-blue-50/50 px-3 py-2 text-[13px] font-medium text-blue-900 hover:bg-blue-100/60 active:bg-blue-100 md:px-4"
-        title="Will need a manual FB cross-post when this slot fires"
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <SiFacebook className="h-3.5 w-3.5 shrink-0 text-[#1877F2]" />
-          <span className="truncate">Will need a manual FB cross-post</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-0.5 text-blue-700">
-          <span className="hidden sm:inline">Open helper</span>
-          <ChevronRight className="h-3.5 w-3.5" />
-        </span>
-      </Link>
-    )}
     </div>
   );
 }

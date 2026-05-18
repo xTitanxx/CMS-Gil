@@ -2,10 +2,7 @@
 // Scopes: w_member_social, r_basicprofile
 
 import { getSignedDownloadUrl } from "@/lib/storage";
-import {
-  fetchBufferWithTimeout,
-  fetchWithTimeout,
-} from "@/lib/platforms/_fetch";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 
 interface PublishResult {
   platformPostId: string;
@@ -154,22 +151,48 @@ async function registerLinkedInMedia(
     throw new Error(`LinkedIn register upload failed: ${JSON.stringify(registerData)}`);
   }
 
-  // Download from R2 then re-upload to LinkedIn. Both legs need timeouts —
-  // without them a stalled R2 or LinkedIn endpoint will silently drain the
-  // entire lambda budget and leave the record stuck in PROCESSING.
-  // fetchBufferWithTimeout (vs plain fetchWithTimeout + arrayBuffer) keeps
-  // the abort signal alive through the body read, so a slow-trickle R2 stream
-  // also hits the deadline instead of hanging quietly after headers arrive.
-  const { buffer: mediaBuffer } = await fetchBufferWithTimeout(mediaUrl, {
-    timeoutMs: 90_000,
-  }).catch((err: unknown) => {
-    throw new Error(`LinkedIn media download failed for ${key}: ${err}`);
+  // Stream R2 → LinkedIn instead of buffering the whole video in lambda RAM.
+  // Buffering a >300 MB video into an ArrayBuffer (then duplicating it into the
+  // PUT body) silently OOM-kills the 1 GB lambda before any catch/deadline
+  // can fire, which is what left the publish stuck in PROCESSING. Streaming
+  // keeps memory bounded to the fetch internal buffer.
+  //
+  // LinkedIn's single-PUT upload requires Content-Length; we fetch that via
+  // a quick HEAD instead of trusting whatever R2 echoes back on GET.
+  const headRes = await fetchWithTimeout(mediaUrl, {
+    method: "HEAD",
+    timeoutMs: 15_000,
   });
+  if (!headRes.ok) {
+    throw new Error(
+      `LinkedIn media HEAD failed for ${key}: ${headRes.status}`,
+    );
+  }
+  const contentLengthHeader = headRes.headers.get("content-length");
+  if (!contentLengthHeader) {
+    throw new Error(
+      `LinkedIn media HEAD missing Content-Length for ${key}`,
+    );
+  }
+  const contentLength = contentLengthHeader;
+
+  const mediaRes = await fetchWithTimeout(mediaUrl, { timeoutMs: 30_000 });
+  if (!mediaRes.ok || !mediaRes.body) {
+    throw new Error(
+      `LinkedIn media download failed for ${key}: ${mediaRes.status}`,
+    );
+  }
   const uploadRes = await fetchWithTimeout(uploadUrl, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${accessToken}` },
-    body: mediaBuffer,
-    timeoutMs: 120_000,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Length": contentLength,
+    },
+    // ReadableStream body — Node fetch streams without buffering.
+    body: mediaRes.body,
+    // @ts-expect-error — duplex required by Node fetch when body is a stream
+    duplex: "half",
+    timeoutMs: 240_000,
   });
   if (!uploadRes.ok) {
     throw new Error(

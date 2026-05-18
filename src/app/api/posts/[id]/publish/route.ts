@@ -116,6 +116,15 @@ export async function POST(
   return NextResponse.json({ records: fresh });
 }
 
+// Hard self-deadline well under the worker lambda's 300 s budget. The cron
+// reaper IS a safety net, but GitHub Actions cron under load runs roughly
+// once an hour instead of every 5 minutes, so users see "Processing" for an
+// hour before the reaper steps in. This timer is the primary mechanism for
+// flipping orphaned PROCESSING rows to FAILED; the cron stays as a backstop
+// for the case where this whole lambda is killed (OOM, host eviction) before
+// the timer fires.
+const PUBLISH_DEADLINE_MS = 270_000;
+
 export async function publishNow(
   recordId: string,
   userId: string,
@@ -137,6 +146,25 @@ export async function publishNow(
   // the terminal updateMany writes below (gated on status === PROCESSING)
   // will no-op, so the upload finishes silently but the record stays
   // CANCELLED.
+  const deadlineTimer = setTimeout(() => {
+    // Same `status: "PROCESSING"` guard as the success/failure paths: if the
+    // upload already finished (PUBLISHED) or the user cancelled (CANCELLED),
+    // we leave the terminal state alone. If we hit the deadline first, mark
+    // FAILED with a clear message so the UI surfaces a real error instead of
+    // sitting on the spinner.
+    void prisma.publishRecord
+      .updateMany({
+        where: { id: recordId, status: "PROCESSING" },
+        data: {
+          status: "FAILED",
+          errorMessage: `Publish exceeded ${Math.round(PUBLISH_DEADLINE_MS / 1000)}s deadline (large media or slow upstream)`,
+          retryCount: { increment: 1 },
+        },
+      })
+      .catch((e) =>
+        console.error("publishNow deadline mark-failed errored", { recordId, e }),
+      );
+  }, PUBLISH_DEADLINE_MS);
   try {
     const token = await prisma.platformToken.findUnique({
       where: { userId_platform: { userId, platform } },
@@ -253,7 +281,8 @@ export async function publishNow(
       console.error("Post hub-publish denorm failed", { postId: post.id, denormErr });
     }
   } catch (err) {
-    // Same guard as the success path — don't overwrite a CANCELLED row.
+    // Same guard as the success path — don't overwrite a CANCELLED row, and
+    // don't clobber a FAILED row that the deadline timer already wrote.
     await prisma.publishRecord.updateMany({
       where: { id: recordId, status: "PROCESSING" },
       data: {
@@ -263,5 +292,7 @@ export async function publishNow(
       },
     });
     throw err;
+  } finally {
+    clearTimeout(deadlineTimer);
   }
 }

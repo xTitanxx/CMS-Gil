@@ -2,7 +2,10 @@
 // Scopes: w_member_social, r_basicprofile
 
 import { getSignedDownloadUrl } from "@/lib/storage";
-import { fetchWithTimeout } from "@/lib/platforms/_fetch";
+import {
+  fetchBufferWithTimeout,
+  fetchWithTimeout,
+} from "@/lib/platforms/_fetch";
 
 interface PublishResult {
   platformPostId: string;
@@ -154,18 +157,19 @@ async function registerLinkedInMedia(
   // Download from R2 then re-upload to LinkedIn. Both legs need timeouts —
   // without them a stalled R2 or LinkedIn endpoint will silently drain the
   // entire lambda budget and leave the record stuck in PROCESSING.
-  const mediaRes = await fetchWithTimeout(mediaUrl, { timeoutMs: 60_000 });
-  if (!mediaRes.ok) {
-    throw new Error(
-      `LinkedIn media download failed for ${key}: ${mediaRes.status}`,
-    );
-  }
-  const mediaBuffer = await mediaRes.arrayBuffer();
+  // fetchBufferWithTimeout (vs plain fetchWithTimeout + arrayBuffer) keeps
+  // the abort signal alive through the body read, so a slow-trickle R2 stream
+  // also hits the deadline instead of hanging quietly after headers arrive.
+  const { buffer: mediaBuffer } = await fetchBufferWithTimeout(mediaUrl, {
+    timeoutMs: 90_000,
+  }).catch((err: unknown) => {
+    throw new Error(`LinkedIn media download failed for ${key}: ${err}`);
+  });
   const uploadRes = await fetchWithTimeout(uploadUrl, {
     method: "PUT",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: mediaBuffer,
-    timeoutMs: 90_000,
+    timeoutMs: 120_000,
   });
   if (!uploadRes.ok) {
     throw new Error(

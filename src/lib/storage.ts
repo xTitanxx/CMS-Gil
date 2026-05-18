@@ -109,12 +109,28 @@ export async function getThumbnailUrl(
   return url;
 }
 
-export async function getObject(url: string): Promise<Buffer> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+// Download a stored object to a Buffer. Wraps both fetch + body read in one
+// AbortController-backed timeout — without it a stalled R2 stream silently
+// drains the lambda's 300s budget and leaves the calling publish stuck in
+// PROCESSING. Default 2 min is plenty for the platform-publish hot path
+// (videos here are capped at ~30 MB by the upload pipeline) while still well
+// inside the worker's 300 s budget.
+export async function getObject(url: string, timeoutMs = 120_000): Promise<Buffer> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => {
+    ctl.abort(
+      new DOMException(`getObject timed out after ${timeoutMs}ms`, "TimeoutError"),
+    );
+  }, timeoutMs);
+  try {
+    const response = await fetch(url, { signal: ctl.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
   }
-  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function deleteObject(url: string): Promise<void> {

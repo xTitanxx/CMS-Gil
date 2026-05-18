@@ -18,6 +18,7 @@ import {
   isPlatformEligible,
   mediaShapeFromMimeTypes,
 } from "@/lib/platform-eligibility";
+import { notifyPublishRecordCreated } from "@/lib/publish-events";
 
 interface SlotShape {
   day: string;
@@ -252,6 +253,7 @@ export function SchedulePanel({ postId, media, onChanged }: SchedulePanelProps) 
         throw new Error(err?.error ?? `Schedule failed (${res.status})`);
       }
       setScheduled(true);
+      notifyPublishRecordCreated(postId);
       onChanged?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Schedule failed");
@@ -278,6 +280,7 @@ export function SchedulePanel({ postId, media, onChanged }: SchedulePanelProps) 
       if (!res.ok) {
         throw new Error(data?.error ?? `Publish failed (${res.status})`);
       }
+      notifyPublishRecordCreated(postId);
       onChanged?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Publish failed");

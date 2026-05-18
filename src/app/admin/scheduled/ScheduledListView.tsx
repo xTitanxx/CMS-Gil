@@ -20,7 +20,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { dedupePlatforms, PLATFORM_META } from "@/lib/planner/platforms";
-import { formatSlotHour, slotKeyToMoment } from "@/lib/planner/format-slot";
+import { formatSlotHour } from "@/lib/planner/format-slot";
 import { displayBody } from "@/lib/post-body";
 import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
@@ -73,10 +73,6 @@ function slotMoment(slot: PlanSlotData): number {
 interface Item {
   slot: PlanSlotData;
   fbPending: boolean;
-  /** True when fbPending AND the slot's scheduled moment has already passed.
-   *  Pre-computed in the parent so the row can render purely without calling
-   *  `Date.now()` itself (which React's `rules-of-hooks` flags). */
-  fbOverdue: boolean;
 }
 
 export function ScheduledListView() {
@@ -111,27 +107,16 @@ export function ScheduledListView() {
 
   const todayKey = todayUTCKey();
 
-  // A slot stays on Scheduled if it hasn't been published yet, OR if its post
-  // still needs a manual FB cross-post (the post has fired on API platforms
-  // but the user hasn't pasted to FB Personal yet). Everything else moves to
-  // the Published tab, so this list only ever shows "still to do".
+  // A slot leaves Scheduled the moment any API platform publishes — even if
+  // a manual FB cross-post is still outstanding. Those already-fired posts
+  // live on /admin/m (the manual-FB queue); duplicating them here just made
+  // Scheduled feel cluttered with rows whose scheduling work was already done.
   const items = useMemo<Item[]>(() => {
     if (!plan) return [];
-    // Capture "now" once per recompute so all rows get a consistent snapshot
-    // for the overdue check (and so we don't call Date.now() inside any row's
-    // render — the React purity lint catches that).
-    const now = Date.now();
     return plan.slots
       .filter((s) => s.day >= todayKey)
-      .filter((s) => !s.published || fbPendingPostIds.has(s.postId))
-      .map((slot) => {
-        const fbPending = fbPendingPostIds.has(slot.postId);
-        const fbOverdue =
-          fbPending && slot.hour != null
-            ? slotKeyToMoment(slot.day, slot.hour).getTime() < now
-            : false;
-        return { slot, fbPending, fbOverdue };
-      });
+      .filter((s) => !s.published)
+      .map((slot) => ({ slot, fbPending: fbPendingPostIds.has(slot.postId) }));
   }, [plan, todayKey, fbPendingPostIds]);
 
   const activeSlots = useMemo(
@@ -256,7 +241,6 @@ export function ScheduledListView() {
         options: [
           { value: "proposed", label: "Proposed" },
           { value: "scheduled", label: "Scheduled" },
-          { value: "published", label: "Published (needs FB)" },
         ],
         valueFor: (i) => statusKind(i.slot),
       },
@@ -347,7 +331,6 @@ export function ScheduledListView() {
           queueIndex={index + 1}
           todayKey={todayKey}
           fbPending={item.fbPending}
-          fbOverdue={item.fbOverdue}
           onUnschedule={handleUnschedule}
           onSchedule={handleScheduleOne}
         />
@@ -360,12 +343,11 @@ interface ScheduledRowProps {
   slot: PlanSlotData;
   queueIndex: number;
   todayKey: string;
-  /** True when the post has been auto-published to API platforms but still
-   *  needs a manual FB Personal cross-post. Drives the in-row CTA. */
+  /** True when the slot has FB Personal in its platforms and FB hasn't been
+   *  cross-posted yet. Shows a heads-up banner on the row. Slots whose API
+   *  platforms already fired are filtered out upstream, so this only ever
+   *  flags future work — never "still needs". */
   fbPending: boolean;
-  /** True when fbPending AND the slot's moment has already passed. Pre-
-   *  computed by the parent (see ScheduledListView `items`). */
-  fbOverdue: boolean;
   onUnschedule: (slot: PlanSlotData) => Promise<void>;
   onSchedule: (slotId: string) => Promise<void>;
 }
@@ -375,7 +357,6 @@ function ScheduledRow({
   queueIndex,
   todayKey,
   fbPending,
-  fbOverdue,
   onUnschedule,
   onSchedule,
 }: ScheduledRowProps) {
@@ -402,22 +383,8 @@ function ScheduledRow({
     });
   }, [schedule, onSchedule, slot.id]);
 
-  const isPublished = kind === "published";
   const showSchedule = kind === "proposed";
-  const showRemove = !isPublished;
-  // `fbOverdue` (already includes fbPending) drives the amber-vs-blue
-  // distinction on the FB-pending banner below: overdue rows are blocking the
-  // user *now*; future ones are a heads-up only.
-  const isOverdue = fbOverdue;
-  // FB-pending rows look "published" internally (the slot auto-fired to API
-  // platforms) but are still awaiting action, so we never fade them — every
-  // row on this list is "still to do" by the upstream filter.
   const outerCls = "border-gray-100 hover:border-gray-200";
-  // The status pill shows the slot's queue state. For FB-pending rows the
-  // internal kind is "published", but the slot's lifecycle isn't done, so we
-  // display them as "Scheduled" — and leave the footer banner as the single
-  // FB-pending indicator (with its own overdue/future color split).
-  const displayKind: StatusKind = fbPending && isPublished ? "scheduled" : kind;
 
   return (
     <div
@@ -480,9 +447,9 @@ function ScheduledRow({
               )}
             </span>
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_PILL[displayKind]}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_PILL[kind]}`}
             >
-              {STATUS_LABEL[displayKind]}
+              {STATUS_LABEL[kind]}
             </span>
             {platforms.length > 0 && (
               <span className="flex items-center gap-1">
@@ -532,62 +499,42 @@ function ScheduledRow({
             <span className="hidden sm:inline">Schedule</span>
           </button>
         )}
-        {showRemove && (
-          <>
-            {confirming && (
-              <span
-                aria-live="polite"
-                className="hidden text-[11px] font-medium text-amber-600 sm:inline"
-              >
-                Click again
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                trigger();
-              }}
-              disabled={remove.isLoading}
-              className={`p-1.5 transition-colors ${
-                confirming ? "text-amber-500" : "text-gray-300 hover:text-red-500"
-              } disabled:opacity-60`}
-              aria-label={confirming ? "Confirm remove" : "Remove from queue"}
-              title={confirming ? "Click again to remove" : "Remove from queue"}
-            >
-              {remove.isLoading ? <Spinner className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-            </button>
-          </>
+        {confirming && (
+          <span
+            aria-live="polite"
+            className="hidden text-[11px] font-medium text-amber-600 sm:inline"
+          >
+            Click again
+          </span>
         )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            trigger();
+          }}
+          disabled={remove.isLoading}
+          className={`p-1.5 transition-colors ${
+            confirming ? "text-amber-500" : "text-gray-300 hover:text-red-500"
+          } disabled:opacity-60`}
+          aria-label={confirming ? "Confirm remove" : "Remove from queue"}
+          title={confirming ? "Click again to remove" : "Remove from queue"}
+        >
+          {remove.isLoading ? <Spinner className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+        </button>
       </div>
     </div>
     {fbPending && (
       <Link
         href={`/admin/m/${post.id}`}
-        className={`flex items-center justify-between gap-2 border-t px-3 py-2 text-[13px] font-medium md:px-4 ${
-          isOverdue
-            ? "border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100/80 active:bg-amber-100"
-            : "border-blue-100 bg-blue-50/50 text-blue-900 hover:bg-blue-100/60 active:bg-blue-100"
-        }`}
-        title={
-          isOverdue
-            ? "Overdue manual FB cross-post — open the helper"
-            : "Will need a manual FB cross-post when this slot fires"
-        }
+        className="flex items-center justify-between gap-2 border-t border-blue-100 bg-blue-50/50 px-3 py-2 text-[13px] font-medium text-blue-900 hover:bg-blue-100/60 active:bg-blue-100 md:px-4"
+        title="Will need a manual FB cross-post when this slot fires"
       >
         <span className="flex min-w-0 items-center gap-1.5">
           <SiFacebook className="h-3.5 w-3.5 shrink-0 text-[#1877F2]" />
-          <span className="truncate">
-            {isOverdue
-              ? "Still needs manual FB cross-post"
-              : "Will need a manual FB cross-post"}
-          </span>
+          <span className="truncate">Will need a manual FB cross-post</span>
         </span>
-        <span
-          className={`flex shrink-0 items-center gap-0.5 ${
-            isOverdue ? "text-amber-800" : "text-blue-700"
-          }`}
-        >
+        <span className="flex shrink-0 items-center gap-0.5 text-blue-700">
           <span className="hidden sm:inline">Open helper</span>
           <ChevronRight className="h-3.5 w-3.5" />
         </span>

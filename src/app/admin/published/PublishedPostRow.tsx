@@ -64,31 +64,187 @@ const PLATFORM_META: Record<
   },
 };
 
-interface PlatformPillData {
+// Canonical render order. We always render the same 6 slots per row so the
+// user sees a consistent grid and an absent badge is impossible — an
+// "ineligible" or "skipped" platform appears greyed instead of vanishing.
+const PLATFORM_ORDER = [
+  "FACEBOOK_PAGE",
+  "INSTAGRAM",
+  "LINKEDIN",
+  "YOUTUBE",
+  "TIKTOK",
+  "FACEBOOK",
+] as const;
+
+type BadgeState = "posted" | "manual-pending" | "skipped" | "na";
+
+type PostKind = "text" | "image" | "video";
+
+function postKind(post: PostRowData): PostKind {
+  const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
+  if (hasVideo) return "video";
+  if (post.media.length > 0) return "image";
+  return "text";
+}
+
+// Mirror of `src/lib/planner/platform-assignment.ts`. Duplicated client-side so
+// we can decide between "skipped" (eligible, just wasn't sent) and "na" (this
+// post type can't be cross-posted there) without a server roundtrip. FACEBOOK
+// (personal) is always eligible — it's the manual paste-into-Facebook target
+// and accepts every post type.
+function isEligible(platform: string, kind: PostKind): boolean {
+  if (platform === "FACEBOOK") return true;
+  if (platform === "FACEBOOK_PAGE" || platform === "LINKEDIN") return true;
+  if (platform === "INSTAGRAM") return kind !== "text";
+  if (platform === "YOUTUBE" || platform === "TIKTOK") return kind === "video";
+  return false;
+}
+
+function naReason(platform: string, kind: PostKind): string {
+  if (platform === "INSTAGRAM") return "Instagram needs an image or video";
+  if (platform === "YOUTUBE") return "YouTube needs a video";
+  if (platform === "TIKTOK") return "TikTok needs a video";
+  return `Not supported for ${kind} posts`;
+}
+
+interface PostedPill {
   platform: string;
   platformUrl: string | null;
 }
 
-function PlatformPill({ pill }: { pill: PlatformPillData }) {
-  const meta = PLATFORM_META[pill.platform];
+function postedPillFor(post: PostRowData, platform: string): PostedPill | null {
+  // Prefer the most recent PublishRecord that actually has a permalink so the
+  // badge can become a link, falling back to a record without a URL if that's
+  // all there is.
+  let best: PostedPill | null = null;
+  for (const p of post.publishes) {
+    if (p.platform !== platform || p.status !== "PUBLISHED") continue;
+    if (!best || (!best.platformUrl && p.platformUrl)) {
+      best = { platform: p.platform, platformUrl: p.platformUrl };
+    }
+  }
+  return best;
+}
+
+const STATE_CLS: Record<BadgeState, string> = {
+  // Subtle green tint signals "this slot is done"; brand icon stays at full
+  // colour inside so the platform is still identifiable at a glance.
+  posted: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  // Yellow = action required (still in the manual FB queue).
+  "manual-pending": "border-amber-200 bg-amber-50 text-amber-800",
+  // Eligible but not posted to — user chose to skip this one.
+  skipped: "border-gray-200 bg-gray-50 text-gray-400",
+  // Post type can't go here — same shape as skipped but fainter.
+  na: "border-gray-100 bg-gray-50/60 text-gray-300",
+};
+
+const STATE_ICON_OPACITY: Record<BadgeState, string> = {
+  posted: "opacity-100",
+  "manual-pending": "opacity-100",
+  skipped: "opacity-50 grayscale",
+  na: "opacity-30 grayscale",
+};
+
+function tooltipFor(
+  state: BadgeState,
+  platform: string,
+  kind: PostKind,
+  meta: { label: string; manual?: boolean },
+): string {
+  if (state === "posted") {
+    return meta.manual
+      ? `Marked posted to ${meta.label} — open on Facebook`
+      : `Posted to ${meta.label} — open`;
+  }
+  if (state === "manual-pending") return `Still in the FB Personal queue — open helper`;
+  if (state === "skipped") return `Not posted to ${meta.label}`;
+  return naReason(platform, kind);
+}
+
+function PlatformBadge({
+  platform,
+  state,
+  postId,
+  pill,
+  kind,
+  onUnmarked,
+}: {
+  platform: string;
+  state: BadgeState;
+  postId: string;
+  pill: PostedPill | null;
+  kind: PostKind;
+  onUnmarked: () => void;
+}) {
+  const meta = PLATFORM_META[platform];
   if (!meta) return null;
   const Icon = meta.icon;
-  const baseCls = `inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
-    meta.manual
-      ? "border-amber-200 bg-amber-50 text-amber-800"
-      : "border-gray-200 bg-gray-50 text-gray-600"
-  }`;
-  const inner = (
+  const tooltip = tooltipFor(state, platform, kind, meta);
+  const baseCls = `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATE_CLS[state]}`;
+  const iconCls = `h-3.5 w-3.5 shrink-0 ${meta.iconColor} ${STATE_ICON_OPACITY[state]}`;
+
+  // The badge body is the "main" content (icon + label + indicator). For the
+  // FB-personal Unmark variant we wrap this in a flex container and append a
+  // trailing button without losing the single-pill look.
+  const bodyContents = (
     <>
-      <Icon className={`h-3 w-3 shrink-0 ${meta.iconColor}`} />
+      <Icon className={iconCls} />
       <span className="truncate">{meta.label}</span>
-      {meta.manual && <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />}
-      {pill.platformUrl && <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />}
+      {meta.manual && state === "posted" && (
+        <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />
+      )}
+      {state === "posted" && pill?.platformUrl && (
+        <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+      )}
     </>
   );
-  // Linkable when the PublishRecord captured a permalink (API platforms always;
-  // FB personal only when the user pasted the URL in the manual-post helper).
-  if (pill.platformUrl) {
+
+  // FB Personal + posted: inline Unmark sits *inside* the badge as a trailing
+  // hit area, replacing the old separate pill. Background and border stay
+  // unified so it still reads as a single chip.
+  if (platform === "FACEBOOK" && state === "posted") {
+    const body =
+      pill?.platformUrl ? (
+        <a
+          href={pill.platformUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1 truncate hover:underline"
+          title={tooltip}
+        >
+          {bodyContents}
+        </a>
+      ) : (
+        <span className="flex items-center gap-1 truncate" title={tooltip}>
+          {bodyContents}
+        </span>
+      );
+    return (
+      <span className={`${baseCls} pr-0.5`}>
+        {body}
+        <InlineUnmarkButton postId={postId} onUnmarked={onUnmarked} />
+      </span>
+    );
+  }
+
+  // Manual-pending FB Personal: link to the helper so a tap takes you to the
+  // right place to actually post on Facebook.
+  if (platform === "FACEBOOK" && state === "manual-pending") {
+    return (
+      <Link
+        href={`/admin/m/${postId}`}
+        onClick={(e) => e.stopPropagation()}
+        className={`${baseCls} hover:brightness-95`}
+        title={tooltip}
+      >
+        {bodyContents}
+      </Link>
+    );
+  }
+
+  // Posted (non-FB) with a permalink: full-row badge is a link to the post.
+  if (state === "posted" && pill?.platformUrl) {
     return (
       <a
         href={pill.platformUrl}
@@ -96,27 +252,21 @@ function PlatformPill({ pill }: { pill: PlatformPillData }) {
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         className={`${baseCls} hover:brightness-95 active:brightness-90`}
-        title={
-          meta.manual
-            ? `Manually posted to ${meta.label} — open on Facebook`
-            : `Posted to ${meta.label} — open`
-        }
+        title={tooltip}
       >
-        {inner}
+        {bodyContents}
       </a>
     );
   }
+
   return (
-    <span
-      className={baseCls}
-      title={meta.manual ? `Manually posted to ${meta.label}` : `Posted to ${meta.label}`}
-    >
-      {inner}
+    <span className={baseCls} title={tooltip}>
+      {bodyContents}
     </span>
   );
 }
 
-function UnmarkFbButton({
+function InlineUnmarkButton({
   postId,
   onUnmarked,
 }: {
@@ -125,23 +275,14 @@ function UnmarkFbButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   async function doUnmark() {
     setBusy(true);
-    setErr(null);
     try {
       const res = await fetch(`/api/posts/${postId}/manual-publish?platform=FACEBOOK`, {
         method: "DELETE",
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErr(data?.error ?? "Couldn't unmark");
-        return;
-      }
-      onUnmarked();
-    } catch {
-      setErr("Network error");
+      if (res.ok) onUnmarked();
     } finally {
       setBusy(false);
       setConfirming(false);
@@ -149,93 +290,69 @@ function UnmarkFbButton({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (confirming) void doUnmark();
-          else setConfirming(true);
-        }}
-        disabled={busy}
-        className={`inline-flex h-5 items-center gap-0.5 rounded-full border px-1.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-          confirming
-            ? "border-red-300 bg-red-100 text-red-800 hover:bg-red-200"
-            : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
-        }`}
-        title={confirming ? "Click again to confirm" : "Unmark as posted on FB Personal"}
-        aria-label={confirming ? "Confirm unmark" : "Unmark as posted"}
-      >
-        {busy ? (
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-        ) : (
-          <Undo2 className="h-2.5 w-2.5" />
-        )}
-        <span>{confirming ? "Sure?" : "Unmark"}</span>
-      </button>
-      {err && <span className="text-[10px] text-red-600">{err}</span>}
-    </>
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirming) void doUnmark();
+        else setConfirming(true);
+      }}
+      disabled={busy}
+      className={`ml-0.5 inline-flex h-5 items-center gap-0.5 rounded-full border-l border-l-emerald-200 pl-1.5 pr-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+        confirming
+          ? "bg-red-100 text-red-800 hover:bg-red-200"
+          : "text-emerald-700 hover:bg-emerald-100"
+      }`}
+      title={confirming ? "Click again to confirm" : "Unmark as posted on FB Personal"}
+      aria-label={confirming ? "Confirm unmark" : "Unmark as posted"}
+    >
+      {busy ? (
+        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+      ) : (
+        <Undo2 className="h-2.5 w-2.5" />
+      )}
+      <span>{confirming ? "Sure?" : "Unmark"}</span>
+    </button>
   );
 }
 
-// Stable display order for the pill row, so a post that went to FB+IG+TT
-// always shows them in the same sequence (FB Personal first because it's the
-// only manual one and the only one that has an Unmark control wired to it).
-const PLATFORM_ORDER = [
-  "FACEBOOK",
-  "FACEBOOK_PAGE",
-  "INSTAGRAM",
-  "TIKTOK",
-  "YOUTUBE",
-  "LINKEDIN",
-] as const;
-
-function PlatformPills({
-  pills,
+function PlatformBadgeRow({
+  post,
   postId,
-  hasFbManual,
+  fbPending,
+  fbUnmarked,
   onUnmarkedFb,
 }: {
-  pills: PlatformPillData[];
+  post: PostRowData;
   postId: string;
-  hasFbManual: boolean;
+  fbPending: boolean;
+  fbUnmarked: boolean;
   onUnmarkedFb: () => void;
 }) {
-  if (pills.length === 0 && !hasFbManual) return null;
-  const byPlatform = new Map(pills.map((p) => [p.platform, p]));
-  const ordered: string[] = [
-    ...PLATFORM_ORDER.filter((p) => byPlatform.has(p)),
-    // Any platform we forgot to put in PLATFORM_ORDER falls back to the end,
-    // sorted alphabetically so the order at least stays stable across renders.
-    ...[...byPlatform.keys()]
-      .filter((p) => !(PLATFORM_ORDER as readonly string[]).includes(p))
-      .sort(),
-  ];
-  // If FB Personal isn't already in the list but we still need to render Unmark
-  // (defensive — hasFbManual implies a FACEBOOK pill in practice), prepend it
-  // so Unmark has something to anchor next to.
-  const hasFbPill = ordered.includes("FACEBOOK");
+  const kind = postKind(post);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {ordered.map((platform) => {
-        const pill = byPlatform.get(platform);
-        if (!pill) return null;
-        // Group FB Personal + Unmark as a connected pair: same function,
-        // shouldn't get split by other pills on wider rows.
-        if (platform === "FACEBOOK" && hasFbManual) {
-          return (
-            <span key={platform} className="inline-flex items-center gap-1">
-              <PlatformPill pill={pill} />
-              <UnmarkFbButton postId={postId} onUnmarked={onUnmarkedFb} />
-            </span>
-          );
-        }
-        return <PlatformPill key={platform} pill={pill} />;
+      {PLATFORM_ORDER.map((platform) => {
+        const pill =
+          platform === "FACEBOOK" && fbUnmarked ? null : postedPillFor(post, platform);
+        let state: BadgeState;
+        if (pill) state = "posted";
+        else if (platform === "FACEBOOK" && fbPending && !fbUnmarked) state = "manual-pending";
+        else if (isEligible(platform, kind)) state = "skipped";
+        else state = "na";
+        return (
+          <PlatformBadge
+            key={platform}
+            platform={platform}
+            state={state}
+            postId={postId}
+            pill={pill}
+            kind={kind}
+            onUnmarked={onUnmarkedFb}
+          />
+        );
       })}
-      {hasFbManual && !hasFbPill && (
-        <UnmarkFbButton postId={postId} onUnmarked={onUnmarkedFb} />
-      )}
     </div>
   );
 }
@@ -244,6 +361,7 @@ interface Props {
   post: PostRowData;
   index: number;
   href: string;
+  fbPending: boolean;
 }
 
 interface PublishEvent {
@@ -354,22 +472,7 @@ function PublishTimeBlock({ events }: { events: PublishEvent[] }) {
   );
 }
 
-function buildPills(post: PostRowData): PlatformPillData[] {
-  // Keep only PUBLISHED records; one pill per distinct platform; prefer the
-  // record that actually has a permalink (so the pill becomes an external
-  // link rather than an inert chip).
-  const byPlatform = new Map<string, PlatformPillData>();
-  for (const p of post.publishes) {
-    if (p.status !== "PUBLISHED") continue;
-    const existing = byPlatform.get(p.platform);
-    if (!existing || (!existing.platformUrl && p.platformUrl)) {
-      byPlatform.set(p.platform, { platform: p.platform, platformUrl: p.platformUrl });
-    }
-  }
-  return [...byPlatform.values()];
-}
-
-export function PublishedPostRow({ post, index, href }: Props) {
+export function PublishedPostRow({ post, index, href, fbPending }: Props) {
   const events = collectPublishEvents(post);
   const body = displayBody(post.body);
 
@@ -378,11 +481,6 @@ export function PublishedPostRow({ post, index, href }: Props) {
   // tab as long as some other platform is still PUBLISHED (the server uses
   // hubPublishCount > 0, not a single-platform flag).
   const [fbUnmarked, setFbUnmarked] = useState(false);
-  const visiblePills = buildPills(post).filter(
-    (p) => !(fbUnmarked && p.platform === "FACEBOOK"),
-  );
-  const hasFbManual =
-    !fbUnmarked && post.publishes.some((p) => p.platform === "FACEBOOK" && p.status === "PUBLISHED");
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-sm md:items-center md:gap-4 md:p-4">
@@ -443,16 +541,17 @@ export function PublishedPostRow({ post, index, href }: Props) {
             <PublishTimeBlock events={events} />
           </div>
           {body ? (
-            <p className="mt-1 line-clamp-2 text-sm text-gray-700">{body}</p>
+            <p className="mt-1 line-clamp-2 break-words text-sm text-gray-700">{body}</p>
           ) : (
             <p className="mt-1 text-sm italic text-gray-400">No caption</p>
           )}
         </Link>
         <div className="mt-1.5">
-          <PlatformPills
-            pills={visiblePills}
+          <PlatformBadgeRow
+            post={post}
             postId={post.id}
-            hasFbManual={hasFbManual}
+            fbPending={fbPending}
+            fbUnmarked={fbUnmarked}
             onUnmarkedFb={() => setFbUnmarked(true)}
           />
         </div>

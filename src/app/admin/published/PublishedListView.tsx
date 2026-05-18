@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PostListShell } from "@/app/admin/_shared/PostListShell";
 import { PostingHubTabs } from "@/app/admin/_shared/PostingHubTabs";
 import type { PostRowData } from "@/app/admin/posts/PostRow";
@@ -16,6 +16,26 @@ const PUBLISHED_SORT_OPTIONS = [
 
 export function PublishedListView() {
   const [, setPosts] = useState<PostRowData[]>([]);
+  // Set of postIds that still need a manual FB Personal cross-post. Same
+  // source as the Manual FB queue page so badge state stays consistent across
+  // the hub.
+  const [fbPendingPostIds, setFbPendingPostIds] = useState<Set<string>>(new Set());
+
+  const refreshFbPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/manual-fb-queue", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { items: { postId: string }[] };
+      setFbPendingPostIds(new Set(data.items.map((i) => i.postId)));
+    } catch {
+      // best-effort; absence just means the yellow "still in queue" cue is
+      // missing, not a fatal error
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFbPending();
+  }, [refreshFbPending]);
 
   return (
     <>
@@ -40,6 +60,7 @@ export function PublishedListView() {
             post={post}
             index={index}
             href={`/admin/posts/${post.id}`}
+            fbPending={fbPendingPostIds.has(post.id)}
           />
         )}
       />

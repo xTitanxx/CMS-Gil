@@ -11,105 +11,24 @@ import {
   Images,
   FileText,
   ChevronDown,
-  ExternalLink,
-  Hand,
-  Loader2,
-  Undo2,
 } from "lucide-react";
-import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
-import { FaLinkedin } from "react-icons/fa";
 import { PlatformIcons } from "@/app/admin/scheduled/PlatformIcons";
+import {
+  PlatformBadgeRow,
+  PLATFORM_ORDER,
+  isEligible,
+  type PlatformBadgeState,
+  type PostedPill,
+  type PostKind,
+} from "@/app/admin/_shared/PlatformBadgeRow";
 import { displayBody } from "@/lib/post-body";
 import type { PostRowData } from "@/app/admin/posts/PostRow";
-
-type PlatformIconComponent = React.ComponentType<{ className?: string }>;
-
-const PLATFORM_META: Record<
-  string,
-  { label: string; icon: PlatformIconComponent; iconColor: string; manual?: boolean }
-> = {
-  // FACEBOOK = personal profile. The hub has no API path to a personal
-  // profile, so every PublishRecord with platform=FACEBOOK was recorded
-  // after the user manually pasted into Facebook themselves.
-  FACEBOOK: {
-    label: "FB Personal",
-    icon: SiFacebook as PlatformIconComponent,
-    iconColor: "text-[#1877F2]",
-    manual: true,
-  },
-  FACEBOOK_PAGE: {
-    label: "FB Page",
-    icon: SiFacebook as PlatformIconComponent,
-    iconColor: "text-[#1877F2]",
-  },
-  INSTAGRAM: {
-    label: "Instagram",
-    icon: SiInstagram as PlatformIconComponent,
-    iconColor: "text-pink-600",
-  },
-  LINKEDIN: {
-    label: "LinkedIn",
-    icon: FaLinkedin as PlatformIconComponent,
-    iconColor: "text-blue-700",
-  },
-  YOUTUBE: {
-    label: "YouTube",
-    icon: SiYoutube as PlatformIconComponent,
-    iconColor: "text-red-600",
-  },
-  TIKTOK: {
-    label: "TikTok",
-    icon: SiTiktok as PlatformIconComponent,
-    iconColor: "text-gray-900",
-  },
-};
-
-// Canonical render order. We always render the same 6 slots per row so the
-// user sees a consistent grid and an absent badge is impossible — an
-// "ineligible" or "skipped" platform appears greyed instead of vanishing.
-const PLATFORM_ORDER = [
-  "FACEBOOK_PAGE",
-  "INSTAGRAM",
-  "LINKEDIN",
-  "YOUTUBE",
-  "TIKTOK",
-  "FACEBOOK",
-] as const;
-
-type BadgeState = "posted" | "manual-pending" | "skipped" | "na";
-
-type PostKind = "text" | "image" | "video";
 
 function postKind(post: PostRowData): PostKind {
   const hasVideo = post.media.some((m) => m.mimeType.startsWith("video/"));
   if (hasVideo) return "video";
   if (post.media.length > 0) return "image";
   return "text";
-}
-
-// Mirror of `src/lib/planner/platform-assignment.ts`. Duplicated client-side so
-// we can decide between "skipped" (eligible, just wasn't sent) and "na" (this
-// post type can't be cross-posted there) without a server roundtrip. FACEBOOK
-// (personal) is always eligible — it's the manual paste-into-Facebook target
-// and accepts every post type.
-function isEligible(platform: string, kind: PostKind): boolean {
-  if (platform === "FACEBOOK") return true;
-  if (platform === "FACEBOOK_PAGE" || platform === "LINKEDIN") return true;
-  if (platform === "INSTAGRAM") return kind !== "text";
-  if (platform === "YOUTUBE" || platform === "TIKTOK") return kind === "video";
-  return false;
-}
-
-function naReason(platform: string, kind: PostKind): string {
-  if (platform === "INSTAGRAM") return "Instagram needs an image or video";
-  if (platform === "YOUTUBE") return "YouTube needs a video";
-  if (platform === "TIKTOK") return "TikTok needs a video";
-  return `Not supported for ${kind} posts`;
-}
-
-interface PostedPill {
-  platform: string;
-  platformUrl: string | null;
 }
 
 function postedPillFor(post: PostRowData, platform: string): PostedPill | null {
@@ -126,237 +45,6 @@ function postedPillFor(post: PostRowData, platform: string): PostedPill | null {
   return best;
 }
 
-const STATE_CLS: Record<BadgeState, string> = {
-  // Subtle green tint signals "this slot is done"; brand icon stays at full
-  // colour inside so the platform is still identifiable at a glance.
-  posted: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  // Yellow = action required (still in the manual FB queue).
-  "manual-pending": "border-amber-200 bg-amber-50 text-amber-800",
-  // Eligible but not posted to — user chose to skip this one.
-  skipped: "border-gray-200 bg-gray-50 text-gray-400",
-  // Post type can't go here — same shape as skipped but fainter.
-  na: "border-gray-100 bg-gray-50/60 text-gray-300",
-};
-
-const STATE_ICON_OPACITY: Record<BadgeState, string> = {
-  posted: "opacity-100",
-  "manual-pending": "opacity-100",
-  skipped: "opacity-50 grayscale",
-  na: "opacity-30 grayscale",
-};
-
-function tooltipFor(
-  state: BadgeState,
-  platform: string,
-  kind: PostKind,
-  meta: { label: string; manual?: boolean },
-): string {
-  if (state === "posted") {
-    return meta.manual
-      ? `Marked posted to ${meta.label} — open on Facebook`
-      : `Posted to ${meta.label} — open`;
-  }
-  if (state === "manual-pending") return `Still in the FB Personal queue — open helper`;
-  if (state === "skipped") return `Not posted to ${meta.label}`;
-  return naReason(platform, kind);
-}
-
-function PlatformBadge({
-  platform,
-  state,
-  postId,
-  pill,
-  kind,
-  onUnmarked,
-}: {
-  platform: string;
-  state: BadgeState;
-  postId: string;
-  pill: PostedPill | null;
-  kind: PostKind;
-  onUnmarked: () => void;
-}) {
-  const meta = PLATFORM_META[platform];
-  if (!meta) return null;
-  const Icon = meta.icon;
-  const tooltip = tooltipFor(state, platform, kind, meta);
-  const baseCls = `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATE_CLS[state]}`;
-  const iconCls = `h-3.5 w-3.5 shrink-0 ${meta.iconColor} ${STATE_ICON_OPACITY[state]}`;
-
-  // The badge body is the "main" content (icon + label + indicator). For the
-  // FB-personal Unmark variant we wrap this in a flex container and append a
-  // trailing button without losing the single-pill look.
-  const bodyContents = (
-    <>
-      <Icon className={iconCls} />
-      <span className="truncate">{meta.label}</span>
-      {meta.manual && state === "posted" && (
-        <Hand className="h-2.5 w-2.5 shrink-0" aria-label="manual" />
-      )}
-      {state === "posted" && pill?.platformUrl && (
-        <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
-      )}
-    </>
-  );
-
-  // FB Personal + posted: inline Unmark sits *inside* the badge as a trailing
-  // hit area, replacing the old separate pill. Background and border stay
-  // unified so it still reads as a single chip.
-  if (platform === "FACEBOOK" && state === "posted") {
-    const body =
-      pill?.platformUrl ? (
-        <a
-          href={pill.platformUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1 truncate hover:underline"
-          title={tooltip}
-        >
-          {bodyContents}
-        </a>
-      ) : (
-        <span className="flex items-center gap-1 truncate" title={tooltip}>
-          {bodyContents}
-        </span>
-      );
-    return (
-      <span className={`${baseCls} pr-0.5`}>
-        {body}
-        <InlineUnmarkButton postId={postId} onUnmarked={onUnmarked} />
-      </span>
-    );
-  }
-
-  // Manual-pending FB Personal: link to the helper so a tap takes you to the
-  // right place to actually post on Facebook.
-  if (platform === "FACEBOOK" && state === "manual-pending") {
-    return (
-      <Link
-        href={`/admin/m/${postId}`}
-        onClick={(e) => e.stopPropagation()}
-        className={`${baseCls} hover:brightness-95`}
-        title={tooltip}
-      >
-        {bodyContents}
-      </Link>
-    );
-  }
-
-  // Posted (non-FB) with a permalink: full-row badge is a link to the post.
-  if (state === "posted" && pill?.platformUrl) {
-    return (
-      <a
-        href={pill.platformUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.stopPropagation()}
-        className={`${baseCls} hover:brightness-95 active:brightness-90`}
-        title={tooltip}
-      >
-        {bodyContents}
-      </a>
-    );
-  }
-
-  return (
-    <span className={baseCls} title={tooltip}>
-      {bodyContents}
-    </span>
-  );
-}
-
-function InlineUnmarkButton({
-  postId,
-  onUnmarked,
-}: {
-  postId: string;
-  onUnmarked: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-
-  async function doUnmark() {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/posts/${postId}/manual-publish?platform=FACEBOOK`, {
-        method: "DELETE",
-      });
-      if (res.ok) onUnmarked();
-    } finally {
-      setBusy(false);
-      setConfirming(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (confirming) void doUnmark();
-        else setConfirming(true);
-      }}
-      disabled={busy}
-      className={`ml-0.5 inline-flex h-5 items-center gap-0.5 rounded-full border-l border-l-emerald-200 pl-1.5 pr-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-        confirming
-          ? "bg-red-100 text-red-800 hover:bg-red-200"
-          : "text-emerald-700 hover:bg-emerald-100"
-      }`}
-      title={confirming ? "Click again to confirm" : "Unmark as posted on FB Personal"}
-      aria-label={confirming ? "Confirm unmark" : "Unmark as posted"}
-    >
-      {busy ? (
-        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-      ) : (
-        <Undo2 className="h-2.5 w-2.5" />
-      )}
-      <span>{confirming ? "Sure?" : "Unmark"}</span>
-    </button>
-  );
-}
-
-function PlatformBadgeRow({
-  post,
-  postId,
-  fbPending,
-  fbUnmarked,
-  onUnmarkedFb,
-}: {
-  post: PostRowData;
-  postId: string;
-  fbPending: boolean;
-  fbUnmarked: boolean;
-  onUnmarkedFb: () => void;
-}) {
-  const kind = postKind(post);
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {PLATFORM_ORDER.map((platform) => {
-        const pill =
-          platform === "FACEBOOK" && fbUnmarked ? null : postedPillFor(post, platform);
-        let state: BadgeState;
-        if (pill) state = "posted";
-        else if (platform === "FACEBOOK" && fbPending && !fbUnmarked) state = "manual-pending";
-        else if (isEligible(platform, kind)) state = "skipped";
-        else state = "na";
-        return (
-          <PlatformBadge
-            key={platform}
-            platform={platform}
-            state={state}
-            postId={postId}
-            pill={pill}
-            kind={kind}
-            onUnmarked={onUnmarkedFb}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 interface Props {
   post: PostRowData;
   index: number;
@@ -370,8 +58,6 @@ interface PublishEvent {
 }
 
 // Within this gap we treat platform publishes as "the same event".
-// Hub publishNow() loops platforms sequentially and typically lands them
-// inside a few seconds; anything wider than this is a meaningful re-post.
 const SIMULTANEOUS_THRESHOLD_MS = 60_000;
 
 function collectPublishEvents(post: PostRowData): PublishEvent[] {
@@ -475,12 +161,35 @@ function PublishTimeBlock({ events }: { events: PublishEvent[] }) {
 export function PublishedPostRow({ post, index, href, fbPending }: Props) {
   const events = collectPublishEvents(post);
   const body = displayBody(post.body);
+  const kind = postKind(post);
 
   // Local optimistic state: when the user clicks "Unmark" on the FB Personal
   // pill, drop it from the list right away. The post stays in the Published
   // tab as long as some other platform is still PUBLISHED (the server uses
   // hubPublishCount > 0, not a single-platform flag).
   const [fbUnmarked, setFbUnmarked] = useState(false);
+
+  // Resolve the badge state for each platform from publish records + the
+  // manual-FB queue. Anything not resolved here falls back to "skipped" or
+  // "na" inside PlatformBadgeRow based on `isEligible(platform, kind)`.
+  const stateByPlatform: Partial<Record<string, PlatformBadgeState>> = {};
+  const pillByPlatform: Partial<Record<string, PostedPill | null>> = {};
+  for (const platform of PLATFORM_ORDER) {
+    const pill =
+      platform === "FACEBOOK" && fbUnmarked ? null : postedPillFor(post, platform);
+    pillByPlatform[platform] = pill;
+    if (pill) {
+      stateByPlatform[platform] = "posted";
+    } else if (platform === "FACEBOOK" && fbPending && !fbUnmarked) {
+      // FB Personal didn't fire automatically — and the slot is past, so the
+      // cross-post is overdue rather than merely "pending in the future."
+      stateByPlatform[platform] = "overdue";
+    } else if (isEligible(platform, kind)) {
+      stateByPlatform[platform] = "skipped";
+    } else {
+      stateByPlatform[platform] = "na";
+    }
+  }
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-sm md:items-center md:gap-4 md:p-4">
@@ -548,10 +257,10 @@ export function PublishedPostRow({ post, index, href, fbPending }: Props) {
         </Link>
         <div className="mt-1.5">
           <PlatformBadgeRow
-            post={post}
             postId={post.id}
-            fbPending={fbPending}
-            fbUnmarked={fbUnmarked}
+            kind={kind}
+            stateByPlatform={stateByPlatform}
+            pillByPlatform={pillByPlatform}
             onUnmarkedFb={() => setFbUnmarked(true)}
           />
         </div>

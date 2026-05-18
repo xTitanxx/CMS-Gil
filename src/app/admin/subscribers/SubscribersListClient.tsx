@@ -26,6 +26,34 @@ function deriveCodeFromName(name: string): string {
   return cleaned ? `gil-${cleaned}` : "";
 }
 
+// Plaintext codes are bcrypt-hashed on the server — once issued, the API
+// can't reveal them again. Caching the most recently shown code in this
+// admin's localStorage lets "Hide" → "Show invite" round-trip without
+// triggering a regeneration (which would invalidate the code the subscriber
+// already received). Regeneration is now an explicit action inside the
+// revealed-message panel.
+const INVITE_CACHE_KEY = "admin:subscriberInviteCodes:v1";
+
+function loadInviteCache(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(INVITE_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistInviteCache(cache: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(INVITE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // localStorage may be unavailable (private mode, quota) — silently skip;
+    // the admin will just have to regenerate to recover the code.
+  }
+}
+
 export function SubscribersListClient() {
   const [list, setList] = useState<Subscriber[]>([]);
   const [name, setName] = useState("");
@@ -49,6 +77,19 @@ export function SubscribersListClient() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Surface cached codes for any subscriber the admin has revealed before in
+  // this browser, so "Hide" doesn't actually lose the code — re-clicking
+  // "Show invite" just reads it back without regenerating.
+  function rememberCode(id: string, code: string) {
+    const next = { ...loadInviteCache(), [id]: code };
+    persistInviteCache(next);
+  }
+  function forgetCode(id: string) {
+    const next = loadInviteCache();
+    delete next[id];
+    persistInviteCache(next);
+  }
 
   function handleNameChange(value: string) {
     setName(value);
@@ -93,14 +134,26 @@ export function SubscribersListClient() {
     }
     const { code, subscriber } = await res.json();
     setGenerated({ name: subscriber.name, code });
+    rememberCode(subscriber.id, code);
     resetForm();
     void refresh();
   }
 
+  // "Show invite" is a pure reveal: if we already have the code cached for
+  // this browser, we surface it without touching the server. Only when the
+  // cache is empty (first reveal ever, or a different browser) do we POST to
+  // regenerate-code — and that path still pops the existing confirm for
+  // already-signed-in subscribers, because in that case we genuinely will
+  // invalidate their old code.
   async function handleInvite(s: Subscriber) {
+    const cached = loadInviteCache()[s.id];
+    if (cached) {
+      setInviteCode((prev) => ({ ...prev, [s.id]: cached }));
+      return;
+    }
     if (
       s.lastSeenAt &&
-      !confirm(`${s.name} has already signed in. Regenerating will invalidate their old code. Continue?`)
+      !confirm(`${s.name} has already signed in and we don't have a copy of their code here. Generating a new one will invalidate their old code. Continue?`)
     )
       return;
     setInviteBusy((prev) => ({ ...prev, [s.id]: true }));
@@ -111,6 +164,31 @@ export function SubscribersListClient() {
       if (res.ok) {
         const { code } = await res.json();
         setInviteCode((prev) => ({ ...prev, [s.id]: code }));
+        rememberCode(s.id, code);
+      }
+    } finally {
+      setInviteBusy((prev) => ({ ...prev, [s.id]: false }));
+    }
+  }
+
+  // Explicit regeneration — always confirms, always POSTs, always replaces
+  // the cached code with the new one.
+  async function handleRegenerate(s: Subscriber) {
+    if (
+      !confirm(
+        `Regenerate ${s.name}'s code? Their previous code (whether known or not) stops working immediately.`,
+      )
+    )
+      return;
+    setInviteBusy((prev) => ({ ...prev, [s.id]: true }));
+    try {
+      const res = await fetch(`/api/admin/subscribers/${s.id}/regenerate-code`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const { code } = await res.json();
+        setInviteCode((prev) => ({ ...prev, [s.id]: code }));
+        rememberCode(s.id, code);
       }
     } finally {
       setInviteBusy((prev) => ({ ...prev, [s.id]: false }));
@@ -118,11 +196,21 @@ export function SubscribersListClient() {
   }
 
   function dismissInvite(id: string) {
+    // Hide the reveal panel but KEEP the cached code — re-clicking "Show invite"
+    // should bring back the same code, not regenerate.
     setInviteCode((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
+  }
+
+  function forgetInvite(id: string) {
+    // Explicit "forget" — drops the cache too, so the next reveal must
+    // regenerate. Useful when the admin wants to start fresh without
+    // immediately invalidating the subscriber's current code.
+    forgetCode(id);
+    dismissInvite(id);
   }
 
   return (
@@ -193,7 +281,7 @@ export function SubscribersListClient() {
                           disabled={inviteBusy[s.id]}
                           className="text-emerald-600 hover:underline disabled:opacity-40"
                         >
-                          {inviteBusy[s.id] ? "…" : msg ? "Hide" : "Invite"}
+                          {inviteBusy[s.id] ? "…" : msg ? "Hide" : "Show invite"}
                         </button>
                         <Link
                           href={`/admin/subscribers/${s.id}`}
@@ -220,10 +308,26 @@ export function SubscribersListClient() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => handleRegenerate(s)}
+                                disabled={inviteBusy[s.id]}
+                                className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+                              >
+                                {inviteBusy[s.id] ? "…" : "Regenerate"}
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => dismissInvite(s.id)}
                                 className="text-xs text-gray-500 hover:underline"
                               >
-                                Dismiss
+                                Hide
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => forgetInvite(s.id)}
+                                className="text-xs text-gray-400 hover:underline"
+                                title="Forget this code from this browser. The subscriber's current code still works."
+                              >
+                                Forget here
                               </button>
                             </div>
                           </div>

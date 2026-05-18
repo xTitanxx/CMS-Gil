@@ -169,6 +169,8 @@ export function ActivityList({
   const [refreshing, setRefreshing] = useState(false);
   const [expandedError, setExpandedError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<Set<string>>(() => new Set());
+  const [showFailures, setShowFailures] = useState(false);
+  const [expandedAnalytics, setExpandedAnalytics] = useState<Set<string>>(() => new Set());
 
   // Sync state when the server tree re-renders with new data — happens after
   // SchedulePanel calls router.refresh() on a successful action. Without
@@ -254,6 +256,44 @@ export function ActivityList({
   }, [postId, refresh]);
 
   const hasPublished = publishes.some((p) => p.status === "PUBLISHED");
+
+  // Bucket publishes for display.
+  //  - active: in-flight, keep prominent full rows with cancel
+  //  - posted: latest PUBLISHED record per platform, compact one-liner
+  //  - failures: FAILED/CANCELLED for platforms with no success — collapsed
+  // Records for platforms that eventually succeeded are dropped from failures
+  // so a retry success doesn't drag old "Manually reaped" noise back into view.
+  const active = publishes.filter(
+    (p) => p.status === "PROCESSING" || p.status === "PENDING",
+  );
+
+  const publishedByPlatform = new Map<Platform, Publish>();
+  for (const p of publishes) {
+    if (p.status !== "PUBLISHED") continue;
+    const existing = publishedByPlatform.get(p.platform);
+    const newTime = p.publishedAt ? new Date(p.publishedAt).getTime() : 0;
+    const existingTime = existing?.publishedAt
+      ? new Date(existing.publishedAt).getTime()
+      : 0;
+    if (!existing || newTime > existingTime) {
+      publishedByPlatform.set(p.platform, p);
+    }
+  }
+  const succeededPlatforms = new Set(publishedByPlatform.keys());
+  const posted = Array.from(publishedByPlatform.values()).sort(
+    (a, b) =>
+      new Date(b.publishedAt ?? 0).getTime() -
+      new Date(a.publishedAt ?? 0).getTime(),
+  );
+
+  const failures = publishes.filter(
+    (p) =>
+      (p.status === "FAILED" || p.status === "CANCELLED") &&
+      !succeededPlatforms.has(p.platform),
+  );
+
+  const failedCount = failures.filter((p) => p.status === "FAILED").length;
+  const cancelledCount = failures.filter((p) => p.status === "CANCELLED").length;
 
   if (publishes.length === 0 && !fbAnalytics) return null;
 
@@ -346,164 +386,331 @@ export function ActivityList({
         </div>
       )}
 
-      {publishes.length > 0 && (
+      {active.length > 0 && (
         <div className="divide-y divide-gray-100 border-t border-gray-100">
-          {publishes.map((pr) => {
-            const tint = PLATFORM_TINT[pr.platform];
-            const badge = statusBadge(pr.status);
-            const a = pr.analytics;
-            const showError = !!pr.errorMessage;
-            const errorOpen = expandedError === pr.id;
+          {active.map((pr) => (
+            <ActiveRow
+              key={pr.id}
+              pr={pr}
+              cancelling={cancelling.has(pr.id)}
+              onCancel={() => cancelPublish(pr.id)}
+            />
+          ))}
+        </div>
+      )}
 
-            const subtitle = pr.publishedAt
-              ? format(new Date(pr.publishedAt), "MMM d, yyyy · h:mm a")
-              : pr.scheduledAt && pr.status === "PENDING"
-              ? `Scheduled for ${format(new Date(pr.scheduledAt), "MMM d · h:mm a")}`
-              : pr.status === "PROCESSING"
-              ? "Sending to platform..."
-              : pr.status === "FAILED"
-              ? "Publish failed"
-              : pr.status === "CANCELLED"
-              ? "Cancelled"
-              : "Pending";
-
-            return (
-              <div
+      {posted.length > 0 && (
+        <div className="border-t border-gray-100 px-5 py-3">
+          <ul className="flex flex-col">
+            {posted.map((pr) => (
+              <PostedRow
                 key={pr.id}
-                className={`px-5 py-3.5 transition-colors ${
-                  pr.status === "PROCESSING" ? "bg-blue-50/30" : ""
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.border ?? ""}`}
-                    >
-                      <PlatformIcon platform={pr.platform} className={`h-4 w-4 ${tint.fg}`} />
-                    </div>
-                    <div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white">
-                      {pr.status === "PUBLISHED" && (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                      )}
-                      {pr.status === "FAILED" && (
-                        <XCircle className="h-3.5 w-3.5 text-rose-500" />
-                      )}
-                      {pr.status === "PROCESSING" && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
-                      )}
-                      {pr.status === "PENDING" && (
-                        <Clock className="h-3.5 w-3.5 text-amber-500" />
-                      )}
-                      {pr.status === "CANCELLED" && (
-                        <XCircle className="h-3.5 w-3.5 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
+                pr={pr}
+                analyticsOpen={expandedAnalytics.has(pr.id)}
+                onToggleAnalytics={() =>
+                  setExpandedAnalytics((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(pr.id)) next.delete(pr.id);
+                    else next.add(pr.id);
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </ul>
+        </div>
+      )}
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-[13px] font-medium text-gray-900">
-                        {PLATFORM_LABEL[pr.platform]}
-                      </span>
-                      {PLATFORM_MANUAL[pr.platform] && (
-                        <span className="rounded-sm bg-blue-50 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
-                          Manual
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-gray-500">{subtitle}</p>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {pr.status === "PUBLISHED" && pr.platformUrl && (
-                      <a
-                        href={pr.platformUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 ring-1 ring-inset ring-blue-100 transition-colors hover:bg-blue-100"
-                        aria-label="Open published post"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        View
-                      </a>
-                    )}
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${badge.chip}`}
-                    >
-                      {badge.label}
-                    </span>
-                  </div>
-                </div>
-
-                {showError && (
-                  <div className="ml-12 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedError(errorOpen ? null : pr.id)}
-                      className="group inline-flex max-w-full items-start gap-1.5 rounded-md text-[11px] text-rose-600 hover:text-rose-700"
-                    >
-                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                      <span className={errorOpen ? "" : "truncate"}>
-                        {errorOpen
-                          ? pr.errorMessage
-                          : friendlyError(pr.errorMessage ?? "")}
-                      </span>
-                      <ChevronDown
-                        className={`mt-0.5 h-3 w-3 shrink-0 text-rose-400 transition-transform ${
-                          errorOpen ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                  </div>
-                )}
-
-                {a && (
-                  <div className="ml-12 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                    {a.videoViews != null && (
-                      <Stat icon={Eye} value={a.videoViews} label="views" />
-                    )}
-                    {a.impressions != null && (
-                      <Stat icon={Eye} value={a.impressions} label="impressions" />
-                    )}
-                    {a.reach != null && <Stat icon={Eye} value={a.reach} label="reach" />}
-                    {a.likes != null && <Stat icon={ThumbsUp} value={a.likes} />}
-                    {a.comments != null && <Stat icon={MessageCircle} value={a.comments} />}
-                    {a.shares != null && <Stat icon={Share2} value={a.shares} />}
-                    {a.saves != null && <Stat icon={Bookmark} value={a.saves} />}
-                  </div>
-                )}
-
-                {(pr.status === "PENDING" || pr.status === "PROCESSING") && (
-                  <div className="ml-12 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => cancelPublish(pr.id)}
-                      disabled={cancelling.has(pr.id)}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <XCircle className="h-3 w-3" />
-                      {cancelling.has(pr.id)
-                        ? "Cancelling…"
-                        : pr.scheduledAt
-                          ? "Cancel scheduling"
-                          : "Cancel"}
-                    </button>
-                  </div>
-                )}
-
-                {pr.status === "PUBLISHED" && !a && pr.publishedAt && (
-                  <p className="ml-12 mt-1.5 text-[11px] italic text-gray-400">
-                    {Date.now() - new Date(pr.publishedAt).getTime() < 86400000
-                      ? "Analytics available ~24h after posting"
-                      : "No analytics yet"}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+      {failures.length > 0 && (
+        <div className="border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => setShowFailures((v) => !v)}
+            className="flex w-full items-center justify-between px-5 py-2.5 text-left text-[11px] text-gray-500 transition hover:bg-gray-50"
+          >
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3 text-gray-400" />
+              {[
+                failedCount > 0
+                  ? `${failedCount} failed ${failedCount === 1 ? "attempt" : "attempts"}`
+                  : null,
+                cancelledCount > 0
+                  ? `${cancelledCount} cancelled`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-gray-400 transition-transform ${
+                showFailures ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {showFailures && (
+            <ul className="divide-y divide-gray-100 border-t border-gray-100 bg-gray-50/40">
+              {failures.map((pr) => (
+                <FailureRow
+                  key={pr.id}
+                  pr={pr}
+                  errorOpen={expandedError === pr.id}
+                  onToggleError={() =>
+                    setExpandedError(expandedError === pr.id ? null : pr.id)
+                  }
+                />
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function StatusOverlay({ status }: { status: PublishStatus }) {
+  return (
+    <div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white">
+      {status === "PUBLISHED" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+      {status === "FAILED" && <XCircle className="h-3.5 w-3.5 text-rose-500" />}
+      {status === "PROCESSING" && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />}
+      {status === "PENDING" && <Clock className="h-3.5 w-3.5 text-amber-500" />}
+      {status === "CANCELLED" && <XCircle className="h-3.5 w-3.5 text-gray-400" />}
+    </div>
+  );
+}
+
+function ActiveRow({
+  pr,
+  cancelling,
+  onCancel,
+}: {
+  pr: Publish;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
+  const tint = PLATFORM_TINT[pr.platform];
+  const badge = statusBadge(pr.status);
+  const subtitle =
+    pr.scheduledAt && pr.status === "PENDING"
+      ? `Scheduled for ${format(new Date(pr.scheduledAt), "MMM d · h:mm a")}`
+      : pr.status === "PROCESSING"
+        ? "Sending to platform..."
+        : "Pending";
+
+  return (
+    <div
+      className={`px-5 py-3.5 ${pr.status === "PROCESSING" ? "bg-blue-50/30" : ""}`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.border ?? ""}`}
+          >
+            <PlatformIcon platform={pr.platform} className={`h-4 w-4 ${tint.fg}`} />
+          </div>
+          <StatusOverlay status={pr.status} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[13px] font-medium text-gray-900">
+              {PLATFORM_LABEL[pr.platform]}
+            </span>
+            {PLATFORM_MANUAL[pr.platform] && (
+              <span className="rounded-sm bg-blue-50 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+                Manual
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-500">{subtitle}</p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${badge.chip}`}
+        >
+          {badge.label}
+        </span>
+      </div>
+      <div className="ml-12 mt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={cancelling}
+          className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <XCircle className="h-3 w-3" />
+          {cancelling
+            ? "Cancelling…"
+            : pr.scheduledAt
+              ? "Cancel scheduling"
+              : "Cancel"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PostedRow({
+  pr,
+  analyticsOpen,
+  onToggleAnalytics,
+}: {
+  pr: Publish;
+  analyticsOpen: boolean;
+  onToggleAnalytics: () => void;
+}) {
+  const tint = PLATFORM_TINT[pr.platform];
+  const a = pr.analytics;
+  const hasAnalytics =
+    !!a &&
+    (a.videoViews != null ||
+      a.impressions != null ||
+      a.reach != null ||
+      a.likes != null ||
+      a.comments != null ||
+      a.shares != null ||
+      a.saves != null);
+  const recent =
+    // eslint-disable-next-line react-hooks/purity -- coarse "<24h ago" check; minor render-time variance is fine for an italic hint
+    pr.publishedAt && Date.now() - new Date(pr.publishedAt).getTime() < 86_400_000;
+
+  return (
+    <li className="py-1.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="relative">
+          <div
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.border ?? ""}`}
+          >
+            <PlatformIcon platform={pr.platform} className={`h-3.5 w-3.5 ${tint.fg}`} />
+          </div>
+          <div className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
+            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="truncate text-[13px] font-medium text-gray-900">
+            {PLATFORM_LABEL[pr.platform]}
+          </span>
+          {PLATFORM_MANUAL[pr.platform] && (
+            <span className="rounded-sm bg-blue-50 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-blue-700 ring-1 ring-inset ring-blue-200">
+              Manual
+            </span>
+          )}
+          {pr.publishedAt && (
+            <span className="text-[11px] text-gray-500">
+              {format(new Date(pr.publishedAt), "MMM d · h:mm a")}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {hasAnalytics && (
+            <button
+              type="button"
+              onClick={onToggleAnalytics}
+              aria-expanded={analyticsOpen}
+              className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            >
+              Stats
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${analyticsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          )}
+          {pr.platformUrl && (
+            <a
+              href={pr.platformUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 ring-1 ring-inset ring-blue-100 transition-colors hover:bg-blue-100"
+              aria-label="Open published post"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View
+            </a>
+          )}
+        </div>
+      </div>
+      {hasAnalytics && analyticsOpen && a && (
+        <div className="ml-[2.375rem] mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {a.videoViews != null && <Stat icon={Eye} value={a.videoViews} label="views" />}
+          {a.impressions != null && <Stat icon={Eye} value={a.impressions} label="impressions" />}
+          {a.reach != null && <Stat icon={Eye} value={a.reach} label="reach" />}
+          {a.likes != null && <Stat icon={ThumbsUp} value={a.likes} />}
+          {a.comments != null && <Stat icon={MessageCircle} value={a.comments} />}
+          {a.shares != null && <Stat icon={Share2} value={a.shares} />}
+          {a.saves != null && <Stat icon={Bookmark} value={a.saves} />}
+        </div>
+      )}
+      {!hasAnalytics && recent && (
+        <p className="ml-[2.375rem] mt-0.5 text-[10px] italic text-gray-400">
+          Analytics available ~24h after posting
+        </p>
+      )}
+    </li>
+  );
+}
+
+function FailureRow({
+  pr,
+  errorOpen,
+  onToggleError,
+}: {
+  pr: Publish;
+  errorOpen: boolean;
+  onToggleError: () => void;
+}) {
+  const tint = PLATFORM_TINT[pr.platform];
+  const badge = statusBadge(pr.status);
+  const subtitle =
+    pr.status === "FAILED"
+      ? "Publish failed"
+      : pr.status === "CANCELLED"
+        ? "Cancelled"
+        : "";
+
+  return (
+    <li className="px-5 py-3">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.border ?? ""} opacity-70`}
+          >
+            <PlatformIcon platform={pr.platform} className={`h-3.5 w-3.5 ${tint.fg}`} />
+          </div>
+          <StatusOverlay status={pr.status} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-[12px] font-medium text-gray-700">
+              {PLATFORM_LABEL[pr.platform]}
+            </span>
+            <span className="text-[11px] text-gray-500">{subtitle}</span>
+          </div>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${badge.chip}`}
+        >
+          {badge.label}
+        </span>
+      </div>
+      {pr.errorMessage && (
+        <div className="ml-10 mt-1.5">
+          <button
+            type="button"
+            onClick={onToggleError}
+            className="group inline-flex max-w-full items-start gap-1.5 rounded-md text-[11px] text-rose-600 hover:text-rose-700"
+          >
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className={errorOpen ? "" : "truncate"}>
+              {errorOpen ? pr.errorMessage : friendlyError(pr.errorMessage)}
+            </span>
+            <ChevronDown
+              className={`mt-0.5 h-3 w-3 shrink-0 text-rose-400 transition-transform ${
+                errorOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </div>
+      )}
+    </li>
   );
 }
 

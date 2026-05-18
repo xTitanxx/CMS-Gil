@@ -73,10 +73,10 @@ export async function postToInstagram(
       throw new Error(`Instagram container error: ${JSON.stringify(container)}`);
     }
 
-    // Poll until container is ready (for videos and stories)
-    if (isVideo || postType === "STORY") {
-      await waitForContainer(baseUrl, container.id, accessToken);
-    }
+    // Even for plain images, Meta's container can return IN_PROGRESS briefly
+    // after creation — publishing too soon yields error 9007/2207027
+    // ("Media ID is not available"). Always wait for FINISHED.
+    await waitForContainer(baseUrl, container.id, accessToken);
 
     return publishContainer(baseUrl, platformUserId, container.id, accessToken);
   }
@@ -104,6 +104,12 @@ export async function postToInstagram(
     itemIds.push(item.id);
   }
 
+  // Each child must be FINISHED before the carousel container can reference
+  // it, otherwise the parent creation succeeds but publish fails with 9007.
+  await Promise.all(
+    itemIds.map((id) => waitForContainer(baseUrl, id, accessToken)),
+  );
+
   const carouselRes = await fetchWithTimeout(
     `${baseUrl}/${platformUserId}/media`,
     {
@@ -120,6 +126,8 @@ export async function postToInstagram(
   );
   const carousel = await carouselRes.json();
   if (!carousel.id) throw new Error(`Carousel container error: ${JSON.stringify(carousel)}`);
+
+  await waitForContainer(baseUrl, carousel.id, accessToken);
 
   return publishContainer(baseUrl, platformUserId, carousel.id, accessToken);
 }
@@ -166,10 +174,10 @@ async function publishContainer(
   };
 }
 
-// Instagram Reels transcoding routinely takes 90–180s for short videos; the
-// previous 60s window was hitting timeout long before IG was actually stuck.
-// Poll fast (3s) for the first ~30s when most images finish, then back off to
-// 10s for the longer tail so we don't hammer Graph for 4 minutes straight.
+// Image containers usually FINISH on the first poll; Reels transcoding
+// routinely takes 90–180s. Poll fast (3s) for the first ~30s when most images
+// finish, then back off to 10s for the longer video tail so we don't hammer
+// Graph for 4 minutes straight.
 async function waitForContainer(
   baseUrl: string,
   containerId: string,

@@ -56,7 +56,7 @@ export function TriageView({ tabs }: { tabs?: ReactNode }) {
         title="Needs fixes"
         itemNoun={{ singular: "post", plural: "posts" }}
         headerActions={tabs}
-        listClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+        listClassName="columns-1 gap-4 sm:columns-2 xl:columns-3 [&>*]:mb-4 [&>*]:break-inside-avoid"
         beforeList={<TriageBuckets />}
         getPostId={(p) => p.id}
         onPostsChanged={() => {

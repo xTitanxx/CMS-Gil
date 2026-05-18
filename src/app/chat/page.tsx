@@ -337,7 +337,7 @@ export default function GilChatPage() {
       if (ids.length > 0) {
         try {
           const previewRes = await fetch(
-            `/api/posts/preview?ids=${ids.slice(0, 3).join(",")}`
+            `/api/posts/preview?ids=${ids.slice(0, 5).join(",")}`
           );
           if (previewRes.ok) {
             const posts: PreviewPost[] = await previewRes.json();

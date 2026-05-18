@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMondayUTC } from "@/lib/planner/week";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
+import { inferSlotGroup } from "@/lib/planner/platform-assignment";
 
 const ALLOWED_PLATFORMS = new Set([
   "INSTAGRAM",
@@ -15,6 +16,8 @@ const ALLOWED_PLATFORMS = new Set([
   // Stripped from auto-publish below — it's not a real Platform enum value.
   "FACEBOOK_PERSONAL",
 ]);
+
+const VIDEO_PLATFORM_NAMES = ["YOUTUBE", "TIKTOK"] as const;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -52,6 +55,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "platforms required" }, { status: 400 });
   }
 
+  // Slots are now group-scoped: MAIN (FB Page / IG / LinkedIn / FACEBOOK_PERSONAL)
+  // and VIDEO (YT / TikTok) live in independent (day, hour) cells so video-only
+  // platforms can cycle their own queue. Reject mixed calls — the caller (chat
+  // tool, planner UI) must split into one propose per group.
+  const slotGroup = inferSlotGroup(
+    platforms.filter((p) => p !== "FACEBOOK_PERSONAL"),
+  );
+  if (slotGroup === null) {
+    return NextResponse.json(
+      {
+        error:
+          "mixed-group platforms not allowed — call propose once with MAIN platforms (FACEBOOK_PAGE/INSTAGRAM/LINKEDIN) and again with VIDEO platforms (YOUTUBE/TIKTOK)",
+      },
+      { status: 400 },
+    );
+  }
+
   const reasoning = typeof body.reasoning === "string" ? body.reasoning : null;
   const scheduleNow = body.schedule === true;
 
@@ -85,6 +105,29 @@ export async function POST(req: NextRequest) {
   // (same slot got reused, prior PublishRecord left orphan PENDING). The
   // planner/assistant flow (schedule:false) keeps the original overwrite
   // semantics because it's user-driven editing of a plan, not a commit.
+  // The DB still enforces `@@unique([planId, day, postId])` (kept for prod
+  // rollout compat) — same post can't be pinned to both MAIN and VIDEO on the
+  // same day. Surface a clean 409 if the caller is trying to.
+  const crossGroupConflict = await prisma.weeklyPlanSlot.findFirst({
+    where: {
+      planId: plan.id,
+      day: dayDate,
+      postId,
+      slotGroup: { not: slotGroup },
+      status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
+    },
+    select: { id: true, slotGroup: true, hour: true },
+  });
+  if (crossGroupConflict) {
+    return NextResponse.json(
+      {
+        error: `post already pinned to ${crossGroupConflict.slotGroup} on this day — pick a different day or remove the other slot first`,
+        conflict: crossGroupConflict,
+      },
+      { status: 409 },
+    );
+  }
+
   if (scheduleNow && hour != null) {
     const scheduledAt = buildSlotDate(dayDate, hour);
     const [slotConflict, publishConflict] = await Promise.all([
@@ -94,6 +137,7 @@ export async function POST(req: NextRequest) {
           day: dayDate,
           hour,
           postId: { not: postId },
+          slotGroup,
           status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
         },
         select: { id: true, postId: true },
@@ -104,6 +148,10 @@ export async function POST(req: NextRequest) {
           scheduledAt,
           postId: { not: postId },
           post: { userId },
+          platform:
+            slotGroup === "VIDEO"
+              ? { in: [...VIDEO_PLATFORM_NAMES] }
+              : { notIn: [...VIDEO_PLATFORM_NAMES] },
         },
         select: { id: true, postId: true },
       }),
@@ -119,23 +167,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Replace at the precise (day, hour) — keeps other slots on the same day
-  // intact so the suggester can stack multiple posts per day. Also clear any
-  // prior slot for this same post on this day so the
-  // @@unique([planId, day, postId]) constraint doesn't fire when a post is
-  // being moved to a different hour.
+  // Replace at the precise (day, hour, slotGroup) — keeps other slots on the
+  // same day intact (other hours AND the other group at the same hour) so the
+  // suggester can stack multiple posts per day and the two queues stay
+  // independent. Also clear any prior same-group slot for this post on this
+  // day so the @@unique([planId, day, postId, slotGroup]) constraint doesn't
+  // fire when a post is being moved to a different hour within the group.
   if (hour != null) {
     await prisma.weeklyPlanSlot.deleteMany({
       where: {
         planId: plan.id,
         day: dayDate,
+        slotGroup,
         OR: [{ hour }, { postId }],
       },
     });
   } else {
-    // Legacy hour=null path (chat planner): one slot per day.
+    // Legacy hour=null path (chat planner): one slot per day per group.
     await prisma.weeklyPlanSlot.deleteMany({
-      where: { planId: plan.id, day: dayDate },
+      where: { planId: plan.id, day: dayDate, slotGroup },
     });
   }
 
@@ -148,6 +198,7 @@ export async function POST(req: NextRequest) {
       status: scheduleNow ? "SCHEDULED" : "PROPOSED",
       reasoning,
       platforms,
+      slotGroup,
     },
     select: { id: true },
   });

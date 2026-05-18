@@ -30,6 +30,8 @@ export function buildPlannerSystemPrompt(
 
 CONNECTED PLATFORMS: ${connectedPlatforms.join(", ")}
 
+SCOPE: You are filling MAIN slots only — slots for Facebook Page, Instagram, and LinkedIn (and text-only variants). YouTube and TikTok slots are filled by a separate automatic VIDEO pass that pulls from a video-only queue; do NOT try to balance YT/TT placement here.
+
 IMPORTANT CONTEXT: Every post in the candidate pool was originally published on Facebook on its "last posted" date. The "recycled" count tracks how many times it was re-posted via this content hub. Treat "last posted" as the ground truth for recency — a post originally shared 6 months ago that's never been recycled is a great candidate; a post from last month is not (it has been hard-filtered already, but strongly prefer older "last posted" dates anyway).
 
 SELECTION RULES:

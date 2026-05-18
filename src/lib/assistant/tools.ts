@@ -295,7 +295,9 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "propose_to_planner",
     description:
-      "Propose scheduling a specific post on a specific day (and optionally a time). Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?').",
+      "Propose scheduling a specific post on a specific day (and optionally a time). Does NOT mutate the planner — it returns a proposal that the UI renders as an in-chat card with a V approve button. The user's approval is what actually adds the slot. Use this whenever you'd otherwise narrate a schedule suggestion (e.g. 'how about Thursday for [post:abc]?'). " +
+      "Platforms are split into two independent slot groups: MAIN (FACEBOOK_PAGE / INSTAGRAM / LINKEDIN) and VIDEO (YOUTUBE / TIKTOK). The two groups have independent queues at the same time slots, so a video post can appear on both groups at the same day+hour without conflict. " +
+      "If a user wants a video post to go to BOTH groups (e.g. FB Page + Instagram + YouTube + TikTok), call this tool TWICE — once with MAIN platforms and once with VIDEO platforms. Mixed-group calls (e.g. FACEBOOK_PAGE + YOUTUBE in one call) are rejected.",
     input_schema: {
       type: "object",
       properties: {
@@ -317,6 +319,8 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
             enum: ["INSTAGRAM", "FACEBOOK_PAGE", "LINKEDIN", "TIKTOK", "YOUTUBE"],
           },
           minItems: 1,
+          description:
+            "All platforms in one call must belong to the same group: either MAIN (FACEBOOK_PAGE / INSTAGRAM / LINKEDIN) or VIDEO (YOUTUBE / TIKTOK). Make two separate calls if you want both groups.",
         },
         reasoning: {
           type: "string",

@@ -62,14 +62,16 @@ export async function GET(req: NextRequest) {
 
   const remaining = await prisma.post.count({ where: baseWhere });
 
-  const slot = await findNextOpenSlot(userId);
+  // Suggester is MAIN-only: it surfaces the next post + slot for the photo/text
+  // queue. YT/TT are filled by the automatic VIDEO pass in the planner.
+  const slot = await findNextOpenSlot(userId, "MAIN");
   if (!slot) {
     return NextResponse.json({ candidate: null, remaining: 0, error: "No open slots in the next 8 weeks" });
   }
 
   const mediaTypes = candidate.media.map((m) => m.mimeType);
   const connected = await getConnectedPlatforms(userId);
-  const platforms = getEligiblePlatforms(mediaTypes, connected);
+  const platforms = getEligiblePlatforms(mediaTypes, connected, "MAIN");
 
   const firstMedia = candidate.media[0];
   const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);

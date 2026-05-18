@@ -7,13 +7,23 @@ import type { CandidatePost } from "./types";
 const RECENCY_WEEKS = 4;
 const MAX_CANDIDATES = 200;
 
-export async function getCandidatePosts(userId: string): Promise<CandidatePost[]> {
+interface CandidatePostsOptions {
+  /** Restrict to posts that have at least one video media item. */
+  videoOnly?: boolean;
+}
+
+export async function getCandidatePosts(
+  userId: string,
+  opts: CandidatePostsOptions = {},
+): Promise<CandidatePost[]> {
   const cutoff = subWeeks(new Date(), RECENCY_WEEKS);
 
   const posts = await prisma.post.findMany({
     where: {
       userId,
-      media: { some: {} },
+      media: opts.videoOnly
+        ? { some: { mimeType: { startsWith: "video/" } } }
+        : { some: {} },
       // Exclude FB shares/crossposts — those were never original Gil content
       // (he was resurfacing someone else's post), so resurfacing them here
       // would republish material he doesn't own. `share` is a JSON column
@@ -71,6 +81,16 @@ export async function getCandidatePosts(userId: string): Promise<CandidatePost[]
       thumbUrl,
     };
   });
+}
+
+/**
+ * Same shape and ordering as `getCandidatePosts`, but only returns posts that
+ * have at least one video media item. Used by the VIDEO slot pass so YT/TikTok
+ * cycle through their own (smaller) queue independently of the photo/text
+ * platforms, instead of starving every time a slot lands on a non-video post.
+ */
+export function getVideoCandidatePosts(userId: string): Promise<CandidatePost[]> {
+  return getCandidatePosts(userId, { videoOnly: true });
 }
 
 export async function getRecentPublishHistory(

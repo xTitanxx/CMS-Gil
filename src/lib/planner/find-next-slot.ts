@@ -2,9 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { getMondayUTC, utcDateString } from "./week";
 import { FIXED_SLOT_HOURS } from "./slot-constants";
 import { buildSlotDate } from "./fixed-slots";
+import type { SlotGroup } from "./platform-assignment";
 
 const DAY_MS = 86_400_000;
 const MAX_LOOK_AHEAD_DAYS = 56;
+
+const VIDEO_PLATFORM_NAMES = ["YOUTUBE", "TIKTOK"] as const;
 
 function todayUTC(): Date {
   const n = new Date();
@@ -20,16 +23,25 @@ export interface NextOpenSlot {
 
 /**
  * Walks the planner's fixed slot grid forward from today and returns the first
- * slot that's neither held by an active WeeklyPlanSlot nor by a PENDING
- * PublishRecord. Used by both the suggester (`/api/planner/next-candidate`)
- * and the post page's slot picker (`/api/planner/next-slot`).
+ * slot (within the requested group) that's neither held by an active
+ * WeeklyPlanSlot nor by a PENDING PublishRecord. Used by both the suggester
+ * (`/api/planner/next-candidate`) and the post page's slot picker
+ * (`/api/planner/next-slot`).
  *
  * "Taken" must be the union of WeeklyPlanSlots and PublishRecords — looking at
  * just plan slots misses orphan PublishRecords left behind by the previous
  * slot-overwrite bug, which causes the suggester to offer hours that 409 on
  * commit.
+ *
+ * Group scoping: MAIN and VIDEO slots occupy independent (day, hour) cells —
+ * a MAIN slot at Tue 15:00 does not block a VIDEO slot at the same time.
+ * PublishRecord occupancy is partitioned by platform: YT/TT records count
+ * toward VIDEO occupancy; everything else toward MAIN.
  */
-export async function findNextOpenSlot(userId: string): Promise<NextOpenSlot | null> {
+export async function findNextOpenSlot(
+  userId: string,
+  slotGroup: SlotGroup = "MAIN",
+): Promise<NextOpenSlot | null> {
   const now = new Date();
   const start = todayUTC();
   const horizon = new Date(start.getTime() + MAX_LOOK_AHEAD_DAYS * DAY_MS);
@@ -40,6 +52,7 @@ export async function findNextOpenSlot(userId: string): Promise<NextOpenSlot | n
         plan: { userId },
         status: { in: ["PROPOSED", "APPROVED", "SCHEDULED"] },
         day: { gte: start, lte: horizon },
+        slotGroup,
       },
       select: { day: true, hour: true },
     }),
@@ -48,6 +61,10 @@ export async function findNextOpenSlot(userId: string): Promise<NextOpenSlot | n
         status: "PENDING",
         scheduledAt: { gte: start, lte: horizon },
         post: { userId },
+        platform:
+          slotGroup === "VIDEO"
+            ? { in: [...VIDEO_PLATFORM_NAMES] }
+            : { notIn: [...VIDEO_PLATFORM_NAMES] },
       },
       select: { scheduledAt: true },
     }),

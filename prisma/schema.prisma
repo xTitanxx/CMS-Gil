@@ -567,6 +567,11 @@ enum PlanMode {
   DUMB
 }
 
+enum SlotGroup {
+  MAIN
+  VIDEO
+}
+
 model WeeklyPlan {
   id        String           @id @default(cuid())
   userId    String
@@ -594,6 +599,17 @@ model WeeklyPlanSlot {
   status    SlotStatus @default(PROPOSED)
   reasoning String?
   platforms String[]
+  // MAIN slots target FB Page / Instagram / LinkedIn (and the FACEBOOK_PERSONAL
+  // marker). VIDEO slots target YouTube / TikTok and are filled from a
+  // video-only candidate queue so video-only platforms don't starve when most
+  // posts are photo/text. A (day, hour) cell can hold one slot per group.
+  //
+  // Unique stays `[planId, day, postId]` (not extended with slotGroup) so old
+  // prod code that does `upsert({ where: { planId_day_postId: ... } })` keeps
+  // working during the rollout window. As a side effect, the same post can't
+  // appear in both groups on the same day — app-level dedup in the planner
+  // ensures the VIDEO pass skips posts already picked for MAIN that day.
+  slotGroup SlotGroup  @default(MAIN)
 
   // Set when the FB-personal manual-post reminder push has been delivered for
   // this slot. The /api/cron/push-reminders job uses this to avoid duplicates.
@@ -601,6 +617,7 @@ model WeeklyPlanSlot {
 
   @@unique([planId, day, postId])
   @@index([planId, day])
+  @@index([planId, day, slotGroup])
   @@index([postId])
 }
 

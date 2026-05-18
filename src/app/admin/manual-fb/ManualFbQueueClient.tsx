@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Loader2,
-  Music,
   Play,
   Trash2,
   Video,
@@ -470,12 +469,19 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     void clearWithStatus("PUBLISHED", url || undefined);
   }
 
-  const tonePill =
+  const toneHeading =
     status.tone === "overdue"
-      ? "bg-red-100 text-red-700"
+      ? "text-red-700"
       : status.tone === "soon"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-gray-100 text-gray-600";
+        ? "text-amber-800"
+        : "text-gray-700";
+
+  const toneTime =
+    status.tone === "overdue"
+      ? "text-red-900"
+      : status.tone === "soon"
+        ? "text-amber-900"
+        : "text-gray-900";
 
   const helperHref = item.slotId
     ? `/admin/m/${item.postId}?slot=${item.slotId}&from=/admin/manual-fb`
@@ -530,35 +536,22 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1.5">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-              <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tonePill}`}
+            <div className="min-w-0 flex-1">
+              <div
+                className={`flex min-w-0 items-center gap-1.5 text-[15px] font-bold leading-tight ${toneHeading}`}
               >
-                <Clock className="h-3 w-3" />
-                {status.label}
-              </span>
-              <span className="text-sm font-medium text-gray-700">{time}</span>
-              {item.status === "AD_HOC" && (
-                <span
-                  className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
-                  title="Posted ad-hoc, not from the weekly planner"
-                >
-                  Ad-hoc
-                </span>
-              )}
+                <Clock className="h-4 w-4 shrink-0" />
+                <span className="truncate">{status.label}</span>
+              </div>
+              <p
+                className={`mt-0.5 break-words text-[13px] font-medium leading-snug ${toneTime}`}
+              >
+                {time}
+              </p>
               {item.reminderSentAt && (
-                <span className="text-[11px] text-gray-400" title="Push reminder fired">
-                  · reminded
-                </span>
-              )}
-              {!hasMedia && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-200"
-                  title="Caption only — no media to download"
-                >
-                  <Music className="h-3 w-3" />
-                  Caption only
-                </span>
+                <p className="mt-1 text-[11px] text-gray-400" title="Push reminder fired">
+                  reminded
+                </p>
               )}
             </div>
             <button

@@ -12,11 +12,12 @@
 
 Eitan runs 3–4 Claude sessions in this repo at once, all sharing the same working tree. **Git mutations in one session silently change files under every other session and corrupt their edits.**
 
-**The rule:** Don't run git commands that change state — `checkout`, `switch`, `branch`, `stash`, `reset`, `restore`, `clean`, `pull`, `merge`, `rebase`, `fetch`, force-push, history rewrites — unless the user asked for this specific action in this task. Reading (`status`, `log`, `diff`, `show`, `branch -v`) is always fine. Committing and pushing the **current** branch when asked is fine.
+**The rule:** Don't run git commands that change the working tree — `checkout`, `switch`, `branch`, `stash`, `reset`, `restore`, `clean`, `pull`, `merge`, `rebase`, force-push, history rewrites — unless the user asked for this specific action in this task. Reading (`status`, `log`, `diff`, `show`, `branch -v`) is always fine. Committing and pushing the **current** branch when asked is fine. **`git fetch` is also fine** — it only writes to `.git/refs/remotes/`, never touches any working tree, so it's safe across parallel sessions. A `SessionStart` hook runs `git fetch --quiet --all` automatically so `origin/<branch>` is always current.
 
-**For any non-trivial work, use a worktree** so other sessions can't switch your branch out from under you:
+**For any non-trivial work, use a worktree** so other sessions can't switch your branch out from under you. Always base it on `origin/<branch>`, not local `HEAD`, since the SessionStart fetch keeps origin current but local `HEAD` may lag behind merged PRs:
 
 ```bash
+git fetch origin   # belt-and-braces; the SessionStart hook already did this
 git worktree add ../cms-gil-<feature> -b feature/<name> origin/claude/personal-cms-social-posting-QV57t
 cd ../cms-gil-<feature>
 # do all work from inside the worktree

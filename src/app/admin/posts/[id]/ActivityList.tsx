@@ -20,6 +20,10 @@ import {
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { format } from "date-fns";
+import {
+  PUBLISH_RECORD_CREATED_EVENT,
+  type PublishRecordCreatedDetail,
+} from "@/lib/publish-events";
 
 type Platform =
   | "INSTAGRAM"
@@ -204,6 +208,22 @@ export function ActivityList({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [hasActive, refresh]);
+
+  // SchedulePanel fires this on a successful publish/schedule. The API creates
+  // the PublishRecord synchronously before responding, so one refetch lands
+  // the new row — which also flips hasActive true and starts the 2.5s poll.
+  // Without this, the panel relies on router.refresh() streaming new server
+  // data, which is async and unreliable enough that the new record often
+  // doesn't appear until a full page reload.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<PublishRecordCreatedDetail>).detail;
+      if (detail?.postId !== postId) return;
+      void refresh();
+    };
+    window.addEventListener(PUBLISH_RECORD_CREATED_EVENT, handler);
+    return () => window.removeEventListener(PUBLISH_RECORD_CREATED_EVENT, handler);
+  }, [postId, refresh]);
 
   const cancelPublish = useCallback(async (recordId: string) => {
     setCancelling((prev) => {

@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
+import { BackToListLink } from "./BackToListLink";
 
 interface Props {
   postId: string;
@@ -28,14 +29,13 @@ export function MobilePostActions({ postId, listHref, prevHref, nextHref, platfo
       style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="my-2 flex items-center gap-1.5">
-        <Link
-          href={listHref}
-          scroll={false}
-          aria-label="Back"
+        <BackToListLink
+          fallbackHref={listHref}
+          ariaLabel="Back"
           className={`${PILL_BASE} text-[#0d0d0d]`}
         >
           <ArrowLeft className="h-5 w-5" strokeWidth={1.75} />
-        </Link>
+        </BackToListLink>
 
         {platformUrl && (
           <a

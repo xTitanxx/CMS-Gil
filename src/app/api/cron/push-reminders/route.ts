@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
     const results = await sendPushToUser(slot.plan.userId, {
       title: "Time to post on Facebook",
       body: bodyPreview ? `${bodyPreview}…` : "A scheduled slot is coming up.",
-      url: `/admin/m/${slot.post.id}?slot=${slot.id}`,
+      url: `/admin/m/${slot.post.id}?slot=${slot.id}&from=/admin/manual-fb`,
       tag: `slot-${slot.id}`,
       icon: "/icon-192.png",
       badge: "/icon-192.png",

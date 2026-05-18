@@ -478,8 +478,8 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
         : "bg-gray-100 text-gray-600";
 
   const helperHref = item.slotId
-    ? `/admin/m/${item.postId}?slot=${item.slotId}`
-    : `/admin/m/${item.postId}`;
+    ? `/admin/m/${item.postId}?slot=${item.slotId}&from=/admin/manual-fb`
+    : `/admin/m/${item.postId}?from=/admin/manual-fb`;
 
   // Standard hub row chrome — matches ScheduledRow / PublishedPostRow:
   // rounded-2xl white card with subtle hover. Tone lives on the status pill,

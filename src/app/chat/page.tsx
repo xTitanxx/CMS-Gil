@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, ArrowLeft, Menu, SquarePen, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { PostPreviewCard, type PreviewPost } from "./PostPreviewCard";
 import { BudgetMeter } from "@/components/BudgetMeter";
@@ -15,7 +15,16 @@ interface Message {
   costUsd?: number;
 }
 
-const POST_MARKER_RE = /\[POST:([^\]]+)\]/g;
+interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+// Tolerates the model emitting `[POST: <id>]` with whitespace around the ID —
+// the captured group is the ID with no surrounding whitespace, so the postMap
+// lookup and preview fetch don't get tripped up by a stray space.
+const POST_MARKER_RE = /\[POST:\s*([^\s\]]+)\s*\]/g;
 // Matches the cost trailer the server appends at end-of-stream:
 //   "\n​__USAGE_USD:0.012345__"  (the ​ is a U+200B zero-width space)
 // The leading "\n" + zero-width-space are optional in the strip pattern —
@@ -151,14 +160,161 @@ function EmptyIntro({ onPick }: { onPick: (text: string) => void }) {
   );
 }
 
+function formatRelativeDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const day = 24 * 60 * 60 * 1000;
+  if (diffMs < day && now.getDate() === d.getDate()) return "Today";
+  if (diffMs < 2 * day) return "Yesterday";
+  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)} days ago`;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+interface ChatsDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  conversations: ConversationSummary[];
+  currentId: string | null;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onDelete: (id: string) => void;
+}
+
+function ChatsDrawer({ open, onClose, conversations, currentId, onSelect, onNew, onDelete }: ChatsDrawerProps) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/30 transition-opacity ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      {/* Panel — slides in from the left */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-sm flex-col bg-white shadow-2xl transition-transform ${open ? "translate-x-0" : "-translate-x-full"}`}
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+        aria-hidden={!open}
+      >
+        <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2.5">
+          <h2 className="text-sm font-semibold text-gray-900">Your chats</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close chats"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onNew}
+          className="mx-3 my-2 flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+        >
+          <SquarePen className="h-4 w-4" />
+          <span>New chat</span>
+        </button>
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+          {conversations.length === 0 ? (
+            <p className="px-3 py-6 text-center text-xs text-gray-400">
+              No past chats yet.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {conversations.map((c) => {
+                const active = c.id === currentId;
+                return (
+                  <li key={c.id}>
+                    <div
+                      className={`group flex items-center gap-1 rounded-lg ${active ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSelect(c.id)}
+                        className="flex min-w-0 flex-1 flex-col items-start px-3 py-2 text-left"
+                      >
+                        <span className={`block w-full truncate text-sm ${active ? "font-semibold text-blue-900" : "text-gray-800"}`}>
+                          {c.title}
+                        </span>
+                        <span className="text-[11px] text-gray-400">
+                          {formatRelativeDate(c.updatedAt)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(c.id)}
+                        aria-label="Delete chat"
+                        className="mr-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+async function hydrateMessages(
+  raw: { role: "user" | "assistant"; content: string }[],
+): Promise<Message[]> {
+  if (raw.length === 0) return [];
+
+  // Collect every [POST:id] across all assistant messages, fetch previews once.
+  const allIds = new Set<string>();
+  for (const m of raw) {
+    if (m.role !== "assistant") continue;
+    const re = new RegExp(POST_MARKER_RE);
+    let mm: RegExpExecArray | null;
+    while ((mm = re.exec(m.content)) !== null) allIds.add(mm[1]);
+  }
+
+  let postMap = new Map<string, PreviewPost>();
+  if (allIds.size > 0) {
+    try {
+      const ids = Array.from(allIds).slice(0, 50).join(",");
+      const previewRes = await fetch(`/api/posts/preview?ids=${ids}`);
+      if (previewRes.ok) {
+        const posts: PreviewPost[] = await previewRes.json();
+        postMap = new Map(posts.map((p) => [p.id, p]));
+      }
+    } catch {
+      // network blip — text intact, cards just won't render
+    }
+  }
+
+  return raw.map((m) => {
+    if (m.role !== "assistant") return m;
+    const re = new RegExp(POST_MARKER_RE);
+    const refs: PreviewPost[] = [];
+    let mm: RegExpExecArray | null;
+    while ((mm = re.exec(m.content)) !== null) {
+      const p = postMap.get(mm[1]);
+      if (p && !refs.find((r) => r.id === p.id)) refs.push(p);
+    }
+    return refs.length > 0 ? { ...m, posts: refs } : m;
+  });
+}
+
 export default function GilChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [inputDisabled, setInputDisabled] = useState(false);
-  const [, setMessagesLoaded] = useState(false);
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0);
   const [role, setRole] = useState<"admin" | "subscriber" | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -181,69 +337,107 @@ export default function GilChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth" });
   }, [messages, streaming]);
 
+  const loadConversation = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/chat/conversations/${id}`);
+      if (!res.ok) {
+        setMessages([]);
+        return;
+      }
+      const data = (await res.json()) as {
+        messages: { role: "user" | "assistant"; content: string }[];
+        role?: "admin" | "subscriber" | null;
+      };
+      if (data.role) setRole(data.role);
+      const hydrated = await hydrateMessages(data.messages);
+      setMessages(hydrated);
+      stickToBottomRef.current = true;
+    } catch {
+      setMessages([]);
+    }
+  }, []);
+
+  const refreshConversations = useCallback(async (): Promise<ConversationSummary[]> => {
+    try {
+      const res = await fetch("/api/chat/conversations");
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        conversations: ConversationSummary[];
+        role?: "admin" | "subscriber" | null;
+      };
+      if (data.role) setRole(data.role);
+      setConversations(data.conversations);
+      return data.conversations;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Initial load: fetch the conversation list, then auto-open the most recent.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch("/api/chat/conversation");
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          messages: { role: "user" | "assistant"; content: string }[];
-          role?: "admin" | "subscriber" | null;
-        };
-        if (!cancelled && data.role) setRole(data.role);
-        if (cancelled || data.messages.length === 0) return;
-
-        // Re-hydrate post cards: collect every [POST:id] across all messages,
-        // fetch the previews once, then attach to each assistant message.
-        const allIds = new Set<string>();
-        for (const m of data.messages) {
-          if (m.role !== "assistant") continue;
-          const re = new RegExp(POST_MARKER_RE);
-          let mm: RegExpExecArray | null;
-          while ((mm = re.exec(m.content)) !== null) allIds.add(mm[1]);
-        }
-
-        let postMap = new Map<string, PreviewPost>();
-        if (allIds.size > 0) {
-          try {
-            const ids = Array.from(allIds).slice(0, 30).join(",");
-            const previewRes = await fetch(`/api/posts/preview?ids=${ids}`);
-            if (previewRes.ok) {
-              const posts: PreviewPost[] = await previewRes.json();
-              postMap = new Map(posts.map((p) => [p.id, p]));
-            }
-          } catch {
-            // network blip: messages render without cards, text intact
-          }
-        }
-
-        const hydrated: Message[] = data.messages.map((m) => {
-          if (m.role !== "assistant") return m;
-          const re = new RegExp(POST_MARKER_RE);
-          const refs: PreviewPost[] = [];
-          let mm: RegExpExecArray | null;
-          while ((mm = re.exec(m.content)) !== null) {
-            const p = postMap.get(mm[1]);
-            if (p && !refs.find((r) => r.id === p.id)) refs.push(p);
-          }
-          return refs.length > 0 ? { ...m, posts: refs } : m;
-        });
-
-        if (!cancelled) setMessages(hydrated);
-      } finally {
-        if (!cancelled) setMessagesLoaded(true);
+      const list = await refreshConversations();
+      if (cancelled) return;
+      if (list.length > 0) {
+        setCurrentConversationId(list[0].id);
+        await loadConversation(list[0].id);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshConversations, loadConversation]);
 
   function resetTextareaHeight() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
+  }
+
+  async function startNewChat() {
+    // Lazy: don't create a server-side row until the user sends a first
+    // message. Just clear local state; the next send will pass conversationId
+    // = null and the server will pick most-recent (empty case → create).
+    // This keeps the "new chat" button instant and avoids littering the DB
+    // with empty conversations on every click.
+    setCurrentConversationId(null);
+    setMessages([]);
+    setInput("");
+    setDrawerOpen(false);
+    stickToBottomRef.current = true;
+    textareaRef.current?.focus();
+  }
+
+  async function selectConversation(id: string) {
+    if (id === currentConversationId) {
+      setDrawerOpen(false);
+      return;
+    }
+    setCurrentConversationId(id);
+    setDrawerOpen(false);
+    await loadConversation(id);
+  }
+
+  async function deleteConversation(id: string) {
+    if (!confirm("Delete this chat? This can't be undone.")) return;
+    try {
+      const res = await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+      if (!res.ok) return;
+      const remaining = conversations.filter((c) => c.id !== id);
+      setConversations(remaining);
+      if (id === currentConversationId) {
+        if (remaining.length > 0) {
+          setCurrentConversationId(remaining[0].id);
+          await loadConversation(remaining[0].id);
+        } else {
+          setCurrentConversationId(null);
+          setMessages([]);
+        }
+      }
+    } catch {
+      // best-effort — leave the list as-is on network failure
+    }
   }
 
   async function sendMessage() {
@@ -263,8 +457,18 @@ export default function GilChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          conversationId: currentConversationId,
+        }),
       });
+
+      // Adopt the conversation id the server resolved (covers the "new chat,
+      // first message" case where the client started with null).
+      const serverConvId = res.headers.get("X-Conversation-Id");
+      if (serverConvId && serverConvId !== currentConversationId) {
+        setCurrentConversationId(serverConvId);
+      }
 
       if (res.status === 429) {
         const data = await res.json();
@@ -354,6 +558,9 @@ export default function GilChatPage() {
           // Preview fetch failed — cards just won't show, text remains
         }
       }
+      // Refresh the drawer's list so a brand-new conversation appears with
+      // its derived title, and an existing one bubbles to the top.
+      void refreshConversations();
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
@@ -377,28 +584,55 @@ export default function GilChatPage() {
 
   return (
     <div className="relative h-full bg-gray-50">
+      <ChatsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        conversations={conversations}
+        currentId={currentConversationId}
+        onSelect={selectConversation}
+        onNew={startNewChat}
+        onDelete={deleteConversation}
+      />
+
       {/* Floating top header — Archivist identity */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-20"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         <div className="pointer-events-auto border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-2.5">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2.5">
             <Link
               href="/"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
               aria-label="Back to feed"
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            <div className="h-10 w-10 overflow-hidden rounded-full bg-gray-200">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+              aria-label="Open chats list"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-gray-200">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/avatar.jpg" alt="" className="h-full w-full object-cover" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-semibold text-gray-900 leading-tight">The Archivist</h1>
-              <p className="text-xs text-gray-500 leading-tight">AI trained on Gil&apos;s posts &mdash; not the real Gil</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-sm font-semibold text-gray-900 leading-tight">The Archivist</h1>
+              <p className="truncate text-xs text-gray-500 leading-tight">AI trained on Gil&apos;s posts &mdash; not the real Gil</p>
             </div>
+            <button
+              type="button"
+              onClick={startNewChat}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+              aria-label="New chat"
+              title="New chat"
+            >
+              <SquarePen className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -514,3 +748,4 @@ export default function GilChatPage() {
     </div>
   );
 }
+

@@ -20,7 +20,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { dedupePlatforms, PLATFORM_META } from "@/lib/planner/platforms";
-import { formatSlotHour } from "@/lib/planner/format-slot";
+import { formatSlotHour, slotKeyToMoment } from "@/lib/planner/format-slot";
 import { displayBody } from "@/lib/post-body";
 import { utcDateString } from "@/lib/planner/week";
 import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
@@ -73,6 +73,10 @@ function slotMoment(slot: PlanSlotData): number {
 interface Item {
   slot: PlanSlotData;
   fbPending: boolean;
+  /** True when fbPending AND the slot's scheduled moment has already passed.
+   *  Pre-computed in the parent so the row can render purely without calling
+   *  `Date.now()` itself (which React's `rules-of-hooks` flags). */
+  fbOverdue: boolean;
 }
 
 export function ScheduledListView() {
@@ -113,10 +117,21 @@ export function ScheduledListView() {
   // the Published tab, so this list only ever shows "still to do".
   const items = useMemo<Item[]>(() => {
     if (!plan) return [];
+    // Capture "now" once per recompute so all rows get a consistent snapshot
+    // for the overdue check (and so we don't call Date.now() inside any row's
+    // render — the React purity lint catches that).
+    const now = Date.now();
     return plan.slots
       .filter((s) => s.day >= todayKey)
       .filter((s) => !s.published || fbPendingPostIds.has(s.postId))
-      .map((slot) => ({ slot, fbPending: fbPendingPostIds.has(slot.postId) }));
+      .map((slot) => {
+        const fbPending = fbPendingPostIds.has(slot.postId);
+        const fbOverdue =
+          fbPending && slot.hour != null
+            ? slotKeyToMoment(slot.day, slot.hour).getTime() < now
+            : false;
+        return { slot, fbPending, fbOverdue };
+      });
   }, [plan, todayKey, fbPendingPostIds]);
 
   const activeSlots = useMemo(
@@ -310,7 +325,7 @@ export function ScheduledListView() {
   return (
     <PostingListView<Item>
       title="Scheduled"
-      subtitle="Upcoming queue"
+      hideHeader
       items={items}
       loading={loading}
       onRefresh={refresh}
@@ -332,6 +347,7 @@ export function ScheduledListView() {
           queueIndex={index + 1}
           todayKey={todayKey}
           fbPending={item.fbPending}
+          fbOverdue={item.fbOverdue}
           onUnschedule={handleUnschedule}
           onSchedule={handleScheduleOne}
         />
@@ -347,6 +363,9 @@ interface ScheduledRowProps {
   /** True when the post has been auto-published to API platforms but still
    *  needs a manual FB Personal cross-post. Drives the in-row CTA. */
   fbPending: boolean;
+  /** True when fbPending AND the slot's moment has already passed. Pre-
+   *  computed by the parent (see ScheduledListView `items`). */
+  fbOverdue: boolean;
   onUnschedule: (slot: PlanSlotData) => Promise<void>;
   onSchedule: (slotId: string) => Promise<void>;
 }
@@ -356,6 +375,7 @@ function ScheduledRow({
   queueIndex,
   todayKey,
   fbPending,
+  fbOverdue,
   onUnschedule,
   onSchedule,
 }: ScheduledRowProps) {
@@ -385,14 +405,13 @@ function ScheduledRow({
   const isPublished = kind === "published";
   const showSchedule = kind === "proposed";
   const showRemove = !isPublished;
-  // A published slot that's still in the FB queue is the one case we keep on
-  // this tab — surface that loudly with an amber border + CTA, so the user
-  // can tell at a glance which scheduled item is blocked on them.
-  const outerCls = fbPending
-    ? "border-amber-300 ring-amber-200 hover:border-amber-400"
-    : isPublished
-      ? "border-gray-100 opacity-60"
-      : "border-gray-100 hover:border-gray-200";
+  // `fbOverdue` (already includes fbPending) drives the amber-vs-blue
+  // distinction on the FB-pending banner below: overdue rows are blocking the
+  // user *now*; future ones are a heads-up only.
+  const isOverdue = fbOverdue;
+  const outerCls = isPublished
+    ? "border-gray-100 opacity-60"
+    : "border-gray-100 hover:border-gray-200";
 
   return (
     <div
@@ -456,12 +475,12 @@ function ScheduledRow({
             </span>
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                fbPending
+                isOverdue
                   ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
                   : STATUS_PILL[kind]
               }`}
             >
-              {fbPending ? "Needs FB" : STATUS_LABEL[kind]}
+              {isOverdue ? "Needs FB" : STATUS_LABEL[kind]}
             </span>
             {platforms.length > 0 && (
               <span className="flex items-center gap-1">
@@ -543,14 +562,30 @@ function ScheduledRow({
     {fbPending && (
       <Link
         href={`/admin/m/${post.id}`}
-        className="flex items-center justify-between gap-2 border-t border-amber-200 bg-amber-50/60 px-3 py-2 text-[13px] font-medium text-amber-900 hover:bg-amber-100/70 active:bg-amber-100 md:px-4"
-        title="Open the manual FB posting helper"
+        className={`flex items-center justify-between gap-2 border-t px-3 py-2 text-[13px] font-medium md:px-4 ${
+          isOverdue
+            ? "border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100/80 active:bg-amber-100"
+            : "border-blue-100 bg-blue-50/50 text-blue-900 hover:bg-blue-100/60 active:bg-blue-100"
+        }`}
+        title={
+          isOverdue
+            ? "Overdue manual FB cross-post — open the helper"
+            : "Will need a manual FB cross-post when this slot fires"
+        }
       >
         <span className="flex min-w-0 items-center gap-1.5">
           <SiFacebook className="h-3.5 w-3.5 shrink-0 text-[#1877F2]" />
-          <span className="truncate">Still needs manual FB cross-post</span>
+          <span className="truncate">
+            {isOverdue
+              ? "Still needs manual FB cross-post"
+              : "Will need a manual FB cross-post"}
+          </span>
         </span>
-        <span className="flex shrink-0 items-center gap-0.5 text-amber-800">
+        <span
+          className={`flex shrink-0 items-center gap-0.5 ${
+            isOverdue ? "text-amber-800" : "text-blue-700"
+          }`}
+        >
           <span className="hidden sm:inline">Open helper</span>
           <ChevronRight className="h-3.5 w-3.5" />
         </span>

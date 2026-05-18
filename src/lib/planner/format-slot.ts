@@ -1,5 +1,13 @@
-import { formatInTimeZone } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { SCHEDULE_TZ, FIXED_SLOT_HOURS } from "./slot-constants";
+
+/** Client-safe alternative to `buildSlotDate` (which pulls in Prisma via its
+ *  module). Turns a `"yyyy-mm-dd"` day key + Asia/Jerusalem hour into the
+ *  real UTC moment the slot will publish at. */
+export function slotKeyToMoment(dayKey: string, hour: number): Date {
+  const hh = String(hour).padStart(2, "0");
+  return fromZonedTime(`${dayKey} ${hh}:00:00`, SCHEDULE_TZ);
+}
 
 /** Format a fixed-slot hour as "12pm", "3pm", "6pm", "9pm". */
 export function formatSlotHour(hour: number): string {

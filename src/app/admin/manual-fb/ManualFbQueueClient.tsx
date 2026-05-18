@@ -5,13 +5,18 @@ import Link from "next/link";
 import {
   Ban,
   Check,
-  ChevronRight,
   Clock,
   Copy,
+  Download,
+  ExternalLink,
+  Image as ImageIcon,
   Loader2,
-  Share2,
+  Music,
+  Play,
   Trash2,
+  Video,
 } from "lucide-react";
+import { SiFacebook } from "react-icons/si";
 import { PostingHubTabs } from "../_shared/PostingHubTabs";
 import {
   PostingListView,
@@ -148,30 +153,30 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
 }
 
 /**
- * Share-to-FB strategy:
+ * Open Facebook so the user can compose a new post.
  *
- * - **iOS / Android (Web Share with files):** native share sheet — FB app
- *   receives the media and caption in one tap. This is the only path where
- *   FB's composer pre-fills automatically.
+ * Reality check: Facebook offers no public URL that pre-fills a personal-
+ * profile composer with text + media from outside FB. `sharer.php` only does
+ * link shares; `fb://composer` is iOS-app-only with unreliable text pre-fill.
+ * So the best we can do is split the workflow into honest, single-purpose
+ * actions and let the user assemble the post:
  *
- * - **Desktop (Mac/Win/Linux):** Facebook offers no public URL or API to
- *   pre-fill a photo/video composer from the outside. `sharer.php` only
- *   creates link-share posts, and the `fb://composer` deep link is iOS-only.
- *   So we do the next-most-useful thing: open facebook.com in a new tab,
- *   copy the caption to the clipboard, and download every media file to the
- *   user's Downloads folder. They paste the caption, drag the media in, post.
- *
- * Returns which path ran so the UI can show the right confirmation hint.
+ * - **Mobile (Web Share API with files):** native share sheet — the FB app
+ *   receives the media + caption in one tap. This is the one path where the
+ *   composer pre-fills for free.
+ * - **Desktop:** open facebook.com in a new tab (the composer is the first
+ *   thing on the feed). Copying the caption and downloading media live behind
+ *   dedicated buttons so the user can prep before clicking through.
  */
-async function shareToFb(opts: {
+async function openFacebook(opts: {
   body: string;
   media: { id: string; mimeType: string; url: string | null }[];
   postId: string;
-}): Promise<"shared" | "desktop" | "blocked"> {
+}): Promise<"shared" | "opened" | "blocked"> {
   const nav = navigator as NavWithShare;
   const fallbackName = `gil-${opts.postId}`;
 
-  // Mobile path: Web Share API with files + text → iOS share sheet → FB app.
+  // Mobile path: Web Share API with files + text → native share sheet → FB app.
   if (isMobileUserAgent() && nav.share && nav.canShare) {
     const files = await buildShareFiles(opts.media, fallbackName);
     const payload = { text: opts.body, files };
@@ -185,11 +190,20 @@ async function shareToFb(opts: {
     }
   }
 
-  // Desktop. Open the FB tab synchronously inside the user-gesture window so
-  // popup blockers leave it alone, then do the slow async work afterwards.
+  // Desktop: just open facebook.com in a new tab. Open synchronously so popup
+  // blockers leave it alone.
   const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
-  await copyTextToClipboard(opts.body);
+  return fbTab ? "opened" : "blocked";
+}
 
+/** Download every media file attached to the post to the user's Downloads
+ *  folder. Used so the user can drag-and-drop into the FB composer. */
+async function downloadAllMedia(opts: {
+  media: { id: string; mimeType: string; url: string | null }[];
+  postId: string;
+}): Promise<number> {
+  const fallbackName = `gil-${opts.postId}`;
+  let count = 0;
   for (const m of opts.media) {
     if (!m.url) continue;
     try {
@@ -198,12 +212,12 @@ async function shareToFb(opts: {
       const blob = await res.blob();
       const ext = m.mimeType.split("/")[1] ?? "bin";
       triggerBrowserDownload(blob, `${fallbackName}-${m.id}.${ext}`);
+      count++;
     } catch {
-      // Skip a single failed media file rather than aborting the whole share.
+      // Skip a single failed media file rather than aborting the whole batch.
     }
   }
-
-  return fbTab ? "desktop" : "blocked";
+  return count;
 }
 
 export function ManualFbQueueClient({ initialItems }: { initialItems: QueueItem[] }) {
@@ -332,11 +346,15 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
   const poster = posterUrl(item.media);
   const status = relativeStatus(item.scheduledAt);
   const time = formatScheduled(item.scheduledAt);
+  const hasVideo = item.media.some((m) => m.mimeType.startsWith("video/"));
+  const hasMedia = item.media.length > 0;
+  const mobile = isMobileUserAgent();
 
   const [copied, setCopied] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [shareHint, setShareHint] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openHint, setOpenHint] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -355,34 +373,27 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     };
   }, []);
 
-  async function handleShare() {
-    if (sharing) return;
-    setSharing(true);
-    setShareError(null);
-    setShareHint(null);
+  async function handleOpenFb() {
+    if (opening) return;
+    setOpening(true);
+    setOpenError(null);
+    setOpenHint(null);
     try {
-      const result = await shareToFb({
+      const result = await openFacebook({
         body: item.body,
         media: item.media,
         postId: item.postId,
       });
-      if (result === "desktop") {
-        const mediaCount = item.media.length;
-        const mediaPhrase =
-          mediaCount === 0
-            ? ""
-            : mediaCount === 1
-              ? " · media downloaded — drag it into the composer"
-              : ` · ${mediaCount} files downloaded — drag them in`;
-        setShareHint(`Caption copied${mediaPhrase}`);
-        setTimeout(() => setShareHint(null), 8000);
+      if (result === "opened") {
+        setOpenHint("Facebook opened in a new tab — the composer is at the top of the feed.");
+        setTimeout(() => setOpenHint(null), 6000);
       } else if (result === "blocked") {
-        setShareError("Browser blocked the new Facebook tab — allow popups and try again.");
+        setOpenError("Browser blocked the new Facebook tab — allow popups and try again.");
       }
     } catch {
-      setShareError("Couldn't open share sheet");
+      setOpenError("Couldn't open Facebook.");
     } finally {
-      setSharing(false);
+      setOpening(false);
     }
   }
 
@@ -391,6 +402,30 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
+    }
+  }
+
+  async function handleDownload() {
+    if (downloading || !hasMedia) return;
+    setDownloading(true);
+    setOpenError(null);
+    setOpenHint(null);
+    try {
+      const n = await downloadAllMedia({ media: item.media, postId: item.postId });
+      if (n === 0) {
+        setOpenError("No media could be downloaded.");
+      } else {
+        setOpenHint(
+          n === 1
+            ? "Media downloaded — drag it into the FB composer."
+            : `${n} files downloaded — drag them into the FB composer.`,
+        );
+        setTimeout(() => setOpenHint(null), 6000);
+      }
+    } catch {
+      setOpenError("Couldn't download media.");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -435,13 +470,6 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
     void clearWithStatus("PUBLISHED", url || undefined);
   }
 
-  const toneRing =
-    status.tone === "overdue"
-      ? "border-red-200 bg-red-50/50"
-      : status.tone === "soon"
-        ? "border-amber-200 bg-amber-50/40"
-        : "border-gray-200 bg-white";
-
   const tonePill =
     status.tone === "overdue"
       ? "bg-red-100 text-red-700"
@@ -449,48 +477,87 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
         ? "bg-amber-100 text-amber-800"
         : "bg-gray-100 text-gray-600";
 
-  const helperHref = item.slotId ? `/admin/m/${item.postId}?slot=${item.slotId}` : `/admin/m/${item.postId}`;
+  const helperHref = item.slotId
+    ? `/admin/m/${item.postId}?slot=${item.slotId}`
+    : `/admin/m/${item.postId}`;
 
+  // Standard hub row chrome — matches ScheduledRow / PublishedPostRow:
+  // rounded-2xl white card with subtle hover. Tone lives on the status pill,
+  // not as a row-wide outline.
   return (
     <div
-      className={`overflow-hidden rounded-2xl border shadow-sm transition-all ${toneRing} ${
+      className={`overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ring-1 ring-black/[0.02] transition-all hover:border-gray-200 hover:shadow-md ${
         cleared ? "translate-x-2 opacity-0" : "opacity-100"
       }`}
     >
-      <div className="flex gap-3 p-3">
+      <div className="flex items-center gap-3 p-3 md:gap-4 md:p-4">
         <Link
           href={helperHref}
-          className="relative block h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-200"
+          className="relative block h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-20 md:w-20"
           aria-label="Open manual posting helper"
         >
           {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={poster} alt="" className="h-full w-full object-cover" />
+            <img
+              src={poster}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-gray-400">
-              No media
+            <div className="flex h-full items-center justify-center">
+              <ImageIcon className="h-6 w-6 text-gray-300" />
             </div>
           )}
-          {item.media.some((m) => m.mimeType.startsWith("video/")) && (
-            <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[9px] font-semibold uppercase tracking-wide text-white">
-              Video
-            </span>
+          {hasVideo && (
+            <div
+              className="pointer-events-none absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5"
+              title="Video"
+            >
+              <Video className="h-3 w-3 text-white" />
+            </div>
+          )}
+          {hasVideo && (
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              aria-hidden
+            >
+              <Play className="h-5 w-5 text-white/90 drop-shadow" fill="currentColor" />
+            </div>
           )}
         </Link>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1.5">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tonePill}`}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tonePill}`}
               >
                 <Clock className="h-3 w-3" />
                 {status.label}
               </span>
-              <span className="truncate text-[11px] text-gray-500">{time}</span>
+              <span className="text-sm font-medium text-gray-700">{time}</span>
+              {item.status === "AD_HOC" && (
+                <span
+                  className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+                  title="Posted ad-hoc, not from the weekly planner"
+                >
+                  Ad-hoc
+                </span>
+              )}
               {item.reminderSentAt && (
-                <span className="shrink-0 text-[11px] text-gray-400" title="Push reminder fired">
+                <span className="text-[11px] text-gray-400" title="Push reminder fired">
                   · reminded
+                </span>
+              )}
+              {!hasMedia && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-200"
+                  title="Caption only — no media to download"
+                >
+                  <Music className="h-3 w-3" />
+                  Caption only
                 </span>
               )}
             </div>
@@ -507,9 +574,11 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
               {confirmRemove ? <Ban className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
             </button>
           </div>
-          <p className="mt-1 line-clamp-2 break-words text-[13px] leading-snug text-gray-800">
-            {item.body || <span className="italic text-gray-400">No caption.</span>}
-          </p>
+          {item.body ? (
+            <p className="mt-1 line-clamp-2 break-words text-sm text-gray-700">{item.body}</p>
+          ) : (
+            <p className="mt-1 text-sm italic text-gray-400">No caption</p>
+          )}
         </div>
       </div>
 
@@ -542,30 +611,10 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
         </div>
       )}
 
-      {/* Primary: Share to FB */}
-      <button
-        type="button"
-        onClick={handleShare}
-        disabled={sharing || cleared}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-black/[0.04] bg-[#1877F2] py-3 text-[14px] font-semibold text-white hover:bg-[#166fe5] active:bg-[#155ec1] disabled:opacity-70"
-      >
-        {sharing ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Preparing share…
-          </>
-        ) : (
-          <>
-            <Share2 className="h-4 w-4" strokeWidth={2.5} />
-            Share to Facebook
-          </>
-        )}
-      </button>
-
       {showUrlField && (
-        <div className="flex flex-col gap-1.5 border-t border-black/[0.04] bg-blue-50/40 px-3 py-2">
+        <div className="flex flex-col gap-1.5 border-t border-black/[0.04] bg-blue-50/40 px-3 py-2 md:px-4">
           <label className="text-[11px] font-medium text-gray-600">
-            Paste the FB post URL so it links from the post page
+            Paste the FB post URL so the post page can link to it (optional)
           </label>
           <div className="flex items-center gap-1.5">
             <input
@@ -588,64 +637,117 @@ function QueueRow({ item, onCleared }: { item: QueueItem; onCleared: () => void 
               Cancel
             </button>
           </div>
-          <p className="text-[10px] text-gray-500">
-            Optional — leave blank to mark posted without a link.
-          </p>
         </div>
       )}
 
-      {/* Secondary: every helper action accessible from the list */}
+      {/* Action row: 3 secondaries on the left (Copy → Download → Open FB),
+          Mark posted (primary blue) on the right. Order matches the workflow:
+          grab the caption, grab the media, open Facebook, then come back and
+          confirm it's posted. */}
       <div className="flex items-stretch border-t border-black/[0.04] bg-white/60">
+        <RowActionButton
+          onClick={handleCopy}
+          disabled={!item.body}
+          icon={
+            copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )
+          }
+          label={copied ? "Copied" : "Copy"}
+          title="Copy the caption to the clipboard"
+        />
+        <RowActionButton
+          onClick={handleDownload}
+          disabled={!hasMedia || downloading}
+          icon={
+            downloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )
+          }
+          label={downloading ? "Saving…" : "Download"}
+          title={
+            hasMedia
+              ? "Save all media to your Downloads folder so you can drag it into FB"
+              : "No media on this post"
+          }
+        />
+        <RowActionButton
+          onClick={handleOpenFb}
+          disabled={opening}
+          icon={
+            opening ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : mobile ? (
+              <SiFacebook className="h-3.5 w-3.5 text-[#1877F2]" />
+            ) : (
+              <ExternalLink className="h-3.5 w-3.5" />
+            )
+          }
+          label={mobile ? "Share to FB" : "Open FB"}
+          title={
+            mobile
+              ? "Open the share sheet so the FB app gets the caption and media"
+              : "Open facebook.com in a new tab — the composer is at the top of the feed"
+          }
+        />
         <button
           type="button"
           onClick={handleMarkPostedClick}
           disabled={marking || cleared}
-          className="flex flex-1 min-w-0 items-center justify-center gap-1 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40"
+          className="flex flex-[1.3] min-w-0 items-center justify-center gap-1 border-l border-black/[0.04] bg-blue-600 py-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60"
         >
           {marking ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
           )}
           <span className="truncate">{showUrlField ? "Save" : "Mark posted"}</span>
         </button>
-        <button
-          type="button"
-          onClick={handleCopy}
-          disabled={!item.body}
-          className="flex flex-1 min-w-0 items-center justify-center gap-1 border-l border-black/[0.04] py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40"
-        >
-          {copied ? (
-            <>
-              <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
-              <span className="truncate">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="h-3.5 w-3.5" />
-              <span className="truncate">Copy</span>
-            </>
-          )}
-        </button>
-        <Link
-          href={helperHref}
-          className="flex flex-1 min-w-0 items-center justify-center gap-1 border-l border-black/[0.04] py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100"
-        >
-          <span className="truncate">Helper</span>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-        </Link>
       </div>
 
-      {shareHint && !shareError && !actionError && (
+      {openHint && !openError && !actionError && (
         <p className="border-t border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] break-words text-emerald-800">
-          {shareHint}
+          {openHint}
         </p>
       )}
-      {(shareError || actionError) && (
+      {(openError || actionError) && (
         <p className="border-t border-red-100 bg-red-50 px-3 py-1.5 text-[11px] break-words text-red-700">
-          {shareError ?? actionError}
+          {openError ?? actionError}
         </p>
       )}
     </div>
+  );
+}
+
+/** Compact secondary action used in the QueueRow footer. Equal-flex so the
+ *  row balances; truncates labels on tight viewports. */
+function RowActionButton({
+  onClick,
+  disabled,
+  icon,
+  label,
+  title,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  label: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="flex flex-1 min-w-0 items-center justify-center gap-1 border-l border-black/[0.04] py-2.5 text-[12px] font-medium text-gray-700 first:border-l-0 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40"
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
   );
 }

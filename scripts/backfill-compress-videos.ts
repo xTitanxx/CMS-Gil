@@ -29,11 +29,18 @@ const CONCURRENCY = Number(process.env.COMPRESS_CONCURRENCY ?? 2);
 const DRY_RUN = process.env.COMPRESS_DRY_RUN === "1";
 
 const MAX_RETRIES = 3;
+// getObject's default 120s timeout is tuned for the publish-lambda hot
+// path. Backfilling 300 MB videos from a laptop over residential bandwidth
+// blows past that easily, so allow ~15 min per attempt here. Configurable
+// via COMPRESS_DOWNLOAD_TIMEOUT_MS for slower links.
+const DOWNLOAD_TIMEOUT_MS = Number(
+  process.env.COMPRESS_DOWNLOAD_TIMEOUT_MS ?? 15 * 60 * 1000,
+);
 
 async function downloadWithRetry(url: string): Promise<Buffer> {
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
-      return await getObject(url);
+      return await getObject(url, DOWNLOAD_TIMEOUT_MS);
     } catch (err) {
       if (i === MAX_RETRIES - 1) throw err;
       await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
@@ -138,11 +145,27 @@ function formatBytes(n: number): string {
 }
 
 (async () => {
-  console.log(`Loading oversized video media (sizeBytes > ${formatBytes(TARGET_BYTES)})…`);
+  // FORCE_MEDIA_IDS lets us include rows whose DB sizeBytes is stale (older
+  // imports that recorded a synthetic size on a sub-resource). processOne
+  // already re-checks real bytes after downloading, so anything we pass in
+  // that's actually small below TARGET_BYTES becomes a fast skip.
+  const forceIds = (process.env.FORCE_MEDIA_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  console.log(
+    `Loading oversized video media (sizeBytes > ${formatBytes(TARGET_BYTES)}${
+      forceIds.length ? ` OR id IN [${forceIds.length} forced]` : ""
+    })…`,
+  );
   const rows = await prisma.media.findMany({
     where: {
       mimeType: { startsWith: "video/" },
-      sizeBytes: { gt: TARGET_BYTES },
+      OR: [
+        { sizeBytes: { gt: TARGET_BYTES } },
+        ...(forceIds.length ? [{ id: { in: forceIds } }] : []),
+      ],
     },
     select: { id: true, storageKey: true, mimeType: true, sizeBytes: true },
     orderBy: { sizeBytes: "desc" },

@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Music,
+  Pencil,
   Play,
   Trash2,
   Video,
@@ -34,6 +35,7 @@ import {
   type PlatformBadgeState,
   type PostKind,
 } from "../_shared/PlatformBadgeRow";
+import { PlatformPickerModal } from "../_shared/PlatformPickerModal";
 
 type StatusKind = "scheduled" | "proposed" | "published";
 
@@ -88,6 +90,8 @@ export function ScheduledListView() {
   // Set of postIds that still need a manual FB cross-post. Populated from the
   // same endpoint the Manual FB tab uses so the two views stay in sync.
   const [fbPendingPostIds, setFbPendingPostIds] = useState<Set<string>>(new Set());
+  // Post whose platform set is currently being edited. Null = picker closed.
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   const refreshPlan = useCallback(async () => {
     const res = await fetch("/api/planner/current");
@@ -312,6 +316,7 @@ export function ScheduledListView() {
   ) : null;
 
   return (
+    <>
     <PostingListView<Item>
       title="Scheduled"
       hideHeader
@@ -338,9 +343,21 @@ export function ScheduledListView() {
           fbPending={item.fbPending}
           onUnschedule={handleUnschedule}
           onSchedule={handleScheduleOne}
+          onEditPlatforms={() => setPickingFor(item.slot.postId)}
         />
       )}
     />
+    {pickingFor && (
+      <PlatformPickerModal
+        postId={pickingFor}
+        open
+        onClose={() => setPickingFor(null)}
+        onSaved={() => {
+          void refresh();
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -355,6 +372,7 @@ interface ScheduledRowProps {
   fbPending: boolean;
   onUnschedule: (slot: PlanSlotData) => Promise<void>;
   onSchedule: (slotId: string) => Promise<void>;
+  onEditPlatforms: () => void;
 }
 
 function slotPostKind(post: PlanSlotData["post"]): PostKind {
@@ -370,6 +388,7 @@ function ScheduledRow({
   fbPending,
   onUnschedule,
   onSchedule,
+  onEditPlatforms,
 }: ScheduledRowProps) {
   const kind = statusKind(slot);
   const { post } = slot;
@@ -379,27 +398,73 @@ function ScheduledRow({
   const slotText = slot.hour != null ? formatSlotHour(slot.hour) : null;
 
   const postKind = slotPostKind(post);
-  // Normalize selected platforms to the canonical six-slot keys used by the
-  // shared badge row. The planner stores them mixed-case; the badge layer is
-  // strictly uppercase.
-  const selectedPlatforms = new Set(
-    platforms.map((p) =>
-      p.toUpperCase() === "FACEBOOK_PAGE" ? "FACEBOOK_PAGE" : p.toUpperCase(),
-    ),
-  );
-  // FB Personal is never in slot.platforms (it's not an API target). The
-  // manual-FB queue is the source of truth for "this slot will also need a
-  // hand-posted FB Personal cross-post" — surface it as a scheduled badge.
-  if (fbPending) selectedPlatforms.add("FACEBOOK");
 
+  // Per-platform badge state. Two derivation modes:
+  //  - SCHEDULED slot: read the live PublishRecord status the API attaches.
+  //    PENDING/PROCESSING/FAILED render as their own colors so drift between
+  //    `slot.platforms` (the planner snapshot) and the records (reality) can
+  //    never silently colour the chip "scheduled" when nothing is actually
+  //    queued. CANCELLED collapses to skipped — the user removed it.
+  //  - PROPOSED/APPROVED slot: records don't exist yet (they're minted by
+  //    the Schedule action), so fall back to the `slot.platforms` snapshot.
   const stateByPlatform: Partial<Record<string, PlatformBadgeState>> = {};
-  for (const platform of PLATFORM_ORDER) {
-    if (selectedPlatforms.has(platform)) {
-      stateByPlatform[platform] = "scheduled";
-    } else if (isEligible(platform, postKind)) {
-      stateByPlatform[platform] = "skipped";
-    } else {
-      stateByPlatform[platform] = "na";
+  const errorByPlatform: Partial<Record<string, string | null>> = {};
+
+  if (slot.status === "SCHEDULED" && slot.records) {
+    const byPlatform = new Map(slot.records.map((r) => [r.platform, r]));
+    for (const platform of PLATFORM_ORDER) {
+      if (platform === "FACEBOOK") {
+        // FB Personal: no API publisher exists; manual-FB queue is the truth.
+        stateByPlatform[platform] = fbPending
+          ? "scheduled"
+          : isEligible(platform, postKind)
+            ? "skipped"
+            : "na";
+        continue;
+      }
+      const rec = byPlatform.get(platform);
+      if (!rec || rec.status === "CANCELLED") {
+        stateByPlatform[platform] = isEligible(platform, postKind)
+          ? "skipped"
+          : "na";
+        continue;
+      }
+      switch (rec.status) {
+        case "PENDING":
+          stateByPlatform[platform] = "scheduled";
+          break;
+        case "PROCESSING":
+          stateByPlatform[platform] = "processing";
+          break;
+        case "FAILED":
+          stateByPlatform[platform] = "failed";
+          errorByPlatform[platform] = rec.errorMessage;
+          break;
+        case "PUBLISHED":
+          // Shouldn't reach here for a scheduled-list row (the slot would be
+          // filtered out by `!s.published`), but render as posted defensively.
+          stateByPlatform[platform] = "posted";
+          break;
+        default:
+          stateByPlatform[platform] = "skipped";
+      }
+    }
+  } else {
+    // PROPOSED / APPROVED — snapshot mode.
+    const selectedPlatforms = new Set(
+      platforms.map((p) =>
+        p.toUpperCase() === "FACEBOOK_PAGE" ? "FACEBOOK_PAGE" : p.toUpperCase(),
+      ),
+    );
+    if (fbPending) selectedPlatforms.add("FACEBOOK");
+    for (const platform of PLATFORM_ORDER) {
+      if (selectedPlatforms.has(platform)) {
+        stateByPlatform[platform] = "scheduled";
+      } else if (isEligible(platform, postKind)) {
+        stateByPlatform[platform] = "skipped";
+      } else {
+        stateByPlatform[platform] = "na";
+      }
     }
   }
 
@@ -511,6 +576,7 @@ function ScheduledRow({
             postId={post.id}
             kind={postKind}
             stateByPlatform={stateByPlatform}
+            errorByPlatform={errorByPlatform}
           />
         </div>
       </div>
@@ -536,6 +602,18 @@ function ScheduledRow({
             <span className="hidden sm:inline">Schedule</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            onEditPlatforms();
+          }}
+          className="p-1.5 text-gray-300 transition-colors hover:text-gray-700"
+          aria-label="Edit platforms"
+          title="Edit platforms"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
         {confirming && (
           <span
             aria-live="polite"

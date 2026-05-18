@@ -8,6 +8,7 @@ import {
   Hand,
   Loader2,
   Undo2,
+  XCircle,
 } from "lucide-react";
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
@@ -17,17 +18,22 @@ export type PostKind = "text" | "image" | "video";
 // Slot states a platform badge can be in. Both Published and Scheduled rows
 // render the same six slots — only the per-platform state changes.
 // - posted:        publish record landed (Published only; brand-tinted chip)
-// - scheduled:     slot is queued to fire at its planned time (Scheduled only)
+// - scheduled:     PublishRecord is PENDING — queued to fire at slot time
+// - processing:    PublishRecord is PROCESSING — cron lambda is uploading now
+// - failed:        PublishRecord is FAILED — surfaces the error in tooltip
 // - overdue:       in Published, the FB Personal manual cross-post is still
 //                  outstanding even though the API platforms already fired.
 //                  Visually distinct from "scheduled" so the same yellow can't
 //                  confusingly mean both "pending in the future" and
 //                  "should've happened already".
-// - skipped:       eligible platform that the user/planner chose to skip
+// - skipped:       eligible platform with no live PublishRecord
+//                  (CANCELLED collapses to this — the user removed it)
 // - na:            this post type can't be cross-posted to this platform
 export type PlatformBadgeState =
   | "posted"
   | "scheduled"
+  | "processing"
+  | "failed"
   | "overdue"
   | "skipped"
   | "na";
@@ -99,6 +105,12 @@ function naReason(platform: string, kind: PostKind): string {
 const STATE_CLS: Record<PlatformBadgeState, string> = {
   posted: "border-emerald-200 bg-emerald-50 text-emerald-900",
   scheduled: "border-amber-200 bg-amber-50 text-amber-800",
+  // Blue so the eye reads "different from scheduled" — the lambda is
+  // actively uploading, not just waiting for its slot time.
+  processing: "border-blue-200 bg-blue-50 text-blue-800",
+  // Red — publish was attempted and rejected. Tooltip carries the reason.
+  failed:
+    "border-rose-300 bg-rose-50 text-rose-800 ring-1 ring-rose-200",
   // Stronger orange-red than "scheduled" so the same chrome doesn't mean both
   // "pending in the future" and "overdue / should already be done".
   overdue:
@@ -113,6 +125,8 @@ const STATE_CLS: Record<PlatformBadgeState, string> = {
 const STATE_ICON_OPACITY: Record<PlatformBadgeState, string> = {
   posted: "opacity-100",
   scheduled: "opacity-100",
+  processing: "opacity-100",
+  failed: "opacity-100",
   overdue: "opacity-100",
   skipped: "opacity-60 grayscale",
   na: "opacity-25 grayscale",
@@ -121,6 +135,8 @@ const STATE_ICON_OPACITY: Record<PlatformBadgeState, string> = {
 const STATE_LABEL_CLS: Record<PlatformBadgeState, string> = {
   posted: "",
   scheduled: "",
+  processing: "",
+  failed: "",
   overdue: "",
   skipped: "",
   na: "line-through decoration-gray-300/70",
@@ -136,6 +152,7 @@ function tooltipFor(
   platform: string,
   kind: PostKind,
   meta: { label: string; manual?: boolean },
+  errorMessage?: string | null,
 ): string {
   if (state === "posted") {
     return meta.manual
@@ -146,6 +163,15 @@ function tooltipFor(
     return meta.manual
       ? `Will need a manual ${meta.label} cross-post — open helper`
       : `Scheduled to post on ${meta.label}`;
+  }
+  if (state === "processing") {
+    return `Uploading to ${meta.label} now…`;
+  }
+  if (state === "failed") {
+    const reason = errorMessage?.trim();
+    return reason
+      ? `Failed to publish to ${meta.label}: ${reason}`
+      : `Failed to publish to ${meta.label}`;
   }
   if (state === "overdue") {
     return `${meta.label} cross-post is still pending — open helper`;
@@ -160,6 +186,7 @@ function PlatformBadge({
   postId,
   pill,
   kind,
+  errorMessage,
   onUnmarked,
 }: {
   platform: string;
@@ -167,12 +194,13 @@ function PlatformBadge({
   postId: string;
   pill: PostedPill | null;
   kind: PostKind;
+  errorMessage?: string | null;
   onUnmarked?: () => void;
 }) {
   const meta = PLATFORM_META[platform];
   if (!meta) return null;
   const Icon = meta.icon;
-  const tooltip = tooltipFor(state, platform, kind, meta);
+  const tooltip = tooltipFor(state, platform, kind, meta, errorMessage);
   const baseCls = `inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATE_CLS[state]}`;
   const iconCls = `h-3.5 w-3.5 shrink-0 ${meta.iconColor} ${STATE_ICON_OPACITY[state]}`;
 
@@ -187,6 +215,18 @@ function PlatformBadge({
         <AlertTriangle
           className="h-3 w-3 shrink-0 text-orange-700"
           aria-label="overdue"
+        />
+      )}
+      {state === "processing" && (
+        <Loader2
+          className="h-3 w-3 shrink-0 animate-spin text-blue-700"
+          aria-label="processing"
+        />
+      )}
+      {state === "failed" && (
+        <XCircle
+          className="h-3 w-3 shrink-0 text-rose-700"
+          aria-label="failed"
         />
       )}
       {state === "posted" && pill?.platformUrl && (
@@ -319,6 +359,9 @@ export interface PlatformBadgeRowProps {
   stateByPlatform: Partial<Record<string, PlatformBadgeState>>;
   /** Optional permalink lookup for "posted" platforms. */
   pillByPlatform?: Partial<Record<string, PostedPill | null>>;
+  /** Optional per-platform error message — surfaced in the chip tooltip
+   *  when the corresponding state is "failed". */
+  errorByPlatform?: Partial<Record<string, string | null>>;
   /** Provide to enable the Unmark control on FB Personal "posted" chip. */
   onUnmarkedFb?: () => void;
 }
@@ -328,6 +371,7 @@ export function PlatformBadgeRow({
   kind,
   stateByPlatform,
   pillByPlatform,
+  errorByPlatform,
   onUnmarkedFb,
 }: PlatformBadgeRowProps) {
   return (
@@ -336,6 +380,7 @@ export function PlatformBadgeRow({
         let state = stateByPlatform[platform];
         if (!state) state = isEligible(platform, kind) ? "skipped" : "na";
         const pill = pillByPlatform?.[platform] ?? null;
+        const errorMessage = errorByPlatform?.[platform] ?? null;
         return (
           <PlatformBadge
             key={platform}
@@ -344,6 +389,7 @@ export function PlatformBadgeRow({
             postId={postId}
             pill={pill}
             kind={kind}
+            errorMessage={errorMessage}
             onUnmarked={onUnmarkedFb}
           />
         );

@@ -6,7 +6,12 @@ import { formatInTimeZone } from "date-fns-tz";
 import { getMondayUTC } from "@/lib/planner/week";
 import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import { FIXED_SLOT_HOURS, SCHEDULE_TZ } from "@/lib/planner/fixed-slots";
-import type { PlanSlotData, WeeklyPlanData } from "@/lib/planner/types";
+import type {
+  PlanSlotData,
+  PlanSlotRecord,
+  PublishRecordStatus,
+  WeeklyPlanData,
+} from "@/lib/planner/types";
 
 const SLOT_INCLUDE = {
   post: {
@@ -33,7 +38,7 @@ const SLOT_INCLUDE = {
 } as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializeSlot(s: any, hour: number | null, published: boolean): PlanSlotData {
+function serializeSlot(s: any, hour: number | null, published: boolean, records: PlanSlotRecord[]): PlanSlotData {
   const firstMedia = s.post.media[0];
   const thumbUrl = buildThumbUrl(firstMedia?.storageKey, firstMedia?.mimeType);
   const lastPub = s.post.publishes?.[0]?.publishedAt;
@@ -46,6 +51,7 @@ function serializeSlot(s: any, hour: number | null, published: boolean): PlanSlo
     status: s.status as PlanSlotData["status"],
     reasoning: s.reasoning,
     platforms: s.platforms,
+    records,
     published,
     post: {
       id: s.post.id,
@@ -102,36 +108,77 @@ export async function GET() {
   });
 
   // For SCHEDULED slots, look up the matching PublishRecord to get the actual
-  // publish time. Otherwise the time is derived from slot index (fixed slots
-  // 12/15/18/21 in order). Batch into one query.
+  // publish time AND the per-platform live status. The scheduled list reads
+  // this to render the badge row from real PublishRecord state (PENDING /
+  // PROCESSING / FAILED / PUBLISHED / CANCELLED) instead of the stale
+  // `slot.platforms` snapshot. Batch into one query.
   const scheduledPostIds = new Set<string>();
   for (const plan of plans) {
     for (const s of plan.slots) {
       if (s.status === "SCHEDULED") scheduledPostIds.add(s.postId);
     }
   }
-  const scheduledTimes = scheduledPostIds.size
+  const scheduledRecords = scheduledPostIds.size
     ? await prisma.publishRecord.findMany({
         where: {
           postId: { in: [...scheduledPostIds] },
-          status: { in: ["PENDING", "PUBLISHED", "PROCESSING"] },
+          // Include FAILED/CANCELLED too — the badge layer needs to surface
+          // those, and we want CANCELLED to win over a re-scheduled PENDING
+          // for the same platform only if it's the latest record (handled
+          // below by picking the latest per platform).
+          status: { in: ["PENDING", "PROCESSING", "PUBLISHED", "FAILED", "CANCELLED"] },
           scheduledAt: { not: null },
         },
-        select: { postId: true, scheduledAt: true, status: true },
+        select: {
+          postId: true,
+          platform: true,
+          status: true,
+          scheduledAt: true,
+          errorMessage: true,
+          platformUrl: true,
+          createdAt: true,
+        },
         orderBy: { scheduledAt: "asc" },
       })
     : [];
-  // Map from postId|YYYY-MM-DD (UTC) → first matching scheduledAt.
-  // Track published-ness separately so the client can grey out today's
-  // already-fired slots without re-deriving from raw records.
+
+  // Map from postId|YYYY-MM-DD (UTC) → first matching scheduledAt (for the
+  // hour-of-day derivation below). Track published-ness separately so the
+  // client can grey out today's already-fired slots. Group records by
+  // postId|day, keeping the *latest* record per platform (a re-scheduled
+  // platform leaves a CANCELLED row plus a new PENDING — we want PENDING).
   const scheduledByPostDay = new Map<string, Date>();
   const publishedByPostDay = new Set<string>();
-  for (const r of scheduledTimes) {
+  const recordsByPostDay = new Map<string, Map<string, PlanSlotRecord & { _at: number }>>();
+  for (const r of scheduledRecords) {
     if (!r.scheduledAt) continue;
     const dayKey = r.scheduledAt.toISOString().slice(0, 10);
     const key = `${r.postId}|${dayKey}`;
     if (!scheduledByPostDay.has(key)) scheduledByPostDay.set(key, r.scheduledAt);
     if (r.status === "PUBLISHED") publishedByPostDay.add(key);
+
+    let perPlatform = recordsByPostDay.get(key);
+    if (!perPlatform) {
+      perPlatform = new Map();
+      recordsByPostDay.set(key, perPlatform);
+    }
+    const existing = perPlatform.get(r.platform);
+    const atMs = r.createdAt.getTime();
+    if (!existing || existing._at < atMs) {
+      perPlatform.set(r.platform, {
+        platform: r.platform,
+        status: r.status as PublishRecordStatus,
+        errorMessage: r.errorMessage,
+        platformUrl: r.platformUrl,
+        _at: atMs,
+      });
+    }
+  }
+  // Strip the internal sort key before exposing.
+  function recordsFor(postDayKey: string): PlanSlotRecord[] {
+    const m = recordsByPostDay.get(postDayKey);
+    if (!m) return [];
+    return [...m.values()].map(({ _at: _ignored, ...r }) => r);
   }
 
   // Merge all slots across all weeks into one flat array
@@ -156,6 +203,7 @@ export async function GET() {
       // 18:00 would render as 12:00 because index 0 was always mapped to 12.
       let hour: number | null = s.hour ?? FIXED_SLOT_HOURS[idx] ?? null;
       let published = false;
+      let records: PlanSlotRecord[] = [];
       if (s.status === "SCHEDULED") {
         const recordKey = `${s.postId}|${dayKey}`;
         const at = scheduledByPostDay.get(recordKey);
@@ -163,8 +211,9 @@ export async function GET() {
           hour = Number(formatInTimeZone(at, SCHEDULE_TZ, "H"));
         }
         published = publishedByPostDay.has(recordKey);
+        records = recordsFor(recordKey);
       }
-      allSlots.push(serializeSlot(s, hour, published));
+      allSlots.push(serializeSlot(s, hour, published, records));
     }
   }
 
@@ -206,6 +255,7 @@ export async function GET() {
       scheduledAt: Date;
       postId: string;
       platforms: string[];
+      records: PlanSlotRecord[];
       recordIds: string[];
       post: Orphan["post"];
     }
@@ -220,15 +270,23 @@ export async function GET() {
     // Bucket on the full ISO timestamp (millisecond precision is fine —
     // platform records made in the same loop share the same Date object).
     const key = `${r.postId}|${r.scheduledAt.toISOString()}`;
+    const record: PlanSlotRecord = {
+      platform: r.platform,
+      status: r.status as PublishRecordStatus,
+      errorMessage: r.errorMessage,
+      platformUrl: r.platformUrl,
+    };
     const existing = virtualGroups.get(key);
     if (existing) {
       existing.recordIds.push(r.id);
       if (!existing.platforms.includes(r.platform)) existing.platforms.push(r.platform);
+      existing.records.push(record);
     } else {
       virtualGroups.set(key, {
         scheduledAt: r.scheduledAt,
         postId: r.postId,
         platforms: [r.platform],
+        records: [record],
         recordIds: [r.id],
         post: r.post,
       });
@@ -252,6 +310,7 @@ export async function GET() {
       status: "SCHEDULED",
       reasoning: null,
       platforms: g.platforms,
+      records: g.records,
       published: false,
       publishRecordIds: g.recordIds,
       post: {

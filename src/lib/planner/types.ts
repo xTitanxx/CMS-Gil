@@ -11,6 +11,20 @@ export interface CandidatePost {
   thumbUrl: string | null;
 }
 
+export type PublishRecordStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "PUBLISHED"
+  | "FAILED"
+  | "CANCELLED";
+
+export interface PlanSlotRecord {
+  platform: string;
+  status: PublishRecordStatus;
+  errorMessage: string | null;
+  platformUrl: string | null;
+}
+
 export interface PlanSlotData {
   id: string;
   day: string;
@@ -21,6 +35,11 @@ export interface PlanSlotData {
   status: "PROPOSED" | "APPROVED" | "SCHEDULED" | "SKIPPED";
   reasoning: string | null;
   platforms: string[];
+  /** Live PublishRecord state per platform — present only for SCHEDULED slots
+   *  (where the records have been minted). Lets the scheduled list render
+   *  real publish status (PENDING/PROCESSING/FAILED) instead of reading the
+   *  stale `platforms[]` snapshot. Empty array on PROPOSED/APPROVED. */
+  records?: PlanSlotRecord[];
   /** True when this slot's PublishRecord has already fired (status PUBLISHED).
    *  Derived server-side; the post-first Planner view greys these and hides
    *  destructive actions. */

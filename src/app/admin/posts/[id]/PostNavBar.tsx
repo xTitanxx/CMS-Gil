@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
+import { BackToListLink } from "./BackToListLink";
 
 interface PostNavBarProps {
   prevHref: string | null;
@@ -41,15 +42,14 @@ export function PostNavBar({
 }: PostNavBarProps) {
   return (
     <div className="sticky top-0 z-20 mb-3 hidden items-center gap-2 border-b border-gray-200 bg-white px-8 py-2 shadow-sm md:-mx-8 md:-mt-8 md:-top-8 md:flex">
-      <Link
-        href={listHref}
-        scroll={false}
-        aria-label={backLabel}
+      <BackToListLink
+        fallbackHref={listHref}
+        ariaLabel={backLabel}
         className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
       >
         <ArrowLeft className="h-4 w-4" />
         <span>{backLabel}</span>
-      </Link>
+      </BackToListLink>
 
       {(originalDate || platformUrl) && (
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-gray-500">

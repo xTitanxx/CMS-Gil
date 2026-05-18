@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobilePageHeader } from "@/components/layout/MobilePageHeader";
+import { PostReturnTracker } from "@/app/admin/_shared/PostReturnTracker";
+import { PostReturnRestorer } from "@/app/admin/_shared/PostReturnRestorer";
 
 // Auth is gated at the edge by src/proxy.ts — every /admin/* request is
 // already rejected (or redirected to /login) before this layout renders.
@@ -40,6 +43,10 @@ export default function DashboardLayout({
         className="min-w-0 flex-1 overflow-y-auto overflow-x-clip bg-gray-50 md:p-8"
       >
         <MobilePageHeader />
+        <Suspense fallback={null}>
+          <PostReturnTracker />
+          <PostReturnRestorer />
+        </Suspense>
         <div
           className="px-4 md:p-0"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}

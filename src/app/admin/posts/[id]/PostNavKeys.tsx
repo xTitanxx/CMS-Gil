@@ -2,6 +2,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  readReturn,
+  setPendingScroll,
+} from "@/app/admin/_shared/post-return";
 
 interface PostNavKeysProps {
   prevHref: string | null;
@@ -37,7 +41,16 @@ export function PostNavKeys({
         router.push(nextHref);
       } else if (e.key === "Escape") {
         e.preventDefault();
-        router.push(listHref, { scroll: false });
+        const stored = readReturn();
+        const target = stored?.url ?? listHref;
+        if (stored) {
+          setPendingScroll({
+            url: stored.url,
+            mainScroll: stored.mainScroll,
+            windowScroll: stored.windowScroll,
+          });
+        }
+        router.push(target, { scroll: false });
       }
     }
 

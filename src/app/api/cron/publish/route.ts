@@ -17,7 +17,12 @@ import { isAuthorizedCron } from "@/lib/cron-auth";
 
 export const maxDuration = 60;
 
-const REAP_AFTER_MS = 10 * 60 * 1000; // 10 minutes
+// Reap threshold is intentionally a hair above the per-worker self-deadline
+// (270 s in publishNow). The watchdog inside the worker is the primary path
+// to a terminal state; this cron is only a safety net for the case where the
+// worker lambda dies before its own timer fires (OOM, host eviction). Six
+// minutes gives the worker time to settle, then catches anything still stuck.
+const REAP_AFTER_MS = 6 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {

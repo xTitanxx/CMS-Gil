@@ -409,9 +409,15 @@ function ScheduledRow({
   // distinction on the FB-pending banner below: overdue rows are blocking the
   // user *now*; future ones are a heads-up only.
   const isOverdue = fbOverdue;
-  const outerCls = isPublished
-    ? "border-gray-100 opacity-60"
-    : "border-gray-100 hover:border-gray-200";
+  // FB-pending rows look "published" internally (the slot auto-fired to API
+  // platforms) but are still awaiting action, so we never fade them — every
+  // row on this list is "still to do" by the upstream filter.
+  const outerCls = "border-gray-100 hover:border-gray-200";
+  // The status pill shows the slot's queue state. For FB-pending rows the
+  // internal kind is "published", but the slot's lifecycle isn't done, so we
+  // display them as "Scheduled" — and leave the footer banner as the single
+  // FB-pending indicator (with its own overdue/future color split).
+  const displayKind: StatusKind = fbPending && isPublished ? "scheduled" : kind;
 
   return (
     <div
@@ -474,13 +480,9 @@ function ScheduledRow({
               )}
             </span>
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                isOverdue
-                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
-                  : STATUS_PILL[kind]
-              }`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_PILL[displayKind]}`}
             >
-              {isOverdue ? "Needs FB" : STATUS_LABEL[kind]}
+              {STATUS_LABEL[displayKind]}
             </span>
             {platforms.length > 0 && (
               <span className="flex items-center gap-1">

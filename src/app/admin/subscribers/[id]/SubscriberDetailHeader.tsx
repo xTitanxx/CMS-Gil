@@ -230,7 +230,11 @@ export function SubscriberDetailHeader({
                 {" "}— old code no longer works.
               </p>
               <pre className="whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 font-mono text-xs leading-relaxed text-gray-800">
-                {buildInviteMessage(subscriber.name, generated)}
+                {buildInviteMessage(
+                  subscriber.name,
+                  generated,
+                  typeof window !== "undefined" ? window.location.origin : "https://gilalter.com",
+                )}
               </pre>
             </div>
             <div className="flex shrink-0 flex-col gap-2">
@@ -238,7 +242,11 @@ export function SubscriberDetailHeader({
                 type="button"
                 onClick={() =>
                   navigator.clipboard.writeText(
-                    buildInviteMessage(subscriber.name, generated)
+                    buildInviteMessage(
+                      subscriber.name,
+                      generated,
+                      typeof window !== "undefined" ? window.location.origin : "https://gilalter.com",
+                    )
                   )
                 }
                 className="rounded bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700"

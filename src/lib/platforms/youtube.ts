@@ -3,11 +3,12 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { google } from "googleapis";
-import { getObject } from "@/lib/storage";
+import { getSignedDownloadUrl } from "@/lib/storage";
 import {
   buildGoogleOAuthClient,
   getGoogleIntegration,
 } from "@/lib/google-integration";
+import { fetchWithTimeout } from "@/lib/platforms/_fetch";
 import { Readable } from "stream";
 
 const anthropic = new Anthropic();
@@ -42,8 +43,17 @@ export async function postToYouTube(
 
   const youtube = google.youtube({ version: "v3", auth });
 
-  const videoBuffer = await getObject(videoKey);
-  const stream = Readable.from(videoBuffer);
+  // Stream from R2 directly into googleapis. Previously we did
+  //   const videoBuffer = await getObject(videoKey); Readable.from(videoBuffer)
+  // which loaded the entire video into RAM before streaming. A ~400 MB video
+  // OOM-kills the 1 GB lambda silently, leaving the publish stuck in
+  // PROCESSING with no error surfaced.
+  const mediaUrl = await getSignedDownloadUrl(videoKey);
+  const mediaRes = await fetchWithTimeout(mediaUrl, { timeoutMs: 30_000 });
+  if (!mediaRes.ok || !mediaRes.body) {
+    throw new Error(`YouTube R2 fetch failed for ${videoKey}: ${mediaRes.status}`);
+  }
+  const stream = Readable.fromWeb(mediaRes.body as unknown as import("stream/web").ReadableStream);
 
   const description = body.includes("#Shorts")
     ? truncate(body, 5000)

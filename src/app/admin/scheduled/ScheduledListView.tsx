@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Music,
+  Pencil,
   Play,
   Trash2,
   Video,
@@ -34,6 +35,7 @@ import {
   type PlatformBadgeState,
   type PostKind,
 } from "../_shared/PlatformBadgeRow";
+import { PlatformPickerModal } from "../_shared/PlatformPickerModal";
 
 type StatusKind = "scheduled" | "proposed" | "published";
 
@@ -88,6 +90,8 @@ export function ScheduledListView() {
   // Set of postIds that still need a manual FB cross-post. Populated from the
   // same endpoint the Manual FB tab uses so the two views stay in sync.
   const [fbPendingPostIds, setFbPendingPostIds] = useState<Set<string>>(new Set());
+  // Post whose platform set is currently being edited. Null = picker closed.
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   const refreshPlan = useCallback(async () => {
     const res = await fetch("/api/planner/current");
@@ -312,6 +316,7 @@ export function ScheduledListView() {
   ) : null;
 
   return (
+    <>
     <PostingListView<Item>
       title="Scheduled"
       hideHeader
@@ -338,9 +343,21 @@ export function ScheduledListView() {
           fbPending={item.fbPending}
           onUnschedule={handleUnschedule}
           onSchedule={handleScheduleOne}
+          onEditPlatforms={() => setPickingFor(item.slot.postId)}
         />
       )}
     />
+    {pickingFor && (
+      <PlatformPickerModal
+        postId={pickingFor}
+        open
+        onClose={() => setPickingFor(null)}
+        onSaved={() => {
+          void refresh();
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -355,6 +372,7 @@ interface ScheduledRowProps {
   fbPending: boolean;
   onUnschedule: (slot: PlanSlotData) => Promise<void>;
   onSchedule: (slotId: string) => Promise<void>;
+  onEditPlatforms: () => void;
 }
 
 function slotPostKind(post: PlanSlotData["post"]): PostKind {
@@ -370,6 +388,7 @@ function ScheduledRow({
   fbPending,
   onUnschedule,
   onSchedule,
+  onEditPlatforms,
 }: ScheduledRowProps) {
   const kind = statusKind(slot);
   const { post } = slot;
@@ -536,6 +555,18 @@ function ScheduledRow({
             <span className="hidden sm:inline">Schedule</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            onEditPlatforms();
+          }}
+          className="p-1.5 text-gray-300 transition-colors hover:text-gray-700"
+          aria-label="Edit platforms"
+          title="Edit platforms"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
         {confirming && (
           <span
             aria-live="polite"

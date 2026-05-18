@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -62,8 +62,17 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+function sanitizeReturnTo(value: string | null): string {
+  if (!value) return "/admin/manual-fb";
+  // Must be a same-origin path: starts with "/", not protocol-relative "//".
+  if (!value.startsWith("/") || value.startsWith("//")) return "/admin/manual-fb";
+  return value;
+}
+
 export function ManualPostHelper({ postId, body, originalDate, platformUrl, media }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = sanitizeReturnTo(searchParams?.get("from") ?? null);
   const [copied, setCopied] = useState(false);
   const [autoCopiedBanner, setAutoCopiedBanner] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -207,7 +216,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
         return;
       }
       setMarked(true);
-      setTimeout(() => router.push("/admin/suggest"), 700);
+      setTimeout(() => router.push(returnTo), 700);
     } finally {
       setMarking(false);
     }
@@ -221,9 +230,9 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
         style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
       >
         <Link
-          href="/admin/suggest"
+          href={returnTo}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200"
-          aria-label="Back to suggester"
+          aria-label="Back"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>

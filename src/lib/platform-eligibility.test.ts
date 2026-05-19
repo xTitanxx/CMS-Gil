@@ -34,12 +34,17 @@ describe("platform-eligibility", () => {
     }
   });
 
-  it("text-only posts only fit FB Page and LinkedIn", () => {
-    expect(eligiblePlatforms(TEXT)).toEqual(["FACEBOOK_PAGE", "LINKEDIN"]);
+  it("text-only posts only fit FB Page, LinkedIn, and Threads", () => {
+    expect(eligiblePlatforms(TEXT)).toEqual(["FACEBOOK_PAGE", "LINKEDIN", "THREADS"]);
   });
 
-  it("image-only posts fit FB / IG / LI", () => {
-    expect(eligiblePlatforms(IMAGE)).toEqual(["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN"]);
+  it("image-only posts fit FB / IG / LI / Threads", () => {
+    expect(eligiblePlatforms(IMAGE)).toEqual([
+      "FACEBOOK_PAGE",
+      "INSTAGRAM",
+      "LINKEDIN",
+      "THREADS",
+    ]);
   });
 
   it("video posts fit everything", () => {
@@ -49,6 +54,7 @@ describe("platform-eligibility", () => {
       "LINKEDIN",
       "YOUTUBE",
       "TIKTOK",
+      "THREADS",
     ]);
   });
 

@@ -143,7 +143,7 @@ async function createVideoContainer(
 async function createCarouselContainer(
   userId: string,
   childIds: string[],
-  text: string,
+  text: string | undefined,
   accessToken: string,
 ): Promise<string> {
   const res = await fetchWithTimeout(`${BASE_URL}/${userId}/threads`, {
@@ -152,7 +152,7 @@ async function createCarouselContainer(
     body: JSON.stringify({
       media_type: "CAROUSEL",
       children: childIds.join(","),
-      text,
+      ...(text ? { text } : {}),
       access_token: accessToken,
     }),
     timeoutMs: 30_000,
@@ -177,7 +177,7 @@ async function waitForContainer(
       { timeoutMs: 15_000 },
     );
     const data = await res.json();
-    const status = (data.status ?? data.status_code) as string | undefined;
+    const status = data.status as string | undefined;
     if (status === "FINISHED") return;
     if (status === "ERROR") throw new Error("Threads media processing failed");
     if (status === "EXPIRED") throw new Error("Threads container expired before publish");
@@ -231,7 +231,8 @@ export async function refreshThreadsToken(accessToken: string): Promise<{
   accessToken: string;
   expiresIn: number;
 }> {
-  const url = new URL(`${BASE_URL.replace("/v1.0", "")}/refresh_access_token`);
+  // Refresh endpoint is unversioned per Meta docs; don't derive from BASE_URL.
+  const url = new URL("https://graph.threads.net/refresh_access_token");
   url.searchParams.set("grant_type", "th_refresh_token");
   url.searchParams.set("access_token", accessToken);
   const res = await fetchWithTimeout(url.toString(), { timeoutMs: 15_000 });

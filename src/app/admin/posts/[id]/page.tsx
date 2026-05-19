@@ -81,10 +81,12 @@ export default async function PostDetailPage({
       status: { in: ["APPROVED", "SCHEDULED"] },
     },
     orderBy: [{ day: "asc" }, { hour: "asc" }],
-    select: { day: true, hour: true },
+    select: { id: true, planId: true, day: true, hour: true },
   });
   const manualSlot = activePlannerSlot
     ? {
+        slotId: activePlannerSlot.id,
+        planId: activePlannerSlot.planId,
         scheduledAt: buildSlotDate(
           activePlannerSlot.day,
           activePlannerSlot.hour ?? FIXED_SLOT_HOURS[0],
@@ -236,6 +238,7 @@ export default async function PostDetailPage({
 
         <ScheduledBanner
           publishes={post.publishes.map((p) => ({
+            id: p.id,
             platform: p.platform,
             status: p.status,
             scheduledAt: p.scheduledAt ? p.scheduledAt.toISOString() : null,

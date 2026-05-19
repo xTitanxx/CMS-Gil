@@ -73,6 +73,11 @@ export async function GET(req: NextRequest) {
     const cursorParam = searchParams.get("cursor");
     const cursor = decodeCursor(cursorParam);
     const bucket = searchParams.get("bucket");
+    const view = searchParams.get("view");
+
+    if (view === "approved") {
+      return handleApprovedView(userId, limit, cursorParam);
+    }
 
     const filters = parsePostsFilters(searchParams);
 
@@ -170,4 +175,42 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
+}
+
+// Approved subtab: posts the user manually marked ready via Triage, sorted by
+// when they were approved (most recent first). Uses a simple offset cursor
+// because triageApprovedAt isn't a column the generic cursor machinery in
+// posts-query knows about, and the list is naturally bounded.
+async function handleApprovedView(
+  userId: string,
+  limit: number,
+  cursorParam: string | null,
+) {
+  const offset = cursorParam ? Math.max(0, Number(cursorParam) || 0) : 0;
+  const where: Prisma.PostWhereInput = {
+    userId,
+    triageApprovedAt: { not: null },
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.post.count({ where }),
+    prisma.post.findMany({
+      where,
+      orderBy: [{ triageApprovedAt: "desc" }, { id: "desc" }],
+      skip: offset,
+      take: limit,
+      include: POST_INCLUDE,
+    }),
+  ]);
+
+  const decorated = await decoratePosts(rows);
+  const nextOffset = offset + rows.length;
+  const nextCursor = rows.length === limit && nextOffset < total ? String(nextOffset) : null;
+
+  return NextResponse.json({
+    posts: decorated,
+    total,
+    filteredTotal: total,
+    nextCursor,
+  });
 }

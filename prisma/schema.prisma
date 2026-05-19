@@ -50,6 +50,10 @@ model User {
   // (always grants admin), but day-to-day adding/removing co-admins lives
   // here so it can be edited from the admin Settings UI without redeploying.
   isAdmin              Boolean                   @default(false)
+  // Substack publication root URL (e.g. https://example.substack.com). Used
+  // by the manual-substack queue to open the editor at <url>/publish/post.
+  // Null until the user configures it from /admin/connections.
+  substackPublicationUrl String?
   accounts             Account[]
   sessions             Session[]
   posts                Post[]
@@ -378,6 +382,8 @@ enum Platform {
   LINKEDIN
   YOUTUBE
   TIKTOK
+  THREADS
+  SUBSTACK
 }
 
 // ─── Publishing ──────────────────────────────────────────────────────────────

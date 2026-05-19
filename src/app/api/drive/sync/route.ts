@@ -138,12 +138,16 @@ export async function syncDriveFolder(userId: string, folderId: string) {
   for (const file of files) {
     if (!file.id || !file.name) continue;
 
-    // Skip if we've already imported this file
+    // Dedup by Drive file ID. FB exports always name their JSON the same
+    // (`your_posts_1.json`, `your_videos.json`, etc.), so matching on filename
+    // silently swallows every daily folder after the first one. Legacy rows
+    // (sourceFileId = null) are ignored on purpose — Post-level dedup via
+    // `(userId, sourceId)` in import-worker.ts still prevents duplicate Posts.
     const existingJob = await prisma.importJob.findFirst({
       where: {
         userId,
-        filename: file.name,
         source: "GOOGLE_DRIVE",
+        sourceFileId: file.id,
         status: { in: ["COMPLETED", "PROCESSING"] },
       },
     });
@@ -160,6 +164,7 @@ export async function syncDriveFolder(userId: string, folderId: string) {
       data: {
         userId,
         filename: file.name,
+        sourceFileId: file.id,
         source: "GOOGLE_DRIVE",
         status: "PENDING",
       },

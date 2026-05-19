@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { Sparkles, Check, X, Loader2 } from "lucide-react";
+import { PageHeader } from "@/app/admin/_shared/PageHeader";
 
 interface Item {
   postId: string;
@@ -20,7 +20,7 @@ interface Page {
   total: number;
 }
 
-export function ImprovementsFeed({ tabs }: { tabs?: ReactNode }) {
+export function ImprovementsFeed() {
   const [items, setItems] = useState<Item[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,14 +88,12 @@ export function ImprovementsFeed({ tabs }: { tabs?: ReactNode }) {
     }
   }
 
-  const Header = (
-    <div className="mb-4 flex items-start justify-between gap-3">
-      <p className="text-sm text-gray-500">
-        AI-suggested caption rewrites for low-quality or non-evergreen posts.
-      </p>
-      {tabs && <div className="flex flex-shrink-0 items-center gap-1.5">{tabs}</div>}
-    </div>
-  );
+  const subtitle =
+    loading
+      ? "AI-suggested caption rewrites for low-quality or non-evergreen posts."
+      : `${total} post${total === 1 ? "" : "s"} with pending suggestions`;
+
+  const Header = <PageHeader title="AI caption suggestions" subtitle={subtitle} />;
 
   if (loading) {
     return (
@@ -129,7 +127,6 @@ export function ImprovementsFeed({ tabs }: { tabs?: ReactNode }) {
   return (
     <div>
       {Header}
-      <p className="mb-3 text-xs text-gray-500">{total} post{total === 1 ? "" : "s"} with pending suggestions</p>
       <div className="space-y-4">
         {items.map((it) => (
           <div key={it.postId} className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 shadow-sm">

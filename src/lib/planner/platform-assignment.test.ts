@@ -66,6 +66,23 @@ describe("getEligiblePlatforms", () => {
       expect(result).toEqual([]);
     });
   });
+
+  it("includes THREADS for text posts", () => {
+    const connected = ["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "THREADS"];
+    const result = getEligiblePlatforms([], connected, "MAIN");
+    expect(result).toEqual(["FACEBOOK_PAGE", "LINKEDIN", "THREADS"]);
+  });
+
+  it("includes THREADS for image posts", () => {
+    const connected = ["FACEBOOK_PAGE", "INSTAGRAM", "LINKEDIN", "THREADS"];
+    const result = getEligiblePlatforms(["image/jpeg"], connected, "MAIN");
+    expect(result).toEqual([
+      "FACEBOOK_PAGE",
+      "INSTAGRAM",
+      "LINKEDIN",
+      "THREADS",
+    ]);
+  });
 });
 
 describe("inferSlotGroup", () => {
@@ -86,5 +103,9 @@ describe("inferSlotGroup", () => {
 
   it("treats FACEBOOK_PERSONAL marker as MAIN", () => {
     expect(inferSlotGroup(["FACEBOOK_PERSONAL"])).toBe("MAIN");
+  });
+
+  it("treats a THREADS-only slot as MAIN", () => {
+    expect(inferSlotGroup(["THREADS"])).toBe("MAIN");
   });
 });

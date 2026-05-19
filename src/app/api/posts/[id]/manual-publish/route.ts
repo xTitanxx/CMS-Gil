@@ -11,6 +11,8 @@ const PLATFORMS: readonly Platform[] = [
   "LINKEDIN",
   "YOUTUBE",
   "TIKTOK",
+  "THREADS",
+  "SUBSTACK",
 ] as const;
 
 // The two outcomes the manual queue writes: PUBLISHED ("I posted it") or

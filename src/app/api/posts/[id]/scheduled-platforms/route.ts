@@ -14,6 +14,7 @@ import {
 // Marker stored on slot.platforms to opt the slot into the manual-FB queue.
 // Never written to PublishRecord — not a real Platform enum value.
 const FB_PERSONAL_MARKER = "FACEBOOK_PERSONAL";
+const SUBSTACK_MARKER = "SUBSTACK"; // manual queue marker (also a real Platform enum value)
 
 const ALLOWED_INPUT = [
   "FACEBOOK_PAGE",
@@ -21,7 +22,9 @@ const ALLOWED_INPUT = [
   "LINKEDIN",
   "YOUTUBE",
   "TIKTOK",
+  "THREADS",
   FB_PERSONAL_MARKER,
+  SUBSTACK_MARKER,
 ] as const;
 
 const AUTO_PLATFORMS = [
@@ -30,6 +33,7 @@ const AUTO_PLATFORMS = [
   "LINKEDIN",
   "YOUTUBE",
   "TIKTOK",
+  "THREADS",
 ] as const satisfies readonly Platform[];
 
 const requestSchema = z.object({
@@ -102,6 +106,10 @@ export async function POST(
       filtered.add(p);
       continue;
     }
+    if (p === SUBSTACK_MARKER) {
+      filtered.add(p);
+      continue;
+    }
     if (!isPlatformEligible(p, shape)) continue;
     if (!connected.has(p)) continue;
     filtered.add(p);
@@ -159,7 +167,9 @@ export async function POST(
     live.filter((r) => r.status === "PROCESSING").map((r) => r.platform),
   );
 
-  const toCancel = livePending.filter((r) => !autoTargets.has(r.platform));
+  const toCancel = livePending.filter(
+    (r) => !autoTargets.has(r.platform) && r.platform !== "SUBSTACK",
+  );
   const toCreate = [...autoTargets].filter(
     (p) =>
       !livePending.some((r) => r.platform === p) &&
@@ -189,6 +199,37 @@ export async function POST(
         scheduledAt: scheduledAt!,
       },
     });
+  }
+
+  // Substack — create a manual-flow PublishRecord that the cron publisher
+  // ignores (no dispatch case) and that the /admin/manual-substack queue picks
+  // up. We don't add it to AUTO_PLATFORMS so the existing reconciliation skips
+  // it cleanly.
+  if (filtered.has(SUBSTACK_MARKER) && scheduledAt) {
+    const existing = live.find(
+      (r) => r.platform === "SUBSTACK" && r.status === "PENDING",
+    );
+    if (!existing) {
+      await prisma.publishRecord.create({
+        data: {
+          postId,
+          platform: "SUBSTACK",
+          status: "PENDING",
+          scheduledAt,
+        },
+      });
+    }
+  } else if (!filtered.has(SUBSTACK_MARKER)) {
+    // User dropped Substack — cancel any pending Substack record.
+    const pendingSubstack = live.find(
+      (r) => r.platform === "SUBSTACK" && r.status === "PENDING",
+    );
+    if (pendingSubstack) {
+      await prisma.publishRecord.update({
+        where: { id: pendingSubstack.id },
+        data: { status: "CANCELLED" },
+      });
+    }
   }
 
   if (slot) {

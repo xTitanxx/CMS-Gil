@@ -5,7 +5,7 @@
 // Rules:
 //   - YouTube / TikTok: video required.
 //   - Instagram: at least one image or video required (no text-only).
-//   - Facebook Page / LinkedIn: any content (text, image, or video).
+//   - Facebook Page / LinkedIn / Threads: any content (text, image, or video).
 //
 // Story / Reel postTypes don't loosen the rules above — IG/FB Reels need
 // video, IG/FB Stories need image-or-video — but the basic media-type gate
@@ -18,6 +18,7 @@ export const ALL_PUBLISHABLE_PLATFORMS = [
   "LINKEDIN",
   "YOUTUBE",
   "TIKTOK",
+  "THREADS",
 ] as const;
 
 export type PublishablePlatform = (typeof ALL_PUBLISHABLE_PLATFORMS)[number];
@@ -47,6 +48,7 @@ export function isPlatformEligible(
       return hasVideo || hasImage;
     case "FACEBOOK_PAGE":
     case "LINKEDIN":
+    case "THREADS":
       return true;
     default:
       return false;

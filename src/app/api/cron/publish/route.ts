@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
   const pendingRecords = await prisma.publishRecord.findMany({
     where: {
       status: "PENDING",
+      platform: { notIn: ["SUBSTACK"] },
       OR: [
         { scheduledAt: { lte: now } },
         { scheduledAt: null },

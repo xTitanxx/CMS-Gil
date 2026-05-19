@@ -17,7 +17,7 @@ import {
   ThumbsUp,
   XCircle,
 } from "lucide-react";
-import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
+import { SiInstagram, SiYoutube, SiTiktok, SiFacebook, SiThreads, SiSubstack } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { format } from "date-fns";
 import {
@@ -31,7 +31,9 @@ type Platform =
   | "YOUTUBE"
   | "TIKTOK"
   | "FACEBOOK_PAGE"
-  | "FACEBOOK";
+  | "FACEBOOK"
+  | "THREADS"
+  | "SUBSTACK";
 
 type PublishStatus = "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED" | "CANCELLED";
 
@@ -76,6 +78,8 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   TIKTOK: "TikTok",
   FACEBOOK_PAGE: "Facebook Page",
   FACEBOOK: "Facebook Personal profile",
+  THREADS: "Threads",
+  SUBSTACK: "Substack",
 };
 
 // True for manually-posted platforms (no API publish path) — drives the
@@ -88,6 +92,8 @@ const PLATFORM_MANUAL: Record<Platform, boolean> = {
   TIKTOK: false,
   FACEBOOK_PAGE: false,
   FACEBOOK: true,
+  THREADS: false,
+  SUBSTACK: true,
 };
 
 // Brand-tinted icon backgrounds. Soft enough not to dominate the row.
@@ -101,6 +107,12 @@ const PLATFORM_TINT: Record<Platform, { bg: string; fg: string; border?: string 
     bg: "bg-white",
     fg: "text-blue-600",
     border: "border border-dashed border-blue-400",
+  },
+  THREADS: { bg: "bg-gray-100", fg: "text-black" },
+  SUBSTACK: {
+    bg: "bg-white",
+    fg: "text-[#FF6719]",
+    border: "border border-dashed border-orange-400",
   },
 };
 
@@ -124,6 +136,10 @@ function PlatformIcon({
     case "FACEBOOK_PAGE":
     case "FACEBOOK":
       return <SiFacebook className={cls} />;
+    case "THREADS":
+      return <SiThreads className={cls} />;
+    case "SUBSTACK":
+      return <SiSubstack className={cls} />;
   }
 }
 

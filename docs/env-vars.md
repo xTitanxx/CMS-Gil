@@ -16,6 +16,8 @@
 | `ENCRYPTION_KEY` | Vercel + local | Encrypts platform OAuth tokens in DB |
 | `ANTHROPIC_API_KEY` | Vercel + local | Claude API (tagging, chat, search, assistant) |
 | `META_APP_ID/SECRET` | Vercel + local | Instagram + Facebook OAuth |
+| `THREADS_APP_ID` | Vercel preview + production | Meta App ID for Threads (separate product within the same Meta app as FB/IG). |
+| `THREADS_APP_SECRET` | Vercel preview + production | Threads app secret. Never commit. |
 | `TIKTOK_CLIENT_KEY/SECRET` | Vercel + local | TikTok OAuth |
 | `LINKEDIN_CLIENT_ID/SECRET` | Vercel + local | LinkedIn OAuth |
 | `CRON_SECRET` | Vercel + local | Authenticates Vercel cron requests |

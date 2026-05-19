@@ -167,7 +167,9 @@ export async function POST(
     live.filter((r) => r.status === "PROCESSING").map((r) => r.platform),
   );
 
-  const toCancel = livePending.filter((r) => !autoTargets.has(r.platform));
+  const toCancel = livePending.filter(
+    (r) => !autoTargets.has(r.platform) && r.platform !== "SUBSTACK",
+  );
   const toCreate = [...autoTargets].filter(
     (p) =>
       !livePending.some((r) => r.platform === p) &&

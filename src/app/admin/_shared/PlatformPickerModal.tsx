@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import { SiFacebook, SiInstagram, SiYoutube, SiTiktok } from "react-icons/si";
+import { SiFacebook, SiInstagram, SiYoutube, SiTiktok, SiThreads, SiSubstack } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 
 const FB_PERSONAL = "FACEBOOK_PERSONAL";
@@ -52,6 +52,13 @@ const AUTO_CHIPS: ChipDef[] = [
     iconColor: "text-gray-900",
     activeClasses: "border-gray-900 bg-gray-100 text-gray-900",
   },
+  {
+    key: "THREADS",
+    label: "Threads",
+    Icon: SiThreads,
+    iconColor: "text-black",
+    activeClasses: "border-black bg-black/5 text-black",
+  },
 ];
 
 const FB_PERSONAL_CHIP: ChipDef = {
@@ -60,6 +67,17 @@ const FB_PERSONAL_CHIP: ChipDef = {
   Icon: SiFacebook,
   iconColor: "text-[#1877F2]",
   activeClasses: "border-dashed border-[#1877F2] bg-[#1877F2]/5 text-[#1877F2]",
+  manual: true,
+};
+
+const SUBSTACK_MARKER = "SUBSTACK";
+
+const SUBSTACK_CHIP: ChipDef = {
+  key: SUBSTACK_MARKER,
+  label: "Substack",
+  Icon: SiSubstack,
+  iconColor: "text-[#FF6719]",
+  activeClasses: "border-dashed border-[#FF6719] bg-[#FF6719]/10 text-[#FF6719]",
   manual: true,
 };
 
@@ -126,7 +144,7 @@ export function PlatformPickerModal({ postId, open, onClose, onSaved }: Props) {
   if (!open) return null;
 
   const isAvailable = (chip: ChipDef): boolean => {
-    if (chip.key === FB_PERSONAL) return true;
+    if (chip.manual) return true;
     if (!state) return false;
     return (
       state.eligibleByMedia.includes(chip.key) &&
@@ -135,7 +153,7 @@ export function PlatformPickerModal({ postId, open, onClose, onSaved }: Props) {
   };
 
   const reasonFor = (chip: ChipDef): string | null => {
-    if (chip.key === FB_PERSONAL) return null;
+    if (chip.manual) return null;
     if (!state) return null;
     // Media shape doesn't reach the client directly; we infer from
     // eligibleByMedia. If the platform isn't eligible by media, we want the
@@ -189,7 +207,7 @@ export function PlatformPickerModal({ postId, open, onClose, onSaved }: Props) {
     (picked.size !== state.selected.length ||
       [...picked].some((p) => !state.selected.includes(p)));
 
-  const allChips = [...AUTO_CHIPS, FB_PERSONAL_CHIP];
+  const allChips = [...AUTO_CHIPS, FB_PERSONAL_CHIP, SUBSTACK_CHIP];
 
   return (
     <div

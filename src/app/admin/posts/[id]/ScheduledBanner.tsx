@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Clock, Loader2, XCircle } from "lucide-react";
-import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
+import { SiInstagram, SiYoutube, SiTiktok, SiFacebook, SiThreads, SiSubstack } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -13,7 +13,9 @@ type Platform =
   | "YOUTUBE"
   | "TIKTOK"
   | "FACEBOOK_PAGE"
-  | "FACEBOOK";
+  | "FACEBOOK"
+  | "THREADS"
+  | "SUBSTACK";
 
 type PublishStatus = "PENDING" | "PROCESSING" | "PUBLISHED" | "FAILED" | "CANCELLED";
 
@@ -24,6 +26,8 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   TIKTOK: "TikTok",
   FACEBOOK_PAGE: "Facebook Page",
   FACEBOOK: "Facebook Personal profile",
+  THREADS: "Threads",
+  SUBSTACK: "Substack",
 };
 
 function platformIcon(platform: Platform, className: string) {
@@ -39,6 +43,10 @@ function platformIcon(platform: Platform, className: string) {
     case "FACEBOOK_PAGE":
     case "FACEBOOK":
       return <SiFacebook className={className} />;
+    case "THREADS":
+      return <SiThreads className={className} />;
+    case "SUBSTACK":
+      return <SiSubstack className={className} />;
   }
 }
 

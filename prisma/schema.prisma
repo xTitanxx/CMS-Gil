@@ -446,7 +446,11 @@ model ImportJob {
 
   source   ImportSource @default(UPLOAD)
   filename String
-  status   ImportStatus @default(PENDING)
+  // Stable per-source identifier (e.g. Google Drive file ID). Used for dedup so
+  // repeated daily exports that all name their file `your_posts_1.json` don't
+  // collide on `filename` alone.
+  sourceFileId String?
+  status       ImportStatus @default(PENDING)
 
   totalPosts    Int     @default(0)
   importedPosts Int     @default(0)
@@ -456,6 +460,8 @@ model ImportJob {
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())
+
+  @@index([userId, source, sourceFileId])
 }
 
 model BulkAnalyzeJob {

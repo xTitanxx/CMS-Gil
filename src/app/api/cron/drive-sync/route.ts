@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { syncDriveFolder } from "@/app/api/drive/sync/route";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 
+export const maxDuration = 300;
+
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

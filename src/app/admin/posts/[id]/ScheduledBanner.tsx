@@ -1,6 +1,11 @@
-import { AlertTriangle, Clock, Loader2 } from "lucide-react";
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Clock, Loader2, XCircle } from "lucide-react";
 import { SiInstagram, SiYoutube, SiTiktok, SiFacebook } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Platform =
   | "INSTAGRAM"
@@ -83,6 +88,7 @@ function relativeWhen(iso: string): { label: string; isOverdue: boolean } {
 }
 
 export type ScheduledBannerEntry = {
+  id: string;
   platform: Platform;
   status: PublishStatus;
   scheduledAt: string | null;
@@ -90,6 +96,8 @@ export type ScheduledBannerEntry = {
 };
 
 export type ManualSlotInfo = {
+  slotId: string;
+  planId: string;
   scheduledAt: string;
   // Whether a FACEBOOK publish already exists for this post — if so, the slot
   // is satisfied and we don't surface it.
@@ -109,6 +117,9 @@ export function ScheduledBanner({
   publishes: ScheduledBannerEntry[];
   manualSlot: ManualSlotInfo | null;
 }) {
+  const router = useRouter();
+  const [cancelling, setCancelling] = useState(false);
+
   // PROCESSING beats PENDING for "what's happening right now" — surface those
   // separately so the user sees the live upload state instead of a stale
   // "scheduled" message while the lambda is mid-upload.
@@ -120,12 +131,46 @@ export function ScheduledBanner({
   const showManualSlot =
     !!manualSlot && !manualSlot.fbPublished && new Date(manualSlot.scheduledAt).getTime() > 0;
 
+  const cancelTargetIds = useMemo(
+    () => [...processing.map((p) => p.id), ...pending.map((p) => p.id)],
+    [processing, pending],
+  );
+
+  const handleCancel = useCallback(async () => {
+    setCancelling(true);
+    try {
+      // Cancel each in-flight/pending PublishRecord. Done in parallel — the
+      // cancel endpoint is idempotent enough that ordering doesn't matter.
+      await Promise.all(
+        cancelTargetIds.map((id) =>
+          fetch(`/api/publish/${id}/cancel`, { method: "POST" }).catch(() => null),
+        ),
+      );
+      // Then remove the planner slot (if any) so the manual-FB queue + planner
+      // status reflect reality. The planner handler also sweeps any leftover
+      // PENDING records for the slot's platforms, which covers slots whose
+      // records weren't surfaced in `publishes` for some reason.
+      if (manualSlot) {
+        await fetch(`/api/planner/${manualSlot.planId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "remove", slotId: manualSlot.slotId }),
+        }).catch(() => null);
+      }
+      router.refresh();
+    } finally {
+      setCancelling(false);
+    }
+  }, [cancelTargetIds, manualSlot, router]);
+
+  const { confirming, trigger } = useConfirm(handleCancel);
+
   if (processing.length === 0 && pending.length === 0 && !showManualSlot) return null;
 
   if (processing.length > 0) {
     return (
       <div className="overflow-hidden rounded-2xl border border-blue-200 bg-blue-50 shadow-sm">
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex items-start gap-3 px-4 py-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100">
             <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
           </div>
@@ -134,6 +179,16 @@ export function ScheduledBanner({
             <p className="text-[12px] text-blue-800">
               {processing.map((p) => PLATFORM_LABEL[p.platform]).join(" · ")}
             </p>
+            {cancelTargetIds.length > 0 && (
+              <div className="mt-2">
+                <CancelButton
+                  variant="blue"
+                  confirming={confirming}
+                  cancelling={cancelling}
+                  onClick={trigger}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -161,6 +216,9 @@ export function ScheduledBanner({
   const autoChipClasses = isOverdue
     ? "inline-flex min-w-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-red-900 ring-1 ring-inset ring-red-200"
     : "inline-flex min-w-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-amber-900 ring-1 ring-inset ring-amber-200";
+
+  const canCancel = cancelTargetIds.length > 0 || !!manualSlot;
+  const variant: CancelVariant = isOverdue ? "red" : "amber";
 
   return (
     <div className={containerClasses}>
@@ -217,8 +275,65 @@ export function ScheduledBanner({
               </span>
             )}
           </div>
+          {canCancel && (
+            <div className="mt-2">
+              <CancelButton
+                variant={variant}
+                confirming={confirming}
+                cancelling={cancelling}
+                onClick={trigger}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+type CancelVariant = "amber" | "red" | "blue";
+
+function CancelButton({
+  variant,
+  confirming,
+  cancelling,
+  onClick,
+}: {
+  variant: CancelVariant;
+  confirming: boolean;
+  cancelling: boolean;
+  onClick: () => void;
+}) {
+  // Idle / confirm / loading styles per banner tone. Idle is a quiet outline on
+  // the banner's own background so it doesn't shout; confirm flips to a filled
+  // red to make the second click obvious.
+  const idle =
+    variant === "red"
+      ? "border-red-300 bg-white text-red-700 hover:border-red-400 hover:bg-red-100"
+      : variant === "amber"
+        ? "border-amber-300 bg-white text-amber-800 hover:border-amber-400 hover:bg-amber-100"
+        : "border-blue-300 bg-white text-blue-700 hover:border-blue-400 hover:bg-blue-100";
+  const confirm = "border-red-500 bg-red-600 text-white hover:bg-red-700";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={cancelling}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+        confirming ? confirm : idle
+      }`}
+    >
+      {cancelling ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <XCircle className="h-3 w-3" />
+      )}
+      {cancelling
+        ? "Cancelling…"
+        : confirming
+          ? "Click again to confirm"
+          : "Cancel schedule"}
+    </button>
   );
 }

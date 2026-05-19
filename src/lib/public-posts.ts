@@ -67,16 +67,24 @@ export async function getPublicFeedPage(cursor?: {
   // for a full page. 3x page size is a pragmatic buffer.
   const fetchSize = PAGE_SIZE * 3;
 
+  // READY-only on the public feed — UNCHECKED / NOT_READY / ARCHIVED posts
+  // are still being triaged or have been pulled, and shouldn't surface to
+  // the public archive.
   const where = cursor
     ? {
         userId: gilUserId,
+        readiness: "READY" as const,
         NOT: { sourceId: { startsWith: "fb_story_" } },
         OR: [
           { originalDate: { lt: cursor.date } },
           { originalDate: cursor.date, id: { lt: cursor.id } },
         ],
       }
-    : { userId: gilUserId, NOT: { sourceId: { startsWith: "fb_story_" } } };
+    : {
+        userId: gilUserId,
+        readiness: "READY" as const,
+        NOT: { sourceId: { startsWith: "fb_story_" } },
+      };
 
   const raw = await prisma.post.findMany({
     where,

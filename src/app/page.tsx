@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getPublicFeedPage, getPublicStoriesPage } from "@/lib/public-posts";
-import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
+import { getPublicFeedPage } from "@/lib/public-posts";
+import { getMediaUrl } from "@/lib/storage";
 import { PublicFeed } from "./PublicFeed";
-import { StoriesRow } from "./StoriesRow";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +13,7 @@ const COVER_SRC = "/banner.jpg";
 const AVATAR_SRC = "/avatar.jpg";
 
 export default async function HomePage() {
-  const [session, feed, storiesPage] = await Promise.all([
-    auth(),
-    getPublicFeedPage(),
-    getPublicStoriesPage(),
-  ]);
+  const [session, feed] = await Promise.all([auth(), getPublicFeedPage()]);
   const signedIn = session?.user?.role === "subscriber";
 
   const postsWithUrls = await Promise.all(
@@ -44,43 +39,10 @@ export default async function HomePage() {
     }))
   );
 
-  const storiesWithUrls = await Promise.all(
-    storiesPage.stories.map(async (s) => {
-      const mediaWithUrls = await Promise.all(
-        s.media.map(async (m) => ({
-          id: m.id,
-          mimeType: m.mimeType,
-          hasAudio: m.hasAudio,
-          url: await getMediaUrl(m).catch(() => null),
-        }))
-      );
-      const firstMedia = s.media[0];
-      const thumbUrl = firstMedia
-        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
-        : null;
-      return {
-        id: s.id,
-        originalDate: s.originalDate.toISOString(),
-        thumbUrl,
-        media: mediaWithUrls,
-      };
-    })
-  );
-
   const initialFeed = {
     posts: postsWithUrls,
     nextCursor: feed.nextCursor
       ? { date: feed.nextCursor.date.toISOString(), id: feed.nextCursor.id }
-      : null,
-  };
-
-  const initialStories = {
-    stories: storiesWithUrls,
-    nextCursor: storiesPage.nextCursor
-      ? {
-          date: storiesPage.nextCursor.date.toISOString(),
-          id: storiesPage.nextCursor.id,
-        }
       : null,
   };
 
@@ -161,29 +123,23 @@ export default async function HomePage() {
           {/* Feed column */}
           <div className="min-w-0 space-y-4">
             <section className="rounded-xl bg-white shadow-sm overflow-hidden">
-              <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
-                <p className="text-xs font-medium text-amber-800">
-                  Experimental feature — the Archivist is an AI that generates responses based on
-                  Gil&apos;s posts. It is not Gil, may not always be accurate, and does not
-                  provide medical advice.
-                </p>
-              </div>
-              <div className="px-4 py-4">
-                <h2 className="text-base font-bold text-gray-900">Talk to the Archivist</h2>
-                <p className="mt-1.5 text-sm text-gray-600">
-                  Trained on Gil&rsquo;s archive.<br />
-                  Ask anything &mdash; if it exists, it will dig it up.
-                </p>
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-bold text-gray-900">Talk to the Archivist</h2>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Experimental — the Archivist is an AI trained on Gil&apos;s posts. It is not
+                    Gil, may not always be accurate, and does not provide medical advice.
+                  </p>
+                </div>
                 <Link
                   href="/chat"
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
                 >
-                  Try it out
+                  Chat with the Archivist
                 </Link>
               </div>
             </section>
 
-            <StoriesRow initial={initialStories} />
             <PublicFeed initial={initialFeed} signedIn={signedIn} />
           </div>
         </div>

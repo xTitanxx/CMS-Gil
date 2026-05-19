@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -16,8 +15,9 @@ import { listComments } from "@/lib/engagement/comments";
 import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
 import { BackButton } from "./BackButton";
 import { SubscriberHeader } from "@/components/SubscriberHeader";
-import { EngagementBar } from "@/components/EngagementBar";
 import { CommentSection } from "@/components/CommentSection";
+import { PostCardClient } from "./PostCardClient";
+import { RelatedPostsList, type RelatedPostSummary } from "./RelatedPostsList";
 
 export const dynamic = "force-dynamic";
 
@@ -27,21 +27,6 @@ function formatDate(date: Date): string {
     month: "short",
     year: "numeric",
   });
-}
-
-async function mediaWithUrls<T extends { storageKey: string; mimeType: string; id: string; altText: string | null }>(
-  media: T[]
-) {
-  return Promise.all(
-    media.map(async (m) => ({
-      id: m.id,
-      altText: m.altText,
-      mimeType: m.mimeType,
-      url: await getMediaUrl(m).catch(
-        () => null
-      ),
-    }))
-  );
 }
 
 export async function generateMetadata({
@@ -98,7 +83,6 @@ export default async function PublicPostPage({
 
   const related = await getRelatedPosts(post, 5);
 
-  const role = session?.user?.role;
   // Admin acts under their shadow subscriber so they can test engagement
   // features end-to-end without logging out. See lib/engagement/admin-shadow.ts.
   const actorSubscriberId = await resolveActorSubscriberId(session);
@@ -121,87 +105,69 @@ export default async function PublicPostPage({
     listComments(post.id, null, actorSubscriberId ?? null),
     viewerSubscriberPromise,
   ]);
-  // Suppress unused-vars warning for `role` until we wire admin-only chrome.
-  void role;
 
-  const mainMedia = await mediaWithUrls(post.media);
-  const relatedWithUrls = await Promise.all(
-    related.map(async (r) => ({
-      ...r,
-      mediaWithUrls: await mediaWithUrls(r.media),
-    }))
+  const mainMediaWithUrls = await Promise.all(
+    post.media.map(async (m) => ({
+      id: m.id,
+      mimeType: m.mimeType,
+      width: m.width,
+      height: m.height,
+      altText: m.altText,
+      hasAudio: m.hasAudio,
+      audioTrackId: m.audioTrack?.storageKey ? m.id : null,
+      url: await getMediaUrl(m).catch(() => null),
+    })),
+  );
+
+  const relatedSummaries: RelatedPostSummary[] = await Promise.all(
+    related.map(async (r) => {
+      const firstMedia = r.media[0] ?? null;
+      const thumbUrl = firstMedia
+        ? await getMediaUrl(firstMedia).catch(() => null)
+        : null;
+      return {
+        id: r.id,
+        body: r.body,
+        originalDate: r.originalDate.toISOString(),
+        thumbUrl,
+        thumbAlt: firstMedia?.altText ?? null,
+        thumbIsVideo: !!firstMedia?.mimeType.startsWith("video/"),
+      };
+    }),
   );
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-gray-100">
       <SubscriberHeader />
-      <div className="max-w-xl mx-auto px-4 py-6">
-        <div className="mb-4">
+      <div className="mx-auto max-w-2xl px-3 py-4 md:px-4 md:py-6">
+        <div className="mb-3">
           <BackButton />
         </div>
 
-        <article className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="p-4">
-            <p className="text-xs text-gray-500 mb-3">{formatDate(post.originalDate)}</p>
-            <p className="text-sm text-gray-800 whitespace-pre-wrap mb-4">{post.body}</p>
-            {mainMedia.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {mainMedia.map((m) =>
-                  m.url && m.mimeType.startsWith("video/") ? (
-                    <video
-                      key={m.id}
-                      src={m.url}
-                      controls
-                      className="rounded max-w-full"
-                      preload="metadata"
-                    />
-                  ) : m.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={m.id}
-                      src={m.url}
-                      alt={m.altText ?? ""}
-                      className="rounded max-w-full h-auto"
-                    />
-                  ) : null
-                )}
-              </div>
-            )}
-          </div>
-          <EngagementBar
-            postId={post.id}
-            initialLikeCount={post.likeCount}
-            initialLiked={likedIds.includes(post.id)}
-            initialBookmarked={bookmarkedIds.includes(post.id)}
-            signedIn={signedIn}
-          />
+        <PostCardClient
+          post={{
+            id: post.id,
+            body: post.body,
+            originalDate: post.originalDate.toISOString(),
+            tags: post.tags,
+            likeCount: post.likeCount,
+            media: mainMediaWithUrls,
+          }}
+          initialLiked={likedIds.includes(post.id)}
+          initialBookmarked={bookmarkedIds.includes(post.id)}
+          signedIn={signedIn}
+        />
+
+        <div className="mt-3 overflow-hidden rounded-lg bg-white shadow-sm">
           <CommentSection
             postId={post.id}
             signedIn={signedIn}
             commentsDisabled={!!viewerSubscriber?.commentsDisabledAt}
             initialComments={initialComments}
           />
-        </article>
+        </div>
 
-        {relatedWithUrls.length > 0 && (
-          <section className="mt-8">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Related posts</h2>
-            <div className="flex flex-col gap-3">
-              {relatedWithUrls.map((r) => (
-                <Link
-                  key={r.id}
-                  href={`/p/${r.id}`}
-                  className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 transition-colors"
-                >
-                  <p className="text-xs text-gray-500 mb-2">{formatDate(r.originalDate)}</p>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap line-clamp-3">
-                    {r.body}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        <RelatedPostsList posts={relatedSummaries} />
       </div>
     </main>
   );

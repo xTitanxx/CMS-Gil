@@ -47,6 +47,12 @@ export function PostCard({
   onLikeChange,
   onBookmarkChange,
   onAuthError,
+  /**
+   * When true the body renders in full from the start (no truncation, no
+   * "See more"). Used on the /p/[id] detail page where the user has clearly
+   * opted in to reading the full thing.
+   */
+  initialExpanded = false,
 }: {
   post: PostCardData;
   liked: boolean;
@@ -56,8 +62,9 @@ export function PostCard({
   onLikeChange: (postId: string, liked: boolean, count: number) => void;
   onBookmarkChange: (postId: string, bookmarked: boolean) => void;
   onAuthError: () => void;
+  initialExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initialExpanded);
   const body = post.body ?? "";
   const isLong = body.length > CAPTION_CHAR_LIMIT;
   const shown = !expanded && isLong ? body.slice(0, CAPTION_CHAR_LIMIT).trimEnd() + "…" : body;

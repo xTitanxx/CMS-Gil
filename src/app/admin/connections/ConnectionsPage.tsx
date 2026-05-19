@@ -46,6 +46,21 @@ const PLATFORMS: PlatformInfo[] = [
     connectUrl: "/api/connections/linkedin",
   },
   {
+    id: "THREADS",
+    label: "Threads",
+    caps: {
+      Text: true,
+      Photos: true,
+      Video: true,
+      Stories: false,
+      Analytics: false,
+      Page: false,
+      "Personal profile": true,
+    },
+    color: "text-black",
+    connectUrl: "/api/connections/threads",
+  },
+  {
     id: "YOUTUBE",
     label: "YouTube / Google Drive",
     caps: { Text: false, Photos: false, Video: true, Stories: false, Analytics: true, Page: false, "Personal profile": true },
@@ -59,6 +74,22 @@ const PLATFORMS: PlatformInfo[] = [
     caps: { Text: false, Photos: false, Video: true, Stories: false, Analytics: true, Page: false, "Personal profile": true },
     color: "text-gray-900",
     connectUrl: "/api/connections/tiktok",
+  },
+  {
+    id: "SUBSTACK",
+    label: "Substack",
+    caps: {
+      Text: true,
+      Photos: true,
+      Video: false,
+      Stories: false,
+      Analytics: false,
+      Page: false,
+      "Personal profile": true,
+    },
+    note: "Manual helper — Substack has no posting API",
+    color: "text-[#FF6719]",
+    connectUrl: "",
   },
 ];
 
@@ -81,6 +112,36 @@ export default function ConnectionsPage() {
   const [youtube, setYoutube] = useState<YoutubeInfo>({ connected: false });
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [substackUrl, setSubstackUrl] = useState<string | null>(null);
+  const [substackInput, setSubstackInput] = useState("");
+  const [substackSaving, setSubstackSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/substack-settings")
+      .then((r) => r.json())
+      .then((d) => {
+        setSubstackUrl(d.publicationUrl ?? null);
+        setSubstackInput(d.publicationUrl ?? "");
+      })
+      .catch(() => {});
+  }, []);
+
+  async function saveSubstackUrl() {
+    setSubstackSaving(true);
+    try {
+      const res = await fetch("/api/admin/substack-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicationUrl: substackInput || null }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSubstackUrl(data.publicationUrl ?? null);
+      }
+    } finally {
+      setSubstackSaving(false);
+    }
+  }
 
   const successPlatform = searchParams.get("success");
   const errorPlatform = searchParams.get("error");
@@ -176,39 +237,41 @@ export default function ConnectionsPage() {
                     {connected && <Badge variant="success">Connected</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {!connected ? (
-                      <Button
-                        size="sm"
-                        onClick={() => window.location.assign(platform.connectUrl)}
-                      >
-                        Connect
-                      </Button>
-                    ) : (
-                      <>
+                    {platform.connectUrl ? (
+                      !connected ? (
                         <Button
-                          variant="outline"
                           size="sm"
                           onClick={() => window.location.assign(platform.connectUrl)}
                         >
-                          Reconnect
+                          Connect
                         </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={disconnecting === platform.id}
-                          onClick={() => disconnect(platform.id)}
-                        >
-                          {disconnecting === platform.id ? (
-                            <>
-                              <Spinner />
-                              Disconnecting...
-                            </>
-                          ) : (
-                            "Disconnect"
-                          )}
-                        </Button>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.location.assign(platform.connectUrl)}
+                          >
+                            Reconnect
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={disconnecting === platform.id}
+                            onClick={() => disconnect(platform.id)}
+                          >
+                            {disconnecting === platform.id ? (
+                              <>
+                                <Spinner />
+                                Disconnecting...
+                              </>
+                            ) : (
+                              "Disconnect"
+                            )}
+                          </Button>
+                        </>
+                      )
+                    ) : null}
                   </div>
                 </div>
 
@@ -284,6 +347,33 @@ export default function ConnectionsPage() {
                     <span className="self-center text-xs text-gray-500">{platform.note}</span>
                   )}
                 </div>
+
+                {platform.id === "SUBSTACK" && (
+                  <div className="flex flex-col gap-2 mt-2 min-w-0">
+                    <label className="text-xs text-gray-500">Publication URL</label>
+                    <div className="flex flex-wrap gap-2 min-w-0">
+                      <input
+                        type="url"
+                        placeholder="https://you.substack.com"
+                        value={substackInput}
+                        onChange={(e) => setSubstackInput(e.target.value)}
+                        className="flex-1 min-w-0 border px-2 py-1 rounded text-sm"
+                      />
+                      <Button onClick={saveSubstackUrl} disabled={substackSaving} size="sm">
+                        {substackSaving ? <Spinner /> : "Save"}
+                      </Button>
+                    </div>
+                    {substackUrl ? (
+                      <p className="text-xs text-gray-500 break-all">
+                        Current: {substackUrl}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-600">
+                        Set this before using the manual-substack queue.
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

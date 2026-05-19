@@ -57,7 +57,7 @@ export function formatRelevantPostsForPrompt(posts: RelevantPost[]): string {
     });
     const tags = p.tags.length > 0 ? ` [${p.tags.join(", ")}]` : "";
     const body = p.body?.trim() ?? "(no text)";
-    return `[ID: ${p.id}] ${date}${tags}\n${body}`;
+    return `[ID:${p.id}] ${date}${tags}\n${body}`;
   });
   // Heading is intentionally directive — these posts came back ranked by how
   // many of the user's literal words they contain, drawn from the wider

@@ -44,10 +44,23 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
   const posterSrc = post.mediaUrl ? posterUrlFor(post.mediaUrl) : null;
   const stillSrc = isVideo && posterSrc && !posterFailed ? posterSrc : post.mediaUrl;
 
+  // Honor the media's natural aspect ratio so portraits don't get cropped to
+  // 16:9 and small images don't get upscaled into a wide blurry stripe. When
+  // dimensions are missing (legacy rows), fall back to 16:9. `object-contain`
+  // + light-gray bg gives a tasteful letterbox in the rare case the container
+  // doesn't quite match the media's natural ratio — never black bars.
+  const hasNaturalSize = post.mediaWidth && post.mediaHeight && post.mediaWidth > 0 && post.mediaHeight > 0;
+  const mediaContainerStyle: React.CSSProperties = hasNaturalSize
+    ? { aspectRatio: `${post.mediaWidth} / ${post.mediaHeight}` }
+    : {};
+
   return (
     <article className="my-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
       {post.mediaUrl && stillSrc && (
-        <div className="relative aspect-video w-full overflow-hidden bg-gray-100">
+        <div
+          className={`relative w-full overflow-hidden bg-gray-100 ${hasNaturalSize ? "max-h-[70vh]" : "aspect-video"}`}
+          style={mediaContainerStyle}
+        >
           {isVideo && playing ? (
             <video
               src={post.mediaUrl}
@@ -55,7 +68,7 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
               controls
               autoPlay
               playsInline
-              className="h-full w-full bg-black object-contain"
+              className="h-full w-full bg-gray-100 object-contain"
             />
           ) : (
             <>
@@ -63,7 +76,7 @@ export function PostPreviewCard({ post }: { post: PreviewPost }) {
               <img
                 src={stillSrc}
                 alt={post.mediaAltText ?? ""}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 loading="lazy"
                 decoding="async"
                 onError={isVideo && !posterFailed ? () => setPosterFailed(true) : undefined}

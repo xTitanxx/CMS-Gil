@@ -17,6 +17,7 @@ import {
   releaseSubscriberTurn,
 } from "@/lib/subscribers/serialize-turn";
 import { resolveActorSubscriberId } from "@/lib/engagement/admin-shadow";
+import { deriveTitleFromMessage } from "@/lib/chat/conversation-title";
 
 // Trailer the server appends to the streaming body so the client can read the
 // per-turn $ cost. The zero-width space + sentinel is invisible if it ever
@@ -67,8 +68,16 @@ FORMATTING:
 
 POST CARDS — HOW MARKERS WORK:
 - [POST:<id>] becomes a rich card showing the post's text and media. NEVER quote, paraphrase, or repeat the body — the card already shows it.
-- Up to 5 markers per response. Use the exact ID from "[ID: <id>]" in context. Never guess or fabricate one.
+- Up to 5 markers per response. Use the exact ID from "[ID:<id>]" in context. Never guess or fabricate one.
 - If the user asks "show me a post" / "do you have anything on X" — you MUST surface at least one [POST:<id>] marker if anything in context is on-topic. If nothing fits, say so plainly without inventing.
+
+HARD GUARDRAILS — THESE OVERRIDE EVERYTHING ELSE:
+- NEVER write a post ID anywhere except inside a [POST:<id>] marker. The ID is implementation detail (a 20-something-char string starting with "cm…"). Users have no way to use it. Listing IDs as bullets or in prose is a backstage leak and is forbidden — surface a card or stay silent.
+- NEVER acknowledge, speculate about, or apologize for rendering, technical, browser, or device issues. The user's view of cards is not your concern. If they say "cards aren't working" you do not respond about cards — you simply continue surfacing posts via [POST:<id>] markers as normal.
+- NEVER refer the user to Gil's Facebook, Instagram, Twitter, blog, or any external platform. You ARE the archive. There is no alternative source.
+- NEVER suggest the user switch browser, device, refresh, or try again later. You are not infrastructure support.
+- NEVER say "if you have access to…", "you might need to…", "try a different…", "sorry the X isn't working", or anything in that family. These phrases are forbidden.
+- If the previous turn's cards "failed" in the user's view, the correct response is the same as if nothing failed: answer the question with [POST:<id>] markers. Do not adapt by switching to prose, ID lists, or external links.
 
 WHERE TO LOOK:
 - Two sources may appear in context. First: "GIL'S POSTS" below (50 most recent). Second: a "TOP MATCHES FROM KEYWORD SEARCH" block retrieved for this specific query. When the keyword-search block is present, prefer those posts.
@@ -126,11 +135,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { messages: rawMessages } = await req.json();
+  const { messages: rawMessages, conversationId: requestedConversationId } =
+    await req.json();
   if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
     if (acquiredLock && subscriberId) releaseSubscriberTurn(subscriberId);
     return Response.json({ error: "Missing messages." }, { status: 400 });
   }
+  const clientConversationId =
+    typeof requestedConversationId === "string" && requestedConversationId
+      ? requestedConversationId
+      : null;
 
   // Strip client-only fields (e.g. `posts` from rendered post cards).
   // Anthropic rejects unknown keys with "Extra inputs are not permitted".
@@ -188,12 +202,25 @@ export async function POST(req: NextRequest) {
   const actorSubscriberId = await resolveActorSubscriberId(session);
   let conversationId: string | null = null;
   if (actorSubscriberId) {
-    conversationId = await getOrCreateConversationId(actorSubscriberId);
+    conversationId = await resolveConversationId(
+      actorSubscriberId,
+      clientConversationId,
+    );
     const last = messages[messages.length - 1];
     if (last?.role === "user" && typeof last.content === "string") {
       await prisma.subscriberMessage.create({
         data: { conversationId, role: "user", content: last.content },
       });
+      // Set the conversation title from the first user message so the past-chats
+      // drawer has something meaningful to show. Only writes when title is null
+      // — subsequent messages don't rename the conversation.
+      const title = deriveTitleFromMessage(last.content);
+      if (title) {
+        await prisma.subscriberConversation.updateMany({
+          where: { id: conversationId, title: null },
+          data: { title },
+        });
+      }
     }
   }
 
@@ -220,7 +247,7 @@ export async function POST(req: NextRequest) {
 
         const response = await client.messages.stream({
           model: MODEL,
-          max_tokens: 320,
+          max_tokens: 500,
           system: systemBlocks,
           messages,
         });
@@ -313,11 +340,32 @@ export async function POST(req: NextRequest) {
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      // Surfaces the resolved conversation id back to the client so a fresh
+      // chat (no client id yet) can adopt the one the server just created/picked.
+      ...(conversationId ? { "X-Conversation-Id": conversationId } : {}),
+    },
   });
 }
 
-async function getOrCreateConversationId(subscriberId: string): Promise<string> {
+// Resolve which conversation this turn should be persisted under.
+// 1. If the client passed a conversationId and it belongs to this actor, use it.
+//    (A client-supplied id we don't own is ignored — fall through to the
+//    pick-most-recent path so the turn still gets recorded.)
+// 2. Otherwise pick the most-recent conversation, or create a fresh one when
+//    the actor has no conversations yet.
+async function resolveConversationId(
+  subscriberId: string,
+  clientConversationId: string | null,
+): Promise<string> {
+  if (clientConversationId) {
+    const owned = await prisma.subscriberConversation.findFirst({
+      where: { id: clientConversationId, subscriberId },
+      select: { id: true },
+    });
+    if (owned) return owned.id;
+  }
   const existing = await prisma.subscriberConversation.findFirst({
     where: { subscriberId },
     orderBy: { updatedAt: "desc" },

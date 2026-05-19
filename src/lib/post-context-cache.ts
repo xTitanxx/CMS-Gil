@@ -53,7 +53,7 @@ export async function getPostContext(): Promise<{
     });
     const tags = p.tags.length > 0 ? ` [${p.tags.join(", ")}]` : "";
     const body = p.body?.trim() ?? "(no text)";
-    return `[ID: ${p.id}] ${date}${tags}\n${body}`;
+    return `[ID:${p.id}] ${date}${tags}\n${body}`;
   });
 
   cachedContext = lines.join("\n---\n");

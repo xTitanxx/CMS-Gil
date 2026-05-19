@@ -17,7 +17,15 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "ids parameter required" }, { status: 400 });
   }
 
-  const ids = idsParam.split(",").slice(0, 5);
+  // Per-response the model emits at most 5 markers, but the chat client's
+  // refresh path aggregates marker IDs across the whole transcript and asks
+  // for previews in one batch — capping here at 5 left every card after the
+  // first 5 un-rendered on reload.
+  const ids = idsParam
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 50);
 
   const gilUserId = process.env.GIL_USER_ID;
   if (!gilUserId) {

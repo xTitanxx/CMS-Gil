@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
-import { decrypt } from "@/lib/encrypt";
+import { decrypt, encrypt } from "@/lib/encrypt";
 import { postToInstagram } from "@/lib/platforms/instagram";
 import { postToLinkedIn } from "@/lib/platforms/linkedin";
 import { postToYouTube } from "@/lib/platforms/youtube";
 import { postToFacebook } from "@/lib/platforms/facebook";
 import { postToTikTok } from "@/lib/platforms/tiktok";
 import { getValidTikTokAccessToken } from "@/lib/platforms/tiktok-auth";
+import { postToThreads, refreshThreadsToken } from "@/lib/platforms/threads";
 import { preparePublishKeys } from "@/lib/publish-prep";
 
 // This handler is now dispatch-only: it creates the PublishRecord rows and
@@ -234,6 +235,33 @@ export async function publishNow(
           post.postType
         );
         break;
+      case "THREADS": {
+        // Refresh long-lived token if it's within 7 days of expiry. Threads tokens
+        // can only be refreshed after they're at least 24h old, so for very fresh
+        // tokens we just use them as-is.
+        let usableToken = accessToken;
+        const tokenAgeMs = Date.now() - (token?.createdAt?.getTime() ?? 0);
+        const expiresInMs = (token?.expiresAt?.getTime() ?? 0) - Date.now();
+        if (tokenAgeMs > 24 * 60 * 60 * 1000 && expiresInMs < 7 * 24 * 60 * 60 * 1000) {
+          const refreshed = await refreshThreadsToken(accessToken);
+          usableToken = refreshed.accessToken;
+          await prisma.platformToken.update({
+            where: { userId_platform: { userId, platform: "THREADS" } },
+            data: {
+              accessToken: encrypt(refreshed.accessToken),
+              expiresAt: new Date(Date.now() + refreshed.expiresIn * 1000),
+            },
+          });
+        }
+
+        result = await postToThreads(
+          { accessToken: usableToken, platformUserId: platformUserId! },
+          post.body,
+          mediaKeys,
+          post.postType,
+        );
+        break;
+      }
       default:
         throw new Error(`Publishing to ${platform} is not supported`);
     }

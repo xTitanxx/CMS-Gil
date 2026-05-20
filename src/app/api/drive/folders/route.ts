@@ -25,6 +25,8 @@ export async function GET(_req: NextRequest) {
     fields: "files(id, name, modifiedTime)",
     orderBy: "modifiedTime desc",
     pageSize: 100,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   return NextResponse.json({ folders: res.data.files ?? [] });

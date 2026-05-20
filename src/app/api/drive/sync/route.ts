@@ -61,13 +61,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No Drive folder configured" }, { status: 400 });
   }
 
-  const jobs = await syncDriveFolder(userId, driveSync.folderId);
+  const wantDebug = new URL(req.url).searchParams.get("debug") === "1";
+  const debug: DriveDebugCounts | undefined = wantDebug
+    ? { folders: 0, files: 0, importable: 0, byParent: {} }
+    : undefined;
+
+  const jobs = await syncDriveFolder(userId, driveSync.folderId, debug);
   await prisma.driveSync.update({
     where: { userId },
     data: { lastSyncedAt: new Date() },
   });
 
-  return NextResponse.json({ ok: true, jobsCreated: jobs.length });
+  return NextResponse.json({
+    ok: true,
+    jobsCreated: jobs.length,
+    ...(debug ? { debug, folderId: driveSync.folderId } : {}),
+  });
 }
 
 type ImportableFile = drive_v3.Schema$File & { parentFolderName: string };
@@ -91,11 +100,19 @@ function isImportableJson(filename: string, parentFolderName: string): boolean {
 
 // Recursively collect importable files from the folder tree.
 // Populates fileIndex (filename → fileId) for lazy media lookups.
+interface DriveDebugCounts {
+  folders: number;
+  files: number;
+  importable: number;
+  byParent: Record<string, { files: number; importable: number; sampleNames: string[] }>;
+}
+
 async function collectDriveFiles(
   drive: drive_v3.Drive,
   folderId: string,
   fileIndex: Map<string, string>,
-  folderName = ""
+  folderName = "",
+  debug?: DriveDebugCounts,
 ): Promise<ImportableFile[]> {
   const importable: ImportableFile[] = [];
   let pageToken: string | undefined;
@@ -106,6 +123,8 @@ async function collectDriveFiles(
       fields: "nextPageToken, files(id, name, mimeType, modifiedTime)",
       pageSize: 1000,
       pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
     pageToken = res.data.nextPageToken ?? undefined;
@@ -114,12 +133,28 @@ async function collectDriveFiles(
       if (!file.id || !file.name) continue;
 
       if (file.mimeType === "application/vnd.google-apps.folder") {
-        const sub = await collectDriveFiles(drive, file.id, fileIndex, file.name);
+        if (debug) debug.folders += 1;
+        const sub = await collectDriveFiles(drive, file.id, fileIndex, file.name, debug);
         importable.push(...sub);
       } else {
         // Index every non-folder file by name so getMedia can find it
         fileIndex.set(file.name, file.id);
+        if (debug) {
+          debug.files += 1;
+          const bucket = (debug.byParent[folderName || "<root>"] ??= {
+            files: 0,
+            importable: 0,
+            sampleNames: [],
+          });
+          bucket.files += 1;
+          if (bucket.sampleNames.length < 5) bucket.sampleNames.push(file.name);
+        }
         if (isImportableJson(file.name, folderName)) {
+          if (debug) {
+            debug.importable += 1;
+            const bucket = debug.byParent[folderName || "<root>"];
+            if (bucket) bucket.importable += 1;
+          }
           importable.push({ ...file, parentFolderName: folderName });
         }
       }
@@ -218,16 +253,29 @@ async function processDriveZip(
   });
 }
 
-export async function syncDriveFolder(userId: string, folderId: string) {
+export async function syncDriveFolder(
+  userId: string,
+  folderId: string,
+  debug?: DriveDebugCounts,
+) {
   const integration = await getGoogleIntegration(userId);
-  if (!integration) return [];
+  if (!integration) {
+    console.warn("[drive-sync] no Google integration for", userId);
+    return [];
+  }
 
   const oauth2Client = buildGoogleOAuthClient(userId, integration);
   const drive = google.drive({ version: "v3", auth: oauth2Client });
 
   // Recursively traverse the folder tree, indexing all files by name
   const fileIndex = new Map<string, string>(); // filename → Drive file ID
-  const files = await collectDriveFiles(drive, folderId, fileIndex);
+  const files = await collectDriveFiles(drive, folderId, fileIndex, "", debug);
+  console.log("[drive-sync] traversal", {
+    userId,
+    folderId,
+    indexed: fileIndex.size,
+    importable: files.length,
+  });
 
   const createdJobs: string[] = [];
   const tasks: Array<() => Promise<void>> = [];

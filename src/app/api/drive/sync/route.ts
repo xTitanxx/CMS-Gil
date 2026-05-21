@@ -288,12 +288,18 @@ export async function syncDriveFolder(
     // silently swallows every daily folder after the first one. Legacy rows
     // (sourceFileId = null) are ignored on purpose — Post-level dedup via
     // `(userId, sourceId)` in import-worker.ts still prevents duplicate Posts.
+    //
+    // PENDING is included so that consecutive Sync Now clicks (or the daily
+    // cron firing while a manual sync is still draining its queue) don't
+    // requeue the same file. Without this, a 102-job sync turned out to be
+    // 53 unique files queued ~2× each. FAILED is left out so retries are
+    // possible — clear the row first if you want to skip permanently.
     const existingJob = await prisma.importJob.findFirst({
       where: {
         userId,
         source: "GOOGLE_DRIVE",
         sourceFileId: file.id,
-        status: { in: ["COMPLETED", "PROCESSING"] },
+        status: { in: ["COMPLETED", "PROCESSING", "PENDING"] },
       },
     });
     if (existingJob) continue;

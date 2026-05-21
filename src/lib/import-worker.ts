@@ -105,6 +105,13 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           },
         });
 
+        // Track media outcomes so we can drop ghost posts at the end —
+        // your_videos.json and album JSONs frequently reference media files
+        // that aren't in the actual export (FB JSON-only exports, partial
+        // ZIPs). Without this cleanup those leave behind Post rows with no
+        // body and no media: pure noise that pollutes the feed.
+        let mediaAttached = 0;
+
         // Only attempt media upload if storage is configured
         if (storageEnabled) {
           for (const uri of parsed.mediaUris) {
@@ -169,10 +176,31 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
                   hasAudio,
                 },
               });
+              mediaAttached++;
             } catch (mediaErr) {
               errors.push(`Media error for post ${parsed.sourceId}: ${String(mediaErr)}`);
             }
           }
+        }
+
+        // Drop ghost posts: zero media attached and no body. Common when a
+        // your_videos.json or album JSON references media files that the FB
+        // export didn't actually include. Skip the cleanup when the post was
+        // never expected to have media (mediaUris was empty AND body was
+        // empty in the source — which is a parser bug worth keeping visible).
+        const bodyIsEmpty = !(parsed.body ?? "").trim();
+        const wasMediaPost = parsed.mediaUris.length > 0;
+        if (wasMediaPost && mediaAttached === 0 && bodyIsEmpty) {
+          await prisma.post.delete({ where: { id: post.id } });
+          skipped++;
+          errors.push(
+            `Dropped ghost post ${parsed.sourceId}: ${parsed.mediaUris.length} media URI(s) referenced, none found`,
+          );
+          await prisma.importJob.update({
+            where: { id: jobId },
+            data: { importedPosts: imported, skippedPosts: skipped },
+          });
+          continue;
         }
 
         imported++;

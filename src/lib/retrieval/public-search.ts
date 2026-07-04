@@ -73,37 +73,47 @@ async function phraseCandidates(
   return rows.map((r, i) => ({ id: r.id, rank: i }));
 }
 
+const POST_SELECT = {
+  id: true,
+  body: true,
+  originalDate: true,
+  tags: true,
+  media: {
+    orderBy: { id: "asc" },
+    select: { storageKey: true, mimeType: true },
+  },
+} as const;
+
+function rowToHit(r: {
+  id: string;
+  body: string;
+  originalDate: Date;
+  tags: string[];
+  media: { storageKey: string; mimeType: string }[];
+}): PublicSearchHit {
+  const thumbSource =
+    r.media.find((m) => m.mimeType.startsWith("image/")) ?? r.media[0];
+  return {
+    id: r.id,
+    body: r.body,
+    originalDate: r.originalDate,
+    tags: r.tags,
+    thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
+    isVideo: r.media.some((m) => m.mimeType.startsWith("video/")),
+  };
+}
+
 async function hydrateIds(ids: string[]): Promise<PublicSearchHit[]> {
   if (ids.length === 0) return [];
   const rows = await prisma.post.findMany({
     where: { id: { in: ids } },
-    select: {
-      id: true,
-      body: true,
-      originalDate: true,
-      tags: true,
-      media: {
-        orderBy: { id: "asc" },
-        select: { storageKey: true, mimeType: true },
-      },
-    },
+    select: POST_SELECT,
   });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids
     .map((id) => byId.get(id))
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
-    .map((r) => {
-      const thumbSource =
-        r.media.find((m) => m.mimeType.startsWith("image/")) ?? r.media[0];
-      return {
-        id: r.id,
-        body: r.body,
-        originalDate: r.originalDate,
-        tags: r.tags,
-        thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
-        isVideo: r.media.some((m) => m.mimeType.startsWith("video/")),
-      };
-    });
+    .map(rowToHit);
 }
 
 async function recentPosts(userId: string, limit: number): Promise<PublicSearchHit[]> {
@@ -114,31 +124,11 @@ async function recentPosts(userId: string, limit: number): Promise<PublicSearchH
       share: { equals: Prisma.DbNull },
       postType: "POST",
     },
-    select: {
-      id: true,
-      body: true,
-      originalDate: true,
-      tags: true,
-      media: {
-        orderBy: { id: "asc" },
-        select: { storageKey: true, mimeType: true },
-      },
-    },
+    select: POST_SELECT,
     orderBy: { originalDate: "desc" },
     take: limit,
   });
-  return rows.map((r) => {
-    const thumbSource =
-      r.media.find((m) => m.mimeType.startsWith("image/")) ?? r.media[0];
-    return {
-      id: r.id,
-      body: r.body,
-      originalDate: r.originalDate,
-      tags: r.tags,
-      thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
-      isVideo: r.media.some((m) => m.mimeType.startsWith("video/")),
-    };
-  });
+  return rows.map(rowToHit);
 }
 
 /**

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getMediaUrl } from "@/lib/storage";
 import { ManualPostHelper } from "./ManualPostHelper";
 
 export const metadata = { title: "Post manually" };
@@ -30,17 +31,21 @@ export default async function ManualPostPage({
 
   if (!post) notFound();
 
+  const media = await Promise.all(
+    post.media.map(async (m) => ({
+      id: m.id,
+      mimeType: m.mimeType,
+      url: await getMediaUrl(m).catch(() => null),
+    })),
+  );
+
   return (
     <ManualPostHelper
       postId={post.id}
       body={post.body ?? ""}
       originalDate={post.originalDate.toISOString()}
       platformUrl={post.platformUrl}
-      media={post.media.map((m) => ({
-        id: m.id,
-        mimeType: m.mimeType,
-        url: m.storageKey,
-      }))}
+      media={media}
     />
   );
 }

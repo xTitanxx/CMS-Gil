@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
@@ -19,6 +20,7 @@ import {
   parsePostsFilters,
 } from "@/lib/posts-query";
 import { displayBody } from "@/lib/post-body";
+import { SiFacebook } from "react-icons/si";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -202,6 +204,14 @@ export default async function PostDetailPage({
         platformUrl={post.platformUrl}
         actions={
           <div className="flex items-center gap-1.5">
+            <Link
+              href={`/admin/m/${id}?from=${encodeURIComponent(`/admin/posts/${id}`)}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1877F2] px-2.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 active:opacity-80"
+              title="Post to Facebook personal"
+            >
+              <SiFacebook className="h-3.5 w-3.5" />
+              <span>Post to FB</span>
+            </Link>
             <CopyIdChip id={id} />
             <DeleteButton postId={id} />
           </div>

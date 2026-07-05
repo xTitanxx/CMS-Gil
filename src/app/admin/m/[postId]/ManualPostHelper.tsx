@@ -84,6 +84,8 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [preparingShare, setPreparingShare] = useState(false);
+  const [shareFiles, setShareFiles] = useState<Array<{ id: string; file: File }> | null>(null);
   const [marking, setMarking] = useState(false);
   const [marked, setMarked] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
@@ -126,16 +128,6 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     }
   }
 
-  async function copyCaptionForFacebook() {
-    if (!body.trim()) return false;
-    const ok = await copyTextToClipboard(body);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    }
-    return ok;
-  }
-
   async function mediaFileFromItem(item: Media, index: number): Promise<File | null> {
     if (!item.url) return null;
     const res = await fetch(mediaDownloadUrl(item.id));
@@ -145,6 +137,51 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     const fname = filenameFromUrl(item.url, `gil-alter-${postId}-${index + 1}.${ext}`);
     return new File([blob], fname, { type: item.mimeType });
   }
+
+  useEffect(() => {
+    const shareableMedia = media.filter((item) => item.url);
+    if (shareableMedia.length === 0) {
+      setShareFiles([]);
+      setPreparingShare(false);
+      setShareError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreparingShare(true);
+    setShareError(null);
+    setShareFiles(null);
+
+    void (async () => {
+      try {
+        const files = (
+          await Promise.all(shareableMedia.map((item, index) => mediaFileFromItem(item, index)))
+        )
+          .map((file, index) => (file ? { id: shareableMedia[index].id, file } : null))
+          .filter((entry): entry is { id: string; file: File } => entry !== null);
+
+        if (!cancelled) {
+          setShareFiles(files);
+          if (files.length === 0) {
+            setShareError("Could not prepare the media. Save it manually, then open Facebook.");
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setShareFiles([]);
+          setShareError("Could not prepare the media. Save it manually, then open Facebook.");
+        }
+      } finally {
+        if (!cancelled) setPreparingShare(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // `mediaFileFromItem` closes over postId, but postId is stable for this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [media, postId]);
 
   async function handleDownload(item: Media): Promise<boolean> {
     if (!item.url) return false;
@@ -186,10 +223,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     setShareError(null);
 
     try {
-      await copyCaptionForFacebook();
-
-      const shareableMedia = media.filter((item) => item.url);
-      if (shareableMedia.length === 0) {
+      if (media.length === 0) {
         handleOpenFacebook();
         return;
       }
@@ -199,9 +233,12 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
         return;
       }
 
-      let files = (
-        await Promise.all(shareableMedia.map((item, index) => mediaFileFromItem(item, index)))
-      ).filter((file): file is File => file !== null);
+      if (preparingShare || shareFiles === null) {
+        setShareError("Still preparing the media. Try again in a moment.");
+        return;
+      }
+
+      let files = shareFiles.map((item) => item.file);
 
       if (files.length === 0) {
         setShareError("Could not prepare the media. Save it manually, then open Facebook.");
@@ -209,8 +246,10 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
       }
 
       if (!nav.canShare({ files })) {
-        const activeFile = active ? await mediaFileFromItem(active, activeIdx) : null;
-        files = activeFile ? [activeFile] : [];
+        const activePreparedFile = active
+          ? shareFiles.find((item) => item.id === active.id)?.file ?? null
+          : null;
+        files = activePreparedFile ? [activePreparedFile] : [];
       }
 
       if (files.length > 0 && nav.canShare({ files })) {
@@ -396,16 +435,20 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
 
             <button
               onClick={handleShareToFacebook}
-              disabled={sharing || media.every((item) => !item.url)}
+              disabled={sharing || preparingShare || media.every((item) => !item.url)}
               className="mb-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1877F2] py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
             >
-              {sharing ? (
+              {sharing || preparingShare ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <SiFacebook className="h-4 w-4" />
               )}
               <span className="min-w-0 break-words">
-                {sharing ? "Preparing media..." : "Share media to Facebook"}
+                {sharing
+                  ? "Opening share sheet..."
+                  : preparingShare
+                    ? "Preparing media..."
+                    : "Share media to Facebook"}
               </span>
             </button>
 

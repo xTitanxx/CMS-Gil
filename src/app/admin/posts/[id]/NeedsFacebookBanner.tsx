@@ -7,12 +7,11 @@ import { SiFacebook } from "react-icons/si";
 import { copyTextToClipboard, shareFilesToFacebook } from "@/lib/client/shareToFacebook";
 import { FacebookConfirmPrompt } from "@/app/admin/_shared/FacebookConfirmPrompt";
 
-type Media = { id: string; mimeType: string; url: string | null };
+type ShareMedia = { id: string; mimeType: string; url: string };
 
-async function fetchAsFiles(media: Media[], namePrefix: string): Promise<File[]> {
+async function fetchAsFiles(media: ShareMedia[], namePrefix: string): Promise<File[]> {
   const files: File[] = [];
   for (const m of media) {
-    if (!m.url) continue;
     try {
       const res = await fetch(m.url);
       if (!res.ok) continue;
@@ -35,11 +34,9 @@ async function fetchAsFiles(media: Media[], namePrefix: string): Promise<File[]>
 export function NeedsFacebookBanner({
   postId,
   body,
-  media,
 }: {
   postId: string;
   body: string;
-  media: Media[];
 }) {
   const router = useRouter();
   const [sharing, setSharing] = useState(false);
@@ -51,8 +48,18 @@ export function NeedsFacebookBanner({
     setError(null);
     try {
       await copyTextToClipboard(body);
-      const files = await fetchAsFiles(media, `gil-${postId}`);
-      await shareFilesToFacebook({ body, files });
+      // Media is fetched here (mux-aware, so attached music actually gets
+      // baked into the video) rather than passed in as a prop — but that
+      // fetch is itself a network round trip, which already breaks the
+      // fresh user-gesture requirement navigator.share() needs. So this
+      // always forces the reliable download+open-Facebook fallback
+      // (allowNativeShare: false) instead of gambling on a native share
+      // sheet that may silently drop the media or caption.
+      const res = await fetch(`/api/posts/${postId}/share-media`);
+      if (!res.ok) throw new Error("failed to prepare media");
+      const data: { media: ShareMedia[] } = await res.json();
+      const files = await fetchAsFiles(data.media, `gil-${postId}`);
+      await shareFilesToFacebook({ body, files, allowNativeShare: false });
       setConfirming(true);
     } catch {
       setError("Couldn't open Facebook — try again.");

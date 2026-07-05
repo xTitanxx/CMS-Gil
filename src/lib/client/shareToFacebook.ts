@@ -62,18 +62,32 @@ export type ShareResult = "shared" | "opened" | "blocked";
  * allows. There is no API to publish to a personal profile, so this is the
  * floor: on mobile with file-capable Web Share, the OS share sheet drops the
  * media (and, when Facebook's app honors it, the caption) straight into a
- * fresh Facebook post. Everywhere else — desktop, no share target, or a file
- * too large to share reliably — the fallback downloads the media locally and
- * opens facebook.com so the user can drag it into the composer.
+ * fresh Facebook post. Everywhere else — desktop, no share target, a file
+ * too large to share reliably, or a caller that had to fetch its files over
+ * the network first — the fallback downloads the media locally and opens
+ * facebook.com so the user can drag it into the composer.
+ *
+ * `allowNativeShare` defaults to true but MUST be set to false by any caller
+ * that awaited a network request (e.g. fetching media bytes from storage)
+ * before calling this function. `navigator.share()` requires the browser's
+ * "transient user activation" to still be live from the original tap — once
+ * a real fetch has happened first, that activation is reliably gone, and
+ * browsers respond inconsistently: some silently no-op, others open the
+ * sheet but silently drop the files/caption payload. Only a caller with
+ * files already in memory at the moment of the tap (nothing awaited yet)
+ * can rely on the native share path.
  */
 export async function shareFilesToFacebook(opts: {
   body: string;
   files: File[];
+  allowNativeShare?: boolean;
 }): Promise<ShareResult> {
   const nav = navigator as NavWithShare;
+  const allowNativeShare = opts.allowNativeShare ?? true;
   const totalBytes = opts.files.reduce((sum, f) => sum + f.size, 0);
 
   if (
+    allowNativeShare &&
     opts.files.length > 0 &&
     isMobileUserAgent() &&
     nav.share &&

@@ -36,10 +36,11 @@ export default function NewPostPage() {
   // progress bar overlaid on each media tile during phase 2.
   const [uploadPct, setUploadPct] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
-  // Set once the post is saved and handed off to Facebook. Non-null swaps
-  // the composer for the "did it post?" confirmation, keyed by the new
-  // post's id.
-  const [shared, setShared] = useState<{ postId: string } | null>(null);
+  // Set once the post is saved. Non-null swaps the composer for either the
+  // "did it post?" confirmation (needsMux: false) or a "finish from the
+  // post page" notice (needsMux: true — see handlePost for why those can't
+  // share the same path), keyed by the new post's id.
+  const [shared, setShared] = useState<{ postId: string; needsMux: boolean } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const filesRef = useRef(files);
@@ -109,6 +110,36 @@ export default function NewPostPage() {
 
     setSubmitting(true);
     setError(null);
+
+    // A video with music attached needs server-side muxing (baking the
+    // audio into the file) before it's meaningful to share to Facebook —
+    // that can only happen after the video is uploaded, which conflicts
+    // directly with sharing instantly below (which depends on nothing
+    // being awaited yet). So for that one case, skip the instant hand-off
+    // entirely and let NeedsFacebookBanner do the (correctly muxed) share
+    // once the upload is ready, instead of instantly sharing a silent video.
+    const hasMusicalVideo =
+      !!selectedAudioTrackId && files.some((f) => f.file.type.startsWith("video/"));
+
+    if (!hasMusicalVideo) {
+      // Hand off to Facebook FIRST, before any network request — both the
+      // Web Share API and window.open() require the browser's "transient
+      // user activation" from this click to still be live. Once real
+      // awaits (post creation, media upload) happen first, that activation
+      // is gone and browsers silently no-op or drop the shared payload.
+      // Caption + media are already available locally, so there's nothing
+      // to wait for before handing them off.
+      setProgress("Opening Facebook…");
+      try {
+        await copyTextToClipboard(body.trim());
+        await shareFilesToFacebook({
+          body: body.trim(),
+          files: files.map((f) => f.file),
+        });
+      } catch (shareErr) {
+        console.error("Facebook hand-off failed:", shareErr);
+      }
+    }
 
     try {
       // Phase 1: Create the post — use current time (no date picker)
@@ -181,26 +212,7 @@ export default function NewPostPage() {
         }
       }
 
-      // Phase 4: hand the caption + media to Facebook. Caption goes to the
-      // clipboard regardless of whether the share sheet honors shared text —
-      // Facebook's app inconsistently pre-fills it, so the clipboard is the
-      // guaranteed fallback (one paste away). The post + media are already
-      // saved by this point, so a hiccup here must never look like the post
-      // was lost — always land on the confirmation screen. A failed
-      // hand-off just means the "Not yet" / NeedsFacebookBanner retry path
-      // does the work instead.
-      setProgress("Opening Facebook…");
-      try {
-        await copyTextToClipboard(body.trim());
-        await shareFilesToFacebook({
-          body: body.trim(),
-          files: files.map((f) => f.file),
-        });
-      } catch (shareErr) {
-        console.error("Facebook hand-off failed:", shareErr);
-      }
-
-      setShared({ postId });
+      setShared({ postId, needsMux: hasMusicalVideo });
       setSubmitting(false);
     } catch (err) {
       console.error("Unexpected error:", err);
@@ -223,10 +235,35 @@ export default function NewPostPage() {
           </Link>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-md">
-          <p className="mb-3 text-sm text-gray-600">
-            Saved — Facebook should be open in another tab or app.
-          </p>
-          <FacebookConfirmPrompt postId={shared.postId} onResolved={() => resetForm()} />
+          {shared.needsMux ? (
+            <>
+              <p className="mb-3 text-sm text-gray-600">
+                Saved — this video has music attached, so we&apos;ll bake the audio in
+                right when you share it. Finish posting to Facebook from{" "}
+                <Link
+                  href={`/admin/posts/${shared.postId}`}
+                  className="font-medium text-blue-600 hover:underline"
+                >
+                  the post page
+                </Link>
+                .
+              </p>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              >
+                Draft another post
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mb-3 text-sm text-gray-600">
+                Saved — Facebook should be open in another tab or app.
+              </p>
+              <FacebookConfirmPrompt postId={shared.postId} onResolved={() => resetForm()} />
+            </>
+          )}
         </div>
       </div>
     );

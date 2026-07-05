@@ -12,14 +12,22 @@
 //   - /_next/static/* and other immutable assets → cache-first, forever.
 //     Next.js fingerprints these filenames, so a new deploy ships new URLs
 //     and old entries naturally fall out of use.
-//   - Same-origin GET navigations (HTML / RSC) → stale-while-revalidate
-//     with a short network race so online users always see fresh content
-//     within ~1.5s but never wait on a cold lambda before *something*
-//     paints. Failed fetches fall back to the cached copy.
+//   - Same-origin GET navigations (HTML / RSC) under /admin → always
+//     network, never cached. /admin is the CMS itself, actively developed
+//     and redeployed many times a day by its one user — stale-while-
+//     revalidate's whole point (paint instantly, refresh in the background)
+//     is exactly backwards there: it means every deploy needs an extra
+//     reload before a fix actually shows up, which looks indistinguishable
+//     from the fix not having worked at all.
+//   - Every other same-origin GET navigation (the public reader-facing
+//     pages) → stale-while-revalidate with a short network race so online
+//     users always see fresh content within ~1.5s but never wait on a cold
+//     lambda before *something* paints. Failed fetches fall back to the
+//     cached copy.
 //   - Everything else (API, cross-origin) → straight network. We never
 //     cache mutations or auth-sensitive JSON.
 
-const VERSION = "v2";
+const VERSION = "v3";
 const STATIC_CACHE = `static-${VERSION}`;
 const NAV_CACHE = `nav-${VERSION}`;
 
@@ -132,6 +140,10 @@ self.addEventListener("fetch", (event) => {
   ) {
     return;
   }
+
+  // Never cache the admin CMS — see the cache-strategy note at the top of
+  // this file for why.
+  if (url.pathname.startsWith("/admin")) return;
 
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));

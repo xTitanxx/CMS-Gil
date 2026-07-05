@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Copy,
   Check,
+  ChevronDown,
+  Copy,
   Download,
   ExternalLink,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Plus,
+  Share2,
+  Smartphone,
+  X,
 } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
+import { copyTextToClipboard } from "@/lib/client/shareToFacebook";
 
 interface Media {
   id: string;
@@ -29,41 +33,22 @@ interface Props {
   media: Media[];
 }
 
-function filenameFromUrl(url: string, fallback: string): string {
-  try {
-    const u = new URL(url);
-    const last = u.pathname.split("/").pop() || fallback;
-    return last;
-  } catch {
-    return fallback;
-  }
-}
+type Destination = {
+  id: string;
+  label: string;
+  type: "feed" | "group" | "other";
+  href?: string;
+  done: boolean;
+};
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // Older Safari / blocked clipboard fallback.
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try {
-      ok = document.execCommand("copy");
-    } finally {
-      document.body.removeChild(ta);
-    }
-    return ok;
-  }
-}
+const STARTER_GROUPS: Array<Pick<Destination, "id" | "label" | "type" | "href">> = [
+  { id: "feed", label: "Personal feed", type: "feed", href: "https://www.facebook.com/" },
+  { id: "group-theater", label: "Theatre group", type: "group", href: "https://www.facebook.com/groups/" },
+  { id: "group-friends", label: "Friends group", type: "group", href: "https://www.facebook.com/groups/" },
+];
 
 function sanitizeReturnTo(value: string | null): string {
   if (!value) return "/admin/manual-fb";
-  // Must be a same-origin path: starts with "/", not protocol-relative "//".
   if (!value.startsWith("/") || value.startsWith("//")) return "/admin/manual-fb";
   return value;
 }
@@ -72,210 +57,184 @@ function mediaDownloadUrl(id: string): string {
   return `/api/media/${encodeURIComponent(id)}/download`;
 }
 
+function filenameFromUrl(url: string, fallback: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname.split("/").pop() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function openFacebookHref(href?: string) {
+  window.open(href || "https://www.facebook.com/", "_blank", "noopener,noreferrer");
+}
+
 export function ManualPostHelper({ postId, body, originalDate, platformUrl, media }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = sanitizeReturnTo(searchParams?.get("from") ?? null);
   const [copied, setCopied] = useState(false);
-  const [autoCopiedBanner, setAutoCopiedBanner] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloadedId, setDownloadedId] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [sharing, setSharing] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [preparingShare, setPreparingShare] = useState(false);
-  const [shareFiles, setShareFiles] = useState<Array<{ id: string; file: File }> | null>(null);
+  const [mediaSaved, setMediaSaved] = useState(false);
+  const [savingMedia, setSavingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [destinations, setDestinations] = useState<Destination[]>(
+    STARTER_GROUPS.map((destination) => ({ ...destination, done: false })),
+  );
+  const [otherName, setOtherName] = useState("");
+  const [postingUrl, setPostingUrl] = useState("");
   const [marking, setMarking] = useState(false);
   const [marked, setMarked] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
-  const [postedUrl, setPostedUrl] = useState("");
-  const [isIOS, setIsIOS] = useState(false);
-  const autoCopyDoneRef = useRef(false);
+  const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const copiedOnceRef = useRef(false);
 
-  const active = media[activeIdx] ?? null;
-  const isVideo = active?.mimeType.startsWith("video/") ?? false;
+  const mediaCount = media.filter((item) => item.url).length;
+  const completedCount = destinations.filter((destination) => destination.done).length;
+  const allDestinationsDone = destinations.length > 0 && completedCount === destinations.length;
+  const fresh = searchParams?.get("fresh") === "1";
+  const dateLabel = useMemo(
+    () =>
+      new Date(originalDate).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    [originalDate],
+  );
 
-  // UA-sniff once on mount: on iPhone/iPad we want `fb://composer` to drop the
-  // user into a fresh FB post draft. Other devices fall back to facebook.com.
   useEffect(() => {
-    if (typeof navigator !== "undefined") {
-      setIsIOS(/iPhone|iPad|iPod/.test(navigator.userAgent));
-    }
-  }, []);
-
-  // Auto-copy the caption on mount so the user can paste in Facebook
-  // immediately — works whether they came from a push notification or
-  // opened the app cold.
-  useEffect(() => {
-    if (autoCopyDoneRef.current) return;
-    autoCopyDoneRef.current = true;
-    if (!body.trim()) return;
-    void (async () => {
-      const ok = await copyTextToClipboard(body);
-      if (ok) {
-        setAutoCopiedBanner(true);
-        setTimeout(() => setAutoCopiedBanner(false), 4000);
-      }
-    })();
+    if (copiedOnceRef.current || !body.trim()) return;
+    copiedOnceRef.current = true;
+    void copyCaption();
+    // Clipboard copy is best-effort here; the compose page also copies during
+    // the original Post tap, where mobile browsers are most permissive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body]);
 
-  async function handleCopy() {
+  async function copyCaption() {
+    if (!body.trim()) return false;
     const ok = await copyTextToClipboard(body);
     if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      window.setTimeout(() => setCopied(false), 2200);
     }
+    return ok;
   }
 
-  async function mediaFileFromItem(item: Media, index: number): Promise<File | null> {
-    if (!item.url) return null;
+  async function saveMedia(item: Media, index: number) {
+    if (!item.url) return false;
     const res = await fetch(mediaDownloadUrl(item.id));
-    if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+    if (!res.ok) throw new Error(`download ${res.status}`);
     const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
     const ext = item.mimeType.split("/")[1] ?? "bin";
-    const fname = filenameFromUrl(item.url, `gil-alter-${postId}-${index + 1}.${ext}`);
-    return new File([blob], fname, { type: item.mimeType });
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filenameFromUrl(item.url, `gil-facebook-${postId}-${index + 1}.${ext}`);
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    return true;
   }
 
-  useEffect(() => {
-    const shareableMedia = media.filter((item) => item.url);
-    if (shareableMedia.length === 0) {
-      setShareFiles([]);
-      setPreparingShare(false);
-      setShareError(null);
+  async function handleSaveAllMedia() {
+    if (mediaCount === 0) {
+      setMediaSaved(true);
       return;
     }
-
-    let cancelled = false;
-    setPreparingShare(true);
-    setShareError(null);
-    setShareFiles(null);
-
-    void (async () => {
-      try {
-        const files = (
-          await Promise.all(shareableMedia.map((item, index) => mediaFileFromItem(item, index)))
-        )
-          .map((file, index) => (file ? { id: shareableMedia[index].id, file } : null))
-          .filter((entry): entry is { id: string; file: File } => entry !== null);
-
-        if (!cancelled) {
-          setShareFiles(files);
-          if (files.length === 0) {
-            setShareError("Could not prepare the media. Save it manually, then open Facebook.");
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setShareFiles([]);
-          setShareError("Could not prepare the media. Save it manually, then open Facebook.");
-        }
-      } finally {
-        if (!cancelled) setPreparingShare(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // `mediaFileFromItem` closes over postId, but postId is stable for this page.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [media, postId]);
-
-  async function handleDownload(item: Media): Promise<boolean> {
-    if (!item.url) return false;
-    setDownloading(item.id);
-    setDownloadError(null);
+    setSavingMedia(true);
+    setMediaError(null);
     try {
-      const res = await fetch(mediaDownloadUrl(item.id));
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const ext = item.mimeType.split("/")[1] ?? "bin";
-      const fname = filenameFromUrl(item.url, `gil-alter-${postId}.${ext}`);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = fname;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-      setDownloadedId(item.id);
-      setTimeout(() => setDownloadedId(null), 2500);
-      return true;
+      const downloadable = media.filter((item) => item.url);
+      for (let index = 0; index < downloadable.length; index++) {
+        await saveMedia(downloadable[index], index);
+      }
+      setMediaSaved(true);
     } catch {
-      setDownloadError("Download failed — open the media in a new tab and right-click → Save.");
-      return false;
+      setMediaError("Could not save the media automatically. Open the media from the post page and save it there.");
     } finally {
-      setDownloading(null);
+      setSavingMedia(false);
     }
   }
 
-  async function handleShareToFacebook() {
+  async function handleOpenDestination(destination: Destination) {
+    await copyCaption();
+    openFacebookHref(destination.href);
+  }
+
+  function toggleDestination(id: string) {
+    setDestinations((current) =>
+      current.map((destination) =>
+        destination.id === id ? { ...destination, done: !destination.done } : destination,
+      ),
+    );
+  }
+
+  function addOtherDestination() {
+    const label = otherName.trim();
+    if (!label) return;
+    setDestinations((current) => [
+      ...current,
+      {
+        id: `other-${Date.now()}`,
+        label,
+        type: "other",
+        href: "https://www.facebook.com/groups/",
+        done: false,
+      },
+    ]);
+    setOtherName("");
+  }
+
+  function removeDestination(id: string) {
+    setDestinations((current) => current.filter((destination) => destination.id !== id));
+  }
+
+  async function handleNativeShare() {
     type NavWithShare = Navigator & {
-      share?: (data: { title?: string; text?: string; url?: string; files?: File[] }) => Promise<void>;
+      share?: (data: { title?: string; text?: string; files?: File[] }) => Promise<void>;
       canShare?: (data: { files?: File[] }) => boolean;
     };
     const nav = navigator as NavWithShare;
     setSharing(true);
     setShareError(null);
-
     try {
-      if (media.length === 0) {
-        handleOpenFacebook();
+      await copyCaption();
+      if (!nav.share || !nav.canShare || mediaCount === 0) {
+        setShareError("Native sharing is not available here. Use the Facebook-native checklist above.");
         return;
       }
 
-      if (!nav.share || !nav.canShare) {
-        setShareError("This browser cannot send media straight to Facebook. Save the media, then open Facebook.");
-        return;
-      }
-
-      if (preparingShare || shareFiles === null) {
-        setShareError("Still preparing the media. Try again in a moment.");
-        return;
-      }
-
-      let files = shareFiles.map((item) => item.file);
-
-      if (files.length === 0) {
-        setShareError("Could not prepare the media. Save it manually, then open Facebook.");
-        return;
-      }
-
-      if (!nav.canShare({ files })) {
-        const activePreparedFile = active
-          ? shareFiles.find((item) => item.id === active.id)?.file ?? null
-          : null;
-        files = activePreparedFile ? [activePreparedFile] : [];
-      }
+      const files = (
+        await Promise.all(
+          media
+            .filter((item) => item.url)
+            .map(async (item, index) => {
+              const res = await fetch(mediaDownloadUrl(item.id));
+              if (!res.ok) return null;
+              const blob = await res.blob();
+              const ext = item.mimeType.split("/")[1] ?? "bin";
+              const name = filenameFromUrl(item.url!, `gil-facebook-${postId}-${index + 1}.${ext}`);
+              return new File([blob], name, { type: item.mimeType });
+            }),
+        )
+      ).filter((file): file is File => file !== null);
 
       if (files.length > 0 && nav.canShare({ files })) {
         await nav.share({ files, text: body, title: "Facebook post" });
         return;
       }
-
-      setShareError("This phone cannot share these media files directly. Save the media, then open Facebook.");
-    } catch (err) {
-      const name = err instanceof DOMException ? err.name : "";
-      if (name !== "AbortError") {
-        setShareError("Sharing did not complete. Save the media, then open Facebook.");
-      }
+      setShareError("This media cannot be handed to Facebook through native share.");
+    } catch {
+      setShareError("Native share did not complete. Use the Facebook-native checklist above.");
     } finally {
       setSharing(false);
-    }
-  }
-
-  function handleOpenFacebook() {
-    // iOS: deep-link straight into a fresh post draft in the FB app.
-    // Anywhere else: a regular https://facebook.com tab — composer at the
-    // top of the feed.
-    if (isIOS) {
-      window.location.href = "fb://composer";
-    } else {
-      window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
     }
   }
 
@@ -284,279 +243,304 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
     setMarking(true);
     setMarkError(null);
     try {
-      const trimmedUrl = postedUrl.trim();
-      const body: Record<string, unknown> = { platform: "FACEBOOK" };
-      if (trimmedUrl) body.platformUrl = trimmedUrl;
+      const trimmedUrl = postingUrl.trim();
+      const payload: Record<string, unknown> = { platform: "FACEBOOK" };
+      if (trimmedUrl) payload.platformUrl = trimmedUrl;
       const res = await fetch(`/api/posts/${postId}/manual-publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setMarkError(data?.error ?? "Couldn't mark as posted. Try again.");
+        setMarkError(data?.error ?? "Could not mark this post as posted.");
         return;
       }
       setMarked(true);
-      setTimeout(() => router.push(returnTo), 700);
+      window.setTimeout(() => router.push(returnTo), 700);
     } finally {
       setMarking(false);
     }
   }
 
   return (
-    <div className="-m-4 flex min-h-[calc(100vh-3.5rem)] flex-col bg-white md:-m-8">
-      {/* Header */}
-      <div
-        className="flex items-center gap-2 border-b border-gray-100 bg-white/95 px-3 py-2 pl-14 backdrop-blur md:pl-8"
-        style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.5rem)" }}
+    <div className="-m-4 min-h-[calc(100vh-3.5rem)] bg-[#f7f7f4] text-gray-950 md:-m-8">
+      <header
+        className="sticky top-0 z-20 border-b border-black/5 bg-[#f7f7f4]/95 px-4 pb-3 pt-3 backdrop-blur md:px-8"
+        style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.75rem)" }}
       >
-        <Link
-          href={returnTo}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200"
-          aria-label="Back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <div className="text-base font-semibold text-gray-900">Post on Facebook personal</div>
-          <div className="text-[11px] text-gray-500">
-            From{" "}
-            {new Date(originalDate).toLocaleDateString(undefined, {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })}
-          </div>
-        </div>
-        {platformUrl && (
-          <a
-            href={platformUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            title="View original post"
+        <div className="mx-auto flex max-w-md items-center gap-3">
+          <Link
+            href={returnTo}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-700 shadow-sm ring-1 ring-black/5 active:scale-95"
+            aria-label="Back"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Original
-          </a>
-        )}
-      </div>
-
-      {/* Auto-copied banner */}
-      {autoCopiedBanner && (
-        <div className="mx-auto mt-2 flex w-full max-w-md items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
-          <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
-          <span className="flex-1">Caption copied — paste it in Facebook.</span>
-        </div>
-      )}
-
-      <div className="mx-auto w-full max-w-md flex-1 space-y-4 p-4">
-        {searchParams?.get("fresh") === "1" && (
-          <section className="rounded-2xl border border-blue-200 bg-blue-50 p-3 shadow-sm">
-            <div className="text-sm font-semibold text-blue-950">Ready to post to Facebook</div>
-            <p className="mt-1 text-sm text-blue-900">
-              Your post is saved in the Hub. Now send the media to Facebook and paste the caption there.
-            </p>
-          </section>
-        )}
-
-        {/* Step 1: Copy text */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              1. Copy the caption
-            </span>
-            <button
-              onClick={handleCopy}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                copied
-                  ? "bg-emerald-600 text-white"
-                  : "bg-gray-900 text-white hover:opacity-90 active:opacity-80"
-              }`}
-            >
-              {copied ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy again"}
-            </button>
-          </div>
-          <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-3 text-[14px] leading-snug text-gray-800">
-            {body ? (
-              <p className="whitespace-pre-wrap">{body}</p>
-            ) : (
-              <p className="italic text-gray-400">No caption.</p>
-            )}
-          </div>
-        </section>
-
-        {/* Step 2: Save the media */}
-        {media.length > 0 && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                2. Share the media
-              </span>
-              <span className="text-[11px] text-gray-400">
-                {activeIdx + 1} / {media.length}
-              </span>
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wide text-[#1877F2]">
+              <SiFacebook className="h-3.5 w-3.5" />
+              Facebook Share Assistant
             </div>
-
-            {active?.url && (
-              <div
-                className="relative mb-2 overflow-hidden rounded-xl bg-black"
-                style={{ aspectRatio: "1 / 1" }}
-              >
-                {isVideo ? (
-                  <video src={active.url} controls playsInline className="h-full w-full object-contain" />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={active.url} alt="" className="h-full w-full object-contain" />
-                )}
-
-                {media.length > 1 && (
-                  <>
-                    <button
-                      onClick={() => setActiveIdx((i) => (i === 0 ? media.length - 1 : i - 1))}
-                      className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
-                      aria-label="Previous"
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() => setActiveIdx((i) => (i + 1) % media.length)}
-                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
-                      aria-label="Next"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={handleShareToFacebook}
-              disabled={sharing || preparingShare || media.every((item) => !item.url)}
-              className="mb-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1877F2] py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
-            >
-              {sharing || preparingShare ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <SiFacebook className="h-4 w-4" />
-              )}
-              <span className="min-w-0 break-words">
-                {sharing
-                  ? "Opening share sheet..."
-                  : preparingShare
-                    ? "Preparing media..."
-                    : "Share media to Facebook"}
-              </span>
-            </button>
-
-            {shareError && (
-              <p className="mb-2 break-words rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900">
-                {shareError}
-              </p>
-            )}
-
-            {/* Fallback CTA — useful when Facebook is missing from the share sheet. */}
-            <button
-              onClick={() => active && handleDownload(active)}
-              disabled={!active?.url || downloading === active?.id}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50 disabled:opacity-60"
-            >
-              {downloading === active?.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : downloadedId === active?.id ? (
-                <Check className="h-4 w-4" strokeWidth={2.5} />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span className="min-w-0 break-words">
-                {downloading === active?.id
-                  ? "Downloading…"
-                  : downloadedId === active?.id
-                    ? "Downloaded"
-                    : isVideo
-                        ? "Download video"
-                        : "Download image"}
-              </span>
-            </button>
-
-            {downloadError && (
-              <p className="mt-2 break-words text-[11px] text-red-700">{downloadError}</p>
-            )}
-
-            <p className="mt-2 break-words text-[11px] text-gray-500">
-              The blue button opens your phone&apos;s share sheet with the media attached when supported.
-              If Facebook does not appear there, download the file and attach it in Facebook.
-            </p>
-          </section>
-        )}
-
-        {/* Step 3: open Facebook */}
-        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-3 shadow-sm">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
-            3. Post on Facebook
+            <h1 className="truncate text-xl font-semibold tracking-normal text-gray-950">
+              Post with the real Facebook app
+            </h1>
+            <p className="truncate text-xs text-gray-500">{fresh ? "Saved just now" : dateLabel}</p>
           </div>
-          <p className="mb-2 break-words text-sm text-blue-900">
-            {media.length > 0
-              ? "If the share sheet did not open Facebook directly, open Facebook and paste the caption there."
-              : "Caption is copied. Open Facebook and paste it into a new post."}
-          </p>
+          {platformUrl && (
+            <a
+              href={platformUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm ring-1 ring-black/5"
+              aria-label="Open original"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-md space-y-3 px-4 py-4 pb-28">
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+              <Check className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold">Hub copy is saved</h2>
+              <p className="mt-0.5 text-sm leading-snug text-gray-600">
+                Now use Facebook&apos;s normal composer so Gil can post to feed, groups, and use Facebook tools.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-[8px] border border-gray-100 bg-gray-50 p-3">
+            <p className="line-clamp-5 whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+              {body || "No caption."}
+            </p>
+          </div>
           <button
             type="button"
-            onClick={handleOpenFacebook}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1877F2] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
+            onClick={() => void copyCaption()}
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-gray-950 px-4 text-sm font-semibold text-white active:scale-[0.99]"
           >
-            <SiFacebook className="h-4 w-4" />
-            <span className="break-words">Open Facebook</span>
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Caption copied" : "Copy caption again"}
           </button>
         </section>
 
-        {/* Step 4: I posted it */}
-        <section
-          className={`rounded-2xl border p-3 shadow-sm transition-colors ${
-            marked ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"
-          }`}
-        >
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            4. Confirm
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Media on the phone</h2>
+              <p className="mt-0.5 text-sm leading-snug text-gray-600">
+                Save it first, then attach it inside Facebook like usual.
+              </p>
+            </div>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+              {mediaCount} file{mediaCount === 1 ? "" : "s"}
+            </span>
           </div>
-          <label className="mb-1 block text-[11px] font-medium text-gray-600">
-            Paste the FB post URL (so it links from the post page)
-          </label>
+
+          {mediaCount > 0 && (
+            <div className="mb-3 grid grid-cols-3 gap-1.5">
+              {media
+                .filter((item) => item.url)
+                .slice(0, 6)
+                .map((item) => (
+                  <div key={item.id} className="aspect-square overflow-hidden rounded-[6px] bg-black">
+                    {item.mimeType.startsWith("video/") ? (
+                      <video src={item.url ?? ""} muted playsInline className="h-full w-full object-cover" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.url ?? ""} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleSaveAllMedia()}
+            disabled={savingMedia || mediaCount === 0}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#1877F2] px-4 text-sm font-semibold text-white disabled:opacity-50 active:scale-[0.99]"
+          >
+            {savingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : mediaSaved ? <Check className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+            {savingMedia ? "Saving media..." : mediaSaved ? "Media saved" : "Save media to phone"}
+          </button>
+
+          {mediaError && (
+            <p className="mt-2 rounded-[8px] bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+              {mediaError}
+            </p>
+          )}
+        </section>
+
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1877F2]">
+              <Smartphone className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold">Open Facebook composer</h2>
+              <p className="mt-0.5 text-sm leading-snug text-gray-600">
+                Caption is copied. Use the real composer to add music, choose groups, and edit the post.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleOpenDestination(destinations[0])}
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-[#1877F2] px-4 text-base font-semibold text-white active:scale-[0.99]"
+          >
+            <SiFacebook className="h-5 w-5" />
+            Open Facebook
+          </button>
+        </section>
+
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold">Posting checklist</h2>
+            <p className="mt-0.5 text-sm leading-snug text-gray-600">
+              Mark each place after posting. Open buttons copy the caption first.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {destinations.map((destination) => (
+              <div
+                key={destination.id}
+                className={`rounded-[8px] border p-2.5 transition ${
+                  destination.done ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"
+                }`}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleDestination(destination.id)}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                      destination.done
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-gray-300 bg-white text-transparent"
+                    }`}
+                    aria-label={destination.done ? "Mark not posted" : "Mark posted"}
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-gray-950">{destination.label}</div>
+                    <div className="text-xs capitalize text-gray-500">{destination.type}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenDestination(destination)}
+                    className="shrink-0 rounded-[8px] bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-800 active:bg-gray-200"
+                  >
+                    Open
+                  </button>
+                  {destination.type === "other" && (
+                    <button
+                      type="button"
+                      onClick={() => removeDestination(destination.id)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400"
+                      aria-label="Remove destination"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <input
+              value={otherName}
+              onChange={(e) => setOtherName(e.target.value)}
+              placeholder="Other group name"
+              className="min-h-11 min-w-0 flex-1 rounded-[8px] border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[#1877F2]"
+            />
+            <button
+              type="button"
+              onClick={addOtherDestination}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] bg-gray-950 text-white"
+              aria-label="Add group"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <button
+            type="button"
+            onClick={() => setShortcutOpen((open) => !open)}
+            className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+          >
+            <span>
+              <span className="block text-sm font-semibold">Optional shortcut</span>
+              <span className="block text-xs text-gray-500">Use the limited share sheet for simple feed-only posts.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 transition ${shortcutOpen ? "rotate-180" : ""}`} />
+          </button>
+          {shortcutOpen && (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={() => void handleNativeShare()}
+                disabled={sharing}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[8px] border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 active:bg-gray-50 disabled:opacity-50"
+              >
+                {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                Try native share sheet
+              </button>
+              {shareError && (
+                <p className="mt-2 rounded-[8px] bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+                  {shareError}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">Finish in the Hub</h2>
+              <p className="mt-0.5 text-sm text-gray-600">
+                {completedCount}/{destinations.length} destinations marked posted.
+              </p>
+            </div>
+            {allDestinationsDone && (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                Done
+              </span>
+            )}
+          </div>
           <input
             type="url"
             inputMode="url"
-            value={postedUrl}
-            onChange={(e) => setPostedUrl(e.target.value)}
-            placeholder="https://www.facebook.com/…"
+            value={postingUrl}
+            onChange={(e) => setPostingUrl(e.target.value)}
+            placeholder="Optional Facebook post URL"
             disabled={marked}
-            className="mb-2 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+            className="mb-3 min-h-11 w-full rounded-[8px] border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[#1877F2] disabled:opacity-60"
           />
           <button
-            onClick={handleMarkPosted}
+            type="button"
+            onClick={() => void handleMarkPosted()}
             disabled={marking || marked}
-            className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-3 text-sm font-semibold text-white shadow-sm transition-colors disabled:opacity-70 ${
-              marked ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-emerald-600 px-4 text-base font-semibold text-white disabled:opacity-60 active:scale-[0.99]"
           >
-            {marking ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : marked ? (
-              <Check className="h-4 w-4" strokeWidth={2.5} />
-            ) : (
-              <Check className="h-4 w-4" strokeWidth={2.5} />
-            )}
-            {marked ? "Marked as posted" : "I posted it on Facebook"}
+            {marking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />}
+            {marked ? "Marked as posted" : "Mark Facebook posting done"}
           </button>
-          {markError && <p className="mt-1.5 text-[11px] text-red-700">{markError}</p>}
-          <p className="mt-1.5 text-[11px] text-gray-500">
-            Optional — leave the URL blank to mark posted without a link. Either way,
-            this clears the post from the manual-posts queue.
-          </p>
+          {markError && <p className="mt-2 text-xs text-red-700">{markError}</p>}
         </section>
-      </div>
+      </main>
     </div>
   );
 }

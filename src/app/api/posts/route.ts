@@ -282,7 +282,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { text, originalDate } = body;
+  const { text, originalDate, intendedForFacebook } = body;
 
   if (!text?.trim()) {
     return NextResponse.json({ error: "Post text is required" }, { status: 400 });
@@ -296,6 +296,7 @@ export async function POST(req: NextRequest) {
       bodyNormalized: normalizeForSearch(trimmed),
       source: "MANUAL",
       originalDate: originalDate ? new Date(originalDate) : new Date(),
+      fbShareStartedAt: intendedForFacebook ? new Date() : null,
     },
   });
 

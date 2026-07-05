@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { SiFacebook } from "react-icons/si";
 import { useAsync } from "@/hooks/useAsync";
 import { useConfirm } from "@/hooks/useConfirm";
 import { BackToListLink } from "./BackToListLink";
@@ -48,6 +49,14 @@ export function MobilePostActions({ postId, listHref, prevHref, nextHref, platfo
             <ExternalLink className="h-[18px] w-[18px]" />
           </a>
         )}
+
+        <Link
+          href={`/admin/m/${postId}?from=${encodeURIComponent(`/admin/posts/${postId}`)}`}
+          aria-label="Post to Facebook"
+          className={`${PILL_BASE} bg-[#1877F2]/90 text-white supports-[backdrop-filter]:bg-[#1877F2]/80 active:bg-[#1877F2]`}
+        >
+          <SiFacebook className="h-[18px] w-[18px]" />
+        </Link>
 
         <DeletePill postId={postId} />
 

@@ -36,6 +36,21 @@ function isMobileUserAgent(): boolean {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+// iPhones record video as .mov (MIME type video/quicktime) by default. That
+// MIME type is inconsistently recognized as "video" by browsers and
+// share-receiving apps — Chromium has a filed bug for exactly this
+// (video/quicktime doesn't play, the same bytes labeled video/mp4 do), and
+// Facebook/WhatsApp's share handling shows the same pattern: the file lands
+// as a generic, non-playable attachment. .mov and .mp4 are both ISO-base-
+// media-file-format containers and commonly hold identical H.264/AAC
+// streams, so relabeling (not re-encoding — the bytes are untouched) is the
+// standard, documented workaround for this.
+function normalizeVideoForSharing(file: File): File {
+  if (file.type !== "video/quicktime") return file;
+  const name = file.name.replace(/\.mov$/i, ".mp4");
+  return new File([file], name, { type: "video/mp4" });
+}
+
 function triggerBrowserDownload(file: File): void {
   const objectUrl = URL.createObjectURL(file);
   const a = document.createElement("a");
@@ -80,16 +95,17 @@ export async function shareFilesToFacebook(opts: {
   files: File[];
 }): Promise<ShareResult> {
   const nav = navigator as NavWithShare;
-  const totalBytes = opts.files.reduce((sum, f) => sum + f.size, 0);
+  const files = opts.files.map(normalizeVideoForSharing);
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
 
   if (
-    opts.files.length > 0 &&
+    files.length > 0 &&
     isMobileUserAgent() &&
     nav.share &&
     nav.canShare &&
     totalBytes <= MAX_SHARE_BYTES
   ) {
-    const payload = { text: opts.body, files: opts.files };
+    const payload = { text: opts.body, files };
     if (nav.canShare(payload)) {
       try {
         await nav.share(payload);
@@ -100,7 +116,7 @@ export async function shareFilesToFacebook(opts: {
     }
   }
 
-  opts.files.forEach(triggerBrowserDownload);
+  files.forEach(triggerBrowserDownload);
   const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
   return fbTab ? "opened" : "blocked";
 }

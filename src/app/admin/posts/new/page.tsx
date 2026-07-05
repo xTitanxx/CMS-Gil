@@ -97,6 +97,7 @@ export default function NewPostPage() {
     setSelectedAudioTrackId(null);
     setUploadPct({});
     setError(null);
+    setProgress(null);
     setShared(null);
   }
 
@@ -183,13 +184,21 @@ export default function NewPostPage() {
       // Phase 4: hand the caption + media to Facebook. Caption goes to the
       // clipboard regardless of whether the share sheet honors shared text —
       // Facebook's app inconsistently pre-fills it, so the clipboard is the
-      // guaranteed fallback (one paste away).
+      // guaranteed fallback (one paste away). The post + media are already
+      // saved by this point, so a hiccup here must never look like the post
+      // was lost — always land on the confirmation screen. A failed
+      // hand-off just means the "Not yet" / NeedsFacebookBanner retry path
+      // does the work instead.
       setProgress("Opening Facebook…");
-      await copyTextToClipboard(body.trim());
-      await shareFilesToFacebook({
-        body: body.trim(),
-        files: files.map((f) => f.file),
-      });
+      try {
+        await copyTextToClipboard(body.trim());
+        await shareFilesToFacebook({
+          body: body.trim(),
+          files: files.map((f) => f.file),
+        });
+      } catch (shareErr) {
+        console.error("Facebook hand-off failed:", shareErr);
+      }
 
       setShared({ postId });
       setSubmitting(false);

@@ -36,6 +36,11 @@ function isMobileUserAgent(): boolean {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+function isIOSUserAgent(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/.test(navigator.userAgent);
+}
+
 function triggerBrowserDownload(file: File): void {
   const objectUrl = URL.createObjectURL(file);
   const a = document.createElement("a");
@@ -64,8 +69,11 @@ export type ShareResult = "shared" | "opened" | "blocked";
  * media (and, when Facebook's app honors it, the caption) straight into a
  * fresh Facebook post. Everywhere else — desktop, no share target, a file
  * too large to share reliably, or a caller that had to fetch its files over
- * the network first — the fallback downloads the media locally and opens
- * facebook.com so the user can drag it into the composer.
+ * the network first — the fallback downloads the media locally, then on
+ * iOS deep-links straight into a fresh compose draft in the Facebook app
+ * (`fb://composer` — there's no public URL that does this on any other
+ * platform); everywhere else it just opens facebook.com so the user can
+ * drag the download into the composer themselves.
  *
  * `allowNativeShare` defaults to true but MUST be set to false by any caller
  * that awaited a network request (e.g. fetching media bytes from storage)
@@ -106,6 +114,12 @@ export async function shareFilesToFacebook(opts: {
   }
 
   opts.files.forEach(triggerBrowserDownload);
+
+  if (isIOSUserAgent()) {
+    window.location.href = "fb://composer";
+    return "opened";
+  }
+
   const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
   return fbTab ? "opened" : "blocked";
 }

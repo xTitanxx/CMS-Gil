@@ -153,6 +153,36 @@ export async function mixAudioOntoVideo(
   });
 }
 
+// Remux (not re-encode — a fast, lossless container swap) an arbitrary
+// input video into a genuine MP4 container. Used for videos that arrive as
+// something other than MP4 (most commonly .mov straight off an iPhone).
+// Relabeling a .mov's extension/MIME type client-side isn't enough on its
+// own: some players and share targets (Facebook and WhatsApp's share-intent
+// handling among them) sniff the actual container structure rather than
+// trusting the declared type, and still treat a relabeled-but-still-
+// QuickTime file as non-video. This guarantees real MP4 bytes underneath
+// the label, not just a renamed file.
+export async function remuxToMp4(videoBuffer: Buffer): Promise<Buffer> {
+  return withTempDir(async (dir) => {
+    const inputPath = join(dir, "input");
+    const outputPath = join(dir, "remuxed.mp4");
+    writeFileSync(inputPath, videoBuffer);
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .outputOptions(["-c:v copy", "-c:a copy", "-movflags +faststart"])
+        .format("mp4")
+        .on("end", () => resolve())
+        .on("error", reject)
+        .save(outputPath);
+    });
+
+    const out = readFileSync(outputPath);
+    if (out.length === 0) throw new Error("ffmpeg produced 0-byte remux output");
+    return out;
+  });
+}
+
 // Target audio bitrate for compressed output. 128 kbps AAC is the standard
 // "voice + light music" tier and what every phone-shot clip in this repo
 // realistically needs.

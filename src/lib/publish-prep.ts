@@ -37,9 +37,11 @@ export async function preparePublishKeys(
       getObject(m.audioTrack!.storageKey),
     ]);
     const muxed = await mixAudioOntoVideo(videoBuffer, audioBuffer);
-    const ext = (m.mimeType.split("/")[1] || "mp4").split(";")[0];
-    const key = mediaKey(userId, `muxed-${Date.now()}.${ext}`);
-    const { url } = await uploadBuffer(key, muxed, { contentType: m.mimeType });
+    // mixAudioOntoVideo always outputs an mp4 container regardless of the
+    // input's format — tag the upload accordingly instead of inheriting the
+    // original (possibly non-mp4, e.g. video/quicktime) mimeType.
+    const key = mediaKey(userId, `muxed-${Date.now()}.mp4`);
+    const { url } = await uploadBuffer(key, muxed, { contentType: "video/mp4" });
     out.push(url);
   }
   return out;

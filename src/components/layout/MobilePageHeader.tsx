@@ -54,7 +54,7 @@ export function MobilePageHeader() {
         <button
           type="button"
           onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="pointer-events-auto my-2 flex h-10 w-10 items-center justify-center rounded-full bg-white/40 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 active:bg-white/70 touch-manipulation"
+          className="pointer-events-auto my-2 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#0d0d0d] shadow-[0_2px_8px_rgba(0,0,0,0.08)] active:bg-white/95 touch-manipulation"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" strokeWidth={1.75} />
@@ -65,7 +65,7 @@ export function MobilePageHeader() {
           className="flex justify-center pb-2 md:hidden"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
         >
-          <div className="rounded-full bg-white/40 px-4 py-2 backdrop-blur-xl supports-[backdrop-filter]:bg-white/30 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+          <div className="rounded-full bg-white/90 px-4 py-2 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
             <span className="text-sm font-semibold text-[#0d0d0d]">{title}</span>
           </div>
         </div>

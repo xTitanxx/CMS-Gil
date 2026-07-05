@@ -18,7 +18,7 @@ interface Props {
 }
 
 const PILL_BASE =
-  "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/40 backdrop-blur-xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] supports-[backdrop-filter]:bg-white/30 active:bg-white/70 touch-manipulation transition-colors";
+  "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.08)] active:bg-white/95 touch-manipulation transition-colors";
 
 // Mobile-only floating action row. Sits in the same fixed top band as the
 // burger from MobilePageHeader — burger pinned left, these pills pinned right.
@@ -89,7 +89,7 @@ function DeletePill({ postId }: { postId: string }) {
       aria-label={confirming ? "Tap again to confirm delete" : "Delete"}
       className={`${PILL_BASE} ${
         confirming
-          ? "bg-amber-500/70 text-white supports-[backdrop-filter]:bg-amber-500/60 active:bg-amber-500/80 animate-pulse"
+          ? "bg-amber-500 text-white active:bg-amber-500/90 animate-pulse"
           : "text-red-600"
       } disabled:opacity-60`}
     >

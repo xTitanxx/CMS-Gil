@@ -48,7 +48,7 @@ export const CostPill = forwardRef<CostPillHandle>(function CostPill(_, ref) {
 
   return (
     <div
-      className="flex h-10 items-center rounded-full bg-white/75 px-3 text-[12px] tabular-nums text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55"
+      className="flex h-10 items-center rounded-full bg-white/95 px-3 text-[12px] tabular-nums text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)]"
       title={tip}
       aria-label={tip}
     >

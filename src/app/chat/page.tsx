@@ -599,7 +599,7 @@ export default function GilChatPage() {
         className="pointer-events-none absolute inset-x-0 top-0 z-20"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="pointer-events-auto border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <div className="pointer-events-auto border-b border-gray-200 bg-white/95">
           <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2.5">
             <Link
               href="/"
@@ -706,7 +706,7 @@ export default function GilChatPage() {
       >
         <div className="pointer-events-auto mx-auto flex w-full max-w-3xl flex-col gap-1.5">
           <BudgetMeter refreshKey={budgetRefreshKey} />
-          <div className="flex items-center rounded-3xl border border-black/5 bg-white/85 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
+          <div className="flex items-center rounded-3xl border border-black/5 bg-white/95 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)]">
             <textarea
               ref={textareaRef}
               value={input}

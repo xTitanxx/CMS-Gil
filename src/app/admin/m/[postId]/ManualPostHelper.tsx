@@ -266,7 +266,7 @@ export function ManualPostHelper({ postId, body, originalDate, platformUrl, medi
   return (
     <div className="-m-4 min-h-[calc(100vh-3.5rem)] bg-[#f7f7f4] text-gray-950 md:-m-8">
       <header
-        className="sticky top-0 z-20 border-b border-black/5 bg-[#f7f7f4]/95 px-4 pb-3 pt-3 backdrop-blur md:px-8"
+        className="sticky top-0 z-20 border-b border-black/5 bg-[#f7f7f4]/95 px-4 pb-3 pt-3 md:px-8"
         style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0.75rem)" }}
       >
         <div className="mx-auto flex max-w-md items-center gap-3">

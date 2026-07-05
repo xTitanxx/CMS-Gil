@@ -383,7 +383,7 @@ function InlinePostRef({
               e.stopPropagation();
               onEdit(id);
             }}
-            className="rounded-md bg-white/80 backdrop-blur-sm p-1.5 opacity-70 hover:opacity-100 shadow-sm text-[#0d0d0d] hover:text-black transition-colors"
+            className="rounded-md bg-white/90 p-1.5 opacity-70 hover:opacity-100 shadow-sm text-[#0d0d0d] hover:text-black transition-colors"
             aria-label="Edit post"
             title="Edit post"
           >
@@ -396,7 +396,7 @@ function InlinePostRef({
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="rounded-md bg-white/80 backdrop-blur-sm p-1.5 opacity-70 hover:opacity-100 shadow-sm text-blue-600 hover:text-blue-700 transition-colors"
+            className="rounded-md bg-white/90 p-1.5 opacity-70 hover:opacity-100 shadow-sm text-blue-600 hover:text-blue-700 transition-colors"
             aria-label="View original post"
           >
             <ExternalLink className="h-4 w-4" />
@@ -404,7 +404,7 @@ function InlinePostRef({
         )}
         <CopyButton
           text={post.body ?? ""}
-          className="rounded-md bg-white/80 backdrop-blur-sm p-1.5 opacity-70 hover:opacity-100 shadow-sm"
+          className="rounded-md bg-white/90 p-1.5 opacity-70 hover:opacity-100 shadow-sm"
         />
       </div>
 
@@ -1196,7 +1196,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
       >
         <button
           onClick={() => window.dispatchEvent(new Event("open-sidebar"))}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 active:bg-white/85 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] active:bg-white/85 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" strokeWidth={1.75} />
@@ -1212,7 +1212,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         {onOpenPlanner && (
           <button
             onClick={() => onOpenPlanner()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
             aria-label="Open planner"
             title="Planner"
           >
@@ -1221,7 +1221,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         )}
         <button
           onClick={() => setHistoryOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] hover:bg-white/85 active:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="Chat history"
           title="History"
         >
@@ -1237,7 +1237,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
             setProposalsByToolUseId(new Map());
           }}
           disabled={streaming || messages.length === 0}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-white/55 hover:bg-white/85 active:bg-white/90 disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#0d0d0d] ring-1 ring-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_18px_rgba(0,0,0,0.18)] hover:bg-white/85 active:bg-white/90 disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           aria-label="New chat"
           title="New chat"
         >
@@ -1326,7 +1326,7 @@ export function ThreadView({ onPlanProposed, onOpenPlanner }: ThreadViewProps) {
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}
       >
         <div className="pointer-events-auto mx-auto w-full max-w-4xl">
-          <div className="flex items-center rounded-3xl border border-black/5 bg-white/70 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+          <div className="flex items-center rounded-3xl border border-black/5 bg-white/95 py-1 pl-1.5 pr-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.08)]">
             <textarea
               ref={textareaRef}
               value={input}

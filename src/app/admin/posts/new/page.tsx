@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, X, ImagePlus, Music } from "lucide-react";
 import Link from "next/link";
 import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
 import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
+import { copyTextToClipboard, shareFilesToFacebook } from "@/lib/client/shareToFacebook";
+import { FacebookConfirmPrompt } from "@/app/admin/_shared/FacebookConfirmPrompt";
 
 const ACCEPTED_MIME_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
@@ -26,8 +27,6 @@ interface SelectedFile {
 }
 
 export default function NewPostPage() {
-  const router = useRouter();
-
   const [body, setBody] = useState("");
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [selectedAudioTrackId, setSelectedAudioTrackId] = useState<string | null>(null);
@@ -37,6 +36,10 @@ export default function NewPostPage() {
   // progress bar overlaid on each media tile during phase 2.
   const [uploadPct, setUploadPct] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
+  // Set once the post is saved and handed off to Facebook. Non-null swaps
+  // the composer for the "did it post?" confirmation, keyed by the new
+  // post's id.
+  const [shared, setShared] = useState<{ postId: string } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const filesRef = useRef(files);
@@ -85,6 +88,19 @@ export default function NewPostPage() {
     });
   }
 
+  // Back to a blank composer for the next draft, without a real navigation
+  // (the confirmation happens in place on /admin/posts/new).
+  function resetForm() {
+    files.forEach((f) => URL.revokeObjectURL(f.preview));
+    setBody("");
+    setFiles([]);
+    setSelectedAudioTrackId(null);
+    setUploadPct({});
+    setError(null);
+    setProgress(null);
+    setShared(null);
+  }
+
   async function handlePost() {
     if (!body.trim()) {
       setError("Post content is required.");
@@ -99,7 +115,7 @@ export default function NewPostPage() {
       const postRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: body.trim() }),
+        body: JSON.stringify({ text: body.trim(), intendedForFacebook: true }),
       });
 
       if (!postRes.ok) {
@@ -165,7 +181,27 @@ export default function NewPostPage() {
         }
       }
 
-      router.push(`/admin/posts/${postId}`);
+      // Phase 4: hand the caption + media to Facebook. Caption goes to the
+      // clipboard regardless of whether the share sheet honors shared text —
+      // Facebook's app inconsistently pre-fills it, so the clipboard is the
+      // guaranteed fallback (one paste away). The post + media are already
+      // saved by this point, so a hiccup here must never look like the post
+      // was lost — always land on the confirmation screen. A failed
+      // hand-off just means the "Not yet" / NeedsFacebookBanner retry path
+      // does the work instead.
+      setProgress("Opening Facebook…");
+      try {
+        await copyTextToClipboard(body.trim());
+        await shareFilesToFacebook({
+          body: body.trim(),
+          files: files.map((f) => f.file),
+        });
+      } catch (shareErr) {
+        console.error("Facebook hand-off failed:", shareErr);
+      }
+
+      setShared({ postId });
+      setSubmitting(false);
     } catch (err) {
       console.error("Unexpected error:", err);
       setError("An unexpected error occurred. Please try again.");
@@ -174,6 +210,27 @@ export default function NewPostPage() {
   }
 
   const canPost = !submitting && body.trim().length > 0;
+
+  if (shared) {
+    return (
+      <div className="max-w-[520px] space-y-4">
+        <div className="flex items-center gap-2">
+          <Link href="/admin/posts">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-md">
+          <p className="mb-3 text-sm text-gray-600">
+            Saved — Facebook should be open in another tab or app.
+          </p>
+          <FacebookConfirmPrompt postId={shared.postId} onResolved={() => resetForm()} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[520px] space-y-4">

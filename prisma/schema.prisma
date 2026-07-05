@@ -145,6 +145,14 @@ model Post {
   // that FB bakes into its HTML export). See scripts/backfill-fb-urls.ts.
   platformUrl    String?
 
+  // Set when the compose page's "Post" button hands this post's caption +
+  // media off to Facebook's share sheet. Cleared once a manual FACEBOOK
+  // PublishRecord (PUBLISHED or CANCELLED) is recorded for the post — see
+  // src/app/api/posts/[id]/manual-publish/route.ts. Non-null means "still
+  // waiting on a yes/not-yet answer"; NeedsFacebookBanner uses it to
+  // resurface a retry action on the post detail page.
+  fbShareStartedAt DateTime?
+
   source   PostSource @default(MANUAL)
   sourceId String?
 

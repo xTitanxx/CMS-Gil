@@ -73,6 +73,16 @@ export async function POST(
     select: { id: true },
   });
 
+  // A manual FACEBOOK decision (posted or skipped) always resolves the
+  // "needs Facebook" state set by the compose page's share hand-off — clear
+  // it so NeedsFacebookBanner stops asking.
+  if (platform === "FACEBOOK") {
+    await prisma.post.update({
+      where: { id: post.id },
+      data: { fbShareStartedAt: null },
+    });
+  }
+
   return NextResponse.json({ ok: true, publishRecordId: record.id });
 }
 

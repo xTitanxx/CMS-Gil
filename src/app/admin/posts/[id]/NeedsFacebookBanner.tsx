@@ -49,17 +49,15 @@ export function NeedsFacebookBanner({
     try {
       await copyTextToClipboard(body);
       // Media is fetched here (mux-aware, so attached music actually gets
-      // baked into the video) rather than passed in as a prop — but that
-      // fetch is itself a network round trip, which already breaks the
-      // fresh user-gesture requirement navigator.share() needs. So this
-      // always forces the reliable download+open-Facebook fallback
-      // (allowNativeShare: false) instead of gambling on a native share
-      // sheet that may silently drop the media or caption.
+      // baked into the video) rather than passed in as a prop. shareFilesToFacebook
+      // still tries the native share sheet first when the device supports
+      // it — the media hand-off works either way; only whether Facebook's
+      // app also keeps the caption is out of our control.
       const res = await fetch(`/api/posts/${postId}/share-media`);
       if (!res.ok) throw new Error("failed to prepare media");
       const data: { media: ShareMedia[] } = await res.json();
       const files = await fetchAsFiles(data.media, `gil-${postId}`);
-      await shareFilesToFacebook({ body, files, allowNativeShare: false });
+      await shareFilesToFacebook({ body, files });
       setConfirming(true);
     } catch {
       setError("Couldn't open Facebook — try again.");

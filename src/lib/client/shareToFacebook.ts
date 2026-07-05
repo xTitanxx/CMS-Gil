@@ -36,11 +36,6 @@ function isMobileUserAgent(): boolean {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-function isIOSUserAgent(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /iPhone|iPad|iPod/.test(navigator.userAgent);
-}
-
 function triggerBrowserDownload(file: File): void {
   const objectUrl = URL.createObjectURL(file);
   const a = document.createElement("a");
@@ -64,38 +59,30 @@ export type ShareResult = "shared" | "opened" | "blocked";
 
 /**
  * Hand a caption + media to Facebook with the least friction the platform
- * allows. There is no API to publish to a personal profile, so this is the
- * floor: on mobile with file-capable Web Share, the OS share sheet drops the
- * media (and, when Facebook's app honors it, the caption) straight into a
- * fresh Facebook post. Everywhere else — desktop, no share target, a file
- * too large to share reliably, or a caller that had to fetch its files over
- * the network first — the fallback downloads the media locally, then on
- * iOS deep-links straight into a fresh compose draft in the Facebook app
- * (`fb://composer` — there's no public URL that does this on any other
- * platform); everywhere else it just opens facebook.com so the user can
- * drag the download into the composer themselves.
- *
- * `allowNativeShare` defaults to true but MUST be set to false by any caller
- * that awaited a network request (e.g. fetching media bytes from storage)
- * before calling this function. `navigator.share()` requires the browser's
- * "transient user activation" to still be live from the original tap — once
- * a real fetch has happened first, that activation is reliably gone, and
- * browsers respond inconsistently: some silently no-op, others open the
- * sheet but silently drop the files/caption payload. Only a caller with
- * files already in memory at the moment of the tap (nothing awaited yet)
- * can rely on the native share path.
+ * allows. This is the real ceiling, not a bug to keep chasing: Facebook has
+ * no documented URL scheme or API to open its app pre-loaded with a draft,
+ * the Graph API has blocked posting to a personal profile since 2018, and
+ * Facebook's own developer policy explicitly forbids pre-filling caption
+ * text even for apps with official SDK access ("apps may not pre-fill the
+ * share sheet's initialText field with content that wasn't entered by the
+ * user"). So: on mobile with file-capable Web Share, the OS share sheet
+ * hands the media straight into Facebook's app — that part reliably works,
+ * regardless of whether the caller already awaited something (e.g. fetching
+ * media from storage) before calling this. Whether Facebook's app also
+ * keeps the caption is Facebook's call, not something we can force; the
+ * caption is copied to the clipboard separately as a fallback either way.
+ * Everywhere else — desktop, no share target, or a file too large to share
+ * reliably — the fallback downloads the media and opens facebook.com so the
+ * user can attach it themselves.
  */
 export async function shareFilesToFacebook(opts: {
   body: string;
   files: File[];
-  allowNativeShare?: boolean;
 }): Promise<ShareResult> {
   const nav = navigator as NavWithShare;
-  const allowNativeShare = opts.allowNativeShare ?? true;
   const totalBytes = opts.files.reduce((sum, f) => sum + f.size, 0);
 
   if (
-    allowNativeShare &&
     opts.files.length > 0 &&
     isMobileUserAgent() &&
     nav.share &&
@@ -114,12 +101,6 @@ export async function shareFilesToFacebook(opts: {
   }
 
   opts.files.forEach(triggerBrowserDownload);
-
-  if (isIOSUserAgent()) {
-    window.location.href = "fb://composer";
-    return "opened";
-  }
-
   const fbTab = window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
   return fbTab ? "opened" : "blocked";
 }

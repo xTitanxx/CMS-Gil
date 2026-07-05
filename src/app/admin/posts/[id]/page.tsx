@@ -249,11 +249,7 @@ export default async function PostDetailPage({
         />
 
         {post.fbShareStartedAt && (
-          <NeedsFacebookBanner
-            postId={id}
-            body={displayBody(post.body)}
-            media={mediaWithUrls.map((m) => ({ id: m.id, mimeType: m.mimeType, url: m.url }))}
-          />
+          <NeedsFacebookBanner postId={id} body={displayBody(post.body)} />
         )}
 
         <PostEditor

@@ -7,7 +7,7 @@ import { Check, Loader2 } from "lucide-react";
  * "Did it post to Facebook?" — the one step that can't be automated away:
  * the share sheet only confirms the user picked Facebook, not that they
  * completed posting inside it. Used both right after the compose page's
- * share hand-off and from NeedsFacebookBanner's retry path.
+ * share hand-off and from ShareToFacebookButton on every post's own page.
  */
 export function FacebookConfirmPrompt({
   postId,

@@ -5,7 +5,7 @@ import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { DeleteButton, SchedulePanelWithRefresh } from "./PostInteractions";
 import { ActivityList } from "./ActivityList";
 import { ScheduledBanner } from "./ScheduledBanner";
-import { NeedsFacebookBanner } from "./NeedsFacebookBanner";
+import { ShareToFacebookButton } from "./ShareToFacebookButton";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
@@ -214,6 +214,8 @@ export default async function PostDetailPage({
       />
 
       <div className="mx-auto mt-3 w-full max-w-2xl space-y-3">
+        <ShareToFacebookButton postId={id} body={displayBody(post.body)} />
+
         {post.parentPost && (
           <a
             href={`/admin/posts/${post.parentPost.id}`}
@@ -247,10 +249,6 @@ export default async function PostDetailPage({
           }))}
           manualSlot={manualSlot}
         />
-
-        {post.fbShareStartedAt && (
-          <NeedsFacebookBanner postId={id} body={displayBody(post.body)} />
-        )}
 
         <PostEditor
           postId={id}

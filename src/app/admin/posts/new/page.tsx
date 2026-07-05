@@ -116,7 +116,7 @@ export default function NewPostPage() {
     // that can only happen after the video is uploaded, which conflicts
     // directly with sharing instantly below (which depends on nothing
     // being awaited yet). So for that one case, skip the instant hand-off
-    // entirely and let NeedsFacebookBanner do the (correctly muxed) share
+    // entirely and let ShareToFacebookButton do the (correctly muxed) share
     // once the upload is ready, instead of instantly sharing a silent video.
     const hasMusicalVideo =
       !!selectedAudioTrackId && files.some((f) => f.file.type.startsWith("video/"));

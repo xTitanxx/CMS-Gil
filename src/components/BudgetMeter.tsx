@@ -38,7 +38,7 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
 
   if (budget.role === "admin") {
     return (
-      <div className="mx-auto flex items-center justify-center gap-2 self-center rounded-full border border-black/5 bg-white/70 px-3 py-1 text-[11px] text-gray-600 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/55">
+      <div className="mx-auto flex items-center justify-center gap-2 self-center rounded-full border border-black/5 bg-white/90 px-3 py-1 text-[11px] text-gray-600 shadow-sm">
         <span>API spend ({budget.monthLabel})</span>
         <span className="font-mono font-semibold text-gray-800">
           ${budget.monthSpentUsd.toFixed(2)}
@@ -58,7 +58,7 @@ export function BudgetMeter({ refreshKey = 0 }: { refreshKey?: number }) {
   const warn = !danger && pct >= 75;
 
   return (
-    <div className="rounded-full border border-black/5 bg-white/70 px-3 py-1.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/55">
+    <div className="rounded-full border border-black/5 bg-white/90 px-3 py-1.5 shadow-sm">
       <div className="flex items-center justify-between text-[11px] font-medium text-gray-500">
         <span className="uppercase tracking-wide">Monthly allowance</span>
         <span className={danger ? "text-red-600" : warn ? "text-amber-600" : "text-gray-500"}>

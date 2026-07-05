@@ -8,6 +8,7 @@ import { ArrowLeft, X, ImagePlus, Music } from "lucide-react";
 import Link from "next/link";
 import { uploadPostMedia } from "@/lib/client/uploadPostMedia";
 import { AudioPicker } from "@/app/admin/_shared/AudioPicker";
+import { copyTextToClipboard } from "@/lib/client/shareToFacebook";
 
 const ACCEPTED_MIME_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
@@ -92,6 +93,9 @@ export default function NewPostPage() {
 
     setSubmitting(true);
     setError(null);
+    // Clipboard writes are only reliable during the original user tap. Do it
+    // before save/upload awaits so the caption is ready when Facebook opens.
+    void copyTextToClipboard(body.trim());
 
     try {
       // Phase 1: Create the post — use current time (no date picker)

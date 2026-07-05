@@ -74,8 +74,10 @@ export async function POST(
   });
 
   // A manual FACEBOOK decision (posted or skipped) always resolves the
-  // "needs Facebook" state set by the compose page's share hand-off — clear
-  // it so NeedsFacebookBanner stops asking.
+  // "needs Facebook" state set by the compose page's share hand-off. Kept
+  // for bookkeeping/future use even though no UI currently branches on it —
+  // ShareToFacebookButton is now a permanent, always-visible action on
+  // every post page rather than one gated on this field.
   if (platform === "FACEBOOK") {
     await prisma.post.update({
       where: { id: post.id },

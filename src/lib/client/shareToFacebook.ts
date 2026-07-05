@@ -81,24 +81,35 @@ export type ShareResult = "shared" | "opened" | "blocked";
  * text even for apps with official SDK access ("apps may not pre-fill the
  * share sheet's initialText field with content that wasn't entered by the
  * user"). So: on mobile with file-capable Web Share, the OS share sheet
- * hands the media straight into Facebook's app — that part reliably works,
- * regardless of whether the caller already awaited something (e.g. fetching
- * media from storage) before calling this. Whether Facebook's app also
+ * hands the media straight into Facebook's app. Whether Facebook's app also
  * keeps the caption is Facebook's call, not something we can force; the
  * caption is copied to the clipboard separately as a fallback either way.
- * Everywhere else — desktop, no share target, or a file too large to share
- * reliably — the fallback downloads the media and opens facebook.com so the
- * user can attach it themselves.
+ * Everywhere else — desktop, no share target, a file too large to share
+ * reliably, or `allowNativeShare: false` — the fallback downloads the media
+ * and opens facebook.com so the user can attach it themselves.
+ *
+ * `allowNativeShare` defaults to true but MUST be false for any caller that
+ * awaited a network request (fetching media from storage, remuxing it
+ * server-side, etc.) before calling this. This isn't a guess: confirmed on
+ * real devices — `navigator.share()` doesn't throw in that case, it just
+ * silently no-ops (or hands Facebook an empty share intent, which Facebook
+ * then opens as a blank draft) once the delay has cost the browser's
+ * "this was a genuine tap" allowance. Only a caller with files already in
+ * memory at the moment of the tap (nothing awaited yet, e.g. the compose
+ * page's instant share) can rely on the native path.
  */
 export async function shareFilesToFacebook(opts: {
   body: string;
   files: File[];
+  allowNativeShare?: boolean;
 }): Promise<ShareResult> {
   const nav = navigator as NavWithShare;
+  const allowNativeShare = opts.allowNativeShare ?? true;
   const files = opts.files.map(normalizeVideoForSharing);
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
 
   if (
+    allowNativeShare &&
     files.length > 0 &&
     isMobileUserAgent() &&
     nav.share &&

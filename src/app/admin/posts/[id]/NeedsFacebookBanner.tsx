@@ -70,8 +70,11 @@ export function NeedsFacebookBanner({
         {confirming ? (
           <FacebookConfirmPrompt
             postId={postId}
-            onResolved={() => {
-              setConfirming(false);
+            onResolved={(confirmed) => {
+              if (!confirmed) {
+                setConfirming(false);
+                return;
+              }
               router.refresh();
             }}
           />

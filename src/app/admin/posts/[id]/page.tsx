@@ -5,6 +5,7 @@ import { getMediaUrl, getSignedDownloadUrl } from "@/lib/storage";
 import { DeleteButton, SchedulePanelWithRefresh } from "./PostInteractions";
 import { ActivityList } from "./ActivityList";
 import { ScheduledBanner } from "./ScheduledBanner";
+import { NeedsFacebookBanner } from "./NeedsFacebookBanner";
 import { buildSlotDate } from "@/lib/planner/fixed-slots";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/slot-constants";
 import { CopyIdChip } from "@/app/admin/trash/CopyIdChip";
@@ -246,6 +247,14 @@ export default async function PostDetailPage({
           }))}
           manualSlot={manualSlot}
         />
+
+        {post.fbShareStartedAt && (
+          <NeedsFacebookBanner
+            postId={id}
+            body={displayBody(post.body)}
+            media={mediaWithUrls.map((m) => ({ id: m.id, mimeType: m.mimeType, url: m.url }))}
+          />
+        )}
 
         <PostEditor
           postId={id}

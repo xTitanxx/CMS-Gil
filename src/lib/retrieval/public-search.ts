@@ -1,16 +1,24 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeForSearch } from "@/lib/search-normalize";
-import { buildThumbUrl } from "@/lib/planner/thumbnail";
 import { embedQuery, toPgVectorLiteral } from "./embed";
 
 export interface PublicSearchHit {
   id: string;
   body: string;
-  originalDate: Date;
+  originalDate: string; // ISO
   tags: string[];
-  thumbUrl: string | null;
-  isVideo: boolean;
+  likeCount: number;
+  media: {
+    id: string;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    altText: string | null;
+    hasAudio: boolean | null;
+    audioTrackId?: string | null;
+    url: string | null;
+  }[];
 }
 
 const RRF_K = 60;
@@ -78,9 +86,19 @@ const POST_SELECT = {
   body: true,
   originalDate: true,
   tags: true,
+  likeCount: true,
   media: {
     orderBy: { id: "asc" },
-    select: { storageKey: true, mimeType: true },
+    select: {
+      id: true,
+      storageKey: true,
+      mimeType: true,
+      width: true,
+      height: true,
+      altText: true,
+      hasAudio: true,
+      audioTrackId: true,
+    },
   },
 } as const;
 
@@ -89,17 +107,34 @@ function rowToHit(r: {
   body: string;
   originalDate: Date;
   tags: string[];
-  media: { storageKey: string; mimeType: string }[];
+  likeCount: number;
+  media: {
+    id: string;
+    storageKey: string;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    altText: string | null;
+    hasAudio: boolean | null;
+    audioTrackId: string | null;
+  }[];
 }): PublicSearchHit {
-  const thumbSource =
-    r.media.find((m) => m.mimeType.startsWith("image/")) ?? r.media[0];
   return {
     id: r.id,
     body: r.body,
-    originalDate: r.originalDate,
+    originalDate: r.originalDate.toISOString(),
     tags: r.tags,
-    thumbUrl: buildThumbUrl(thumbSource?.storageKey, thumbSource?.mimeType),
-    isVideo: r.media.some((m) => m.mimeType.startsWith("video/")),
+    likeCount: r.likeCount,
+    media: r.media.map((m) => ({
+      id: m.id,
+      mimeType: m.mimeType,
+      width: m.width,
+      height: m.height,
+      altText: m.altText,
+      hasAudio: m.hasAudio,
+      audioTrackId: m.audioTrackId,
+      url: m.storageKey,
+    })),
   };
 }
 

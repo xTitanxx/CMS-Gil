@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { MoreHorizontal, BadgeCheck } from "lucide-react";
 import { LazyVideo } from "@/components/LazyVideo";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
@@ -40,6 +41,7 @@ function formatDate(iso: string): string {
 
 export function PostCard({
   post,
+  href,
   liked,
   bookmarked,
   signedIn,
@@ -55,6 +57,8 @@ export function PostCard({
   initialExpanded = false,
 }: {
   post: PostCardData;
+  /** When set, the card content area (header + body + media) becomes a link to this URL. */
+  href?: string;
   liked: boolean;
   bookmarked: boolean;
   signedIn: boolean;
@@ -69,7 +73,9 @@ export function PostCard({
   const isLong = body.length > CAPTION_CHAR_LIMIT;
   const shown = !expanded && isLong ? body.slice(0, CAPTION_CHAR_LIMIT).trimEnd() + "…" : body;
 
-  const handleSeeMore = () => {
+  const handleSeeMore = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     // Lock scroll position before expansion so the card growing taller doesn't
     // let the browser's scroll-anchor heuristic jump the viewport.
     const y = window.scrollY;
@@ -81,8 +87,8 @@ export function PostCard({
     });
   };
 
-  return (
-    <article className="overflow-hidden rounded-lg bg-white shadow-sm">
+  const content = (
+    <>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gray-200">
@@ -100,6 +106,7 @@ export function PostCard({
           type="button"
           className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
           aria-label="More"
+          onClick={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="h-5 w-5" />
         </button>
@@ -131,7 +138,7 @@ export function PostCard({
         <div className="flex flex-col">
           {post.media.map((m) =>
             m.url && m.mimeType.startsWith("video/") ? (
-              <div key={m.id} className="relative">
+              <div key={m.id} className="relative" onClick={(e) => e.stopPropagation()}>
                 <LazyVideo
                   src={m.url}
                   controls
@@ -163,7 +170,18 @@ export function PostCard({
           )}
         </div>
       )}
+    </>
+  );
 
+  return (
+    <article className="overflow-hidden rounded-lg bg-white shadow-sm">
+      {href ? (
+        <Link href={href} className="block">
+          {content}
+        </Link>
+      ) : (
+        content
+      )}
       <EngagementBar
         postId={post.id}
         initialLikeCount={likeCount}

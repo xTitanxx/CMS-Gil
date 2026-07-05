@@ -19,7 +19,6 @@ export async function SubscriberHeader() {
           </span>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <HeaderNav />
-            <Link href="/search" className="text-blue-600 hover:underline">Search</Link>
             <form
               action={async () => {
                 "use server";
@@ -63,7 +62,6 @@ export async function SubscriberHeader() {
               Admin
             </Link>
             <HeaderNav />
-            <Link href="/search" className="text-blue-600 hover:underline">Search</Link>
             <form
               action={async () => {
                 "use server";

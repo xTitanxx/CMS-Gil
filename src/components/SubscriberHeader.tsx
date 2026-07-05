@@ -83,17 +83,22 @@ export async function SubscriberHeader() {
       className="border-b border-gray-200 bg-white"
       style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-x-3 gap-y-1 px-4 py-2 text-sm">
-        <Link href="/welcome?next=/" className="text-gray-600 hover:text-gray-900 hover:underline">
-          Sign in
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 py-2 text-sm">
+        <Link href="/search" className="text-gray-600 hover:text-gray-900 hover:underline">
+          Search
         </Link>
-        <Link
-          href="/welcome?next=/chat"
-          className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-        >
-          <Sparkles className="h-3 w-3" />
-          Talk to the Archivist
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Link href="/welcome?next=/" className="text-gray-600 hover:text-gray-900 hover:underline">
+            Sign in
+          </Link>
+          <Link
+            href="/welcome?next=/chat"
+            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+          >
+            <Sparkles className="h-3 w-3" />
+            Talk to the Archivist
+          </Link>
+        </div>
       </div>
     </div>
   );

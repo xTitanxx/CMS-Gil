@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Sparkles, Bookmark } from "lucide-react";
+import { Home, Sparkles, Bookmark, Search } from "lucide-react";
 
 // Path-aware nav for the public header. Highlights the current page and
 // drops links that would just navigate to where the user already is — so the
@@ -27,6 +27,7 @@ const ITEMS: NavItem[] = [
   { href: "/", label: "Feed", icon: Home },
   { href: "/chat", label: "Talk to the Archivist", icon: Sparkles, accent: true },
   { href: "/bookmarks", label: "Bookmarks", icon: Bookmark },
+  { href: "/search", label: "Search", icon: Search },
 ];
 
 export function HeaderNav() {

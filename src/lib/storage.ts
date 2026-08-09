@@ -83,8 +83,31 @@ export async function getSignedDownloadUrl(url: string): Promise<string> {
   return url;
 }
 
-export function getMediaUrl(media: { storageKey: string }): Promise<string> {
-  return getSignedDownloadUrl(media.storageKey);
+export function mediaContentUrl(mediaId: string): string {
+  return `/api/media/${encodeURIComponent(mediaId)}/content`;
+}
+
+export function mediaPosterUrl(mediaId: string): string {
+  return `/api/media/${encodeURIComponent(mediaId)}/poster`;
+}
+
+export function getMediaUrl(media: { id?: string; storageKey: string }): Promise<string> {
+  return Promise.resolve(
+    media.id ? mediaContentUrl(media.id) : media.storageKey,
+  );
+}
+
+export function getMediaThumbnailUrl(media: {
+  id?: string;
+  storageKey: string;
+  mimeType?: string;
+}): Promise<string> {
+  if (!media.id) return getThumbnailUrl(media.storageKey, media.mimeType);
+  return Promise.resolve(
+    media.mimeType?.startsWith("video/")
+      ? mediaPosterUrl(media.id)
+      : mediaContentUrl(media.id),
+  );
 }
 
 // Strip filename bytes that survive URLSearchParams/JSON encoding but trip up

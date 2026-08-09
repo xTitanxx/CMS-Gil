@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getThumbnailUrl } from "@/lib/storage";
+import { getMediaThumbnailUrl } from "@/lib/storage";
 import { formatScheduledTime, formatSlotHour } from "@/lib/planner/format-slot";
 import { FIXED_SLOT_HOURS } from "@/lib/planner/fixed-slots";
 
@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
     /** PublishRecord ids — only populated for PENDING entries so the day
      *  panel can offer per-entry cancellation. */
     publishRecordIds?: string[];
+    _mediaId?: string;
     _storageKey?: string;
     _mimeType?: string;
   };
@@ -109,6 +110,7 @@ export async function GET(req: NextRequest) {
         thumbUrl: null,
         body: r.post.body,
         publishRecordIds: status === "PENDING" ? [r.id] : undefined,
+        _mediaId: media?.id,
         _storageKey: media?.storageKey,
         _mimeType: media?.mimeType,
       });
@@ -127,6 +129,7 @@ export async function GET(req: NextRequest) {
       platforms: [],
       thumbUrl: null,
       body: p.body,
+      _mediaId: media?.id,
       _storageKey: media?.storageKey,
       _mimeType: media?.mimeType,
     });
@@ -168,6 +171,7 @@ export async function GET(req: NextRequest) {
         platforms: [],
         thumbUrl: null,
         body: slot.post.body,
+        _mediaId: media?.id,
         _storageKey: media?.storageKey,
         _mimeType: media?.mimeType,
       });
@@ -176,8 +180,12 @@ export async function GET(req: NextRequest) {
 
   const entries = await Promise.all(
     Array.from(groups.values()).map(async (g) => {
-      const thumbUrl = g._storageKey
-        ? await getThumbnailUrl(g._storageKey, g._mimeType).catch(() => null)
+      const thumbUrl = g._mediaId && g._storageKey
+        ? await getMediaThumbnailUrl({
+            id: g._mediaId,
+            storageKey: g._storageKey,
+            mimeType: g._mimeType,
+          }).catch(() => null)
         : null;
       return {
         postId: g.postId,

@@ -60,11 +60,14 @@ export function LazyVideo({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
-  const posterSrc = poster ?? posterUrlFor(src);
+  const isSameOriginMedia = /^\/api\/media\/[^/?]+\/content(?:\?.*)?$/.test(src);
+  const posterSrc = poster ?? (isSameOriginMedia ? null : posterUrlFor(src));
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el || typeof IntersectionObserver === "undefined") {
+      // Fallback for browsers/tests without IntersectionObserver.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActive(true);
       return;
     }
@@ -106,11 +109,11 @@ export function LazyVideo({
 
   return (
     <div ref={wrapperRef} className={wrapperClassName} style={wrapperStyle}>
-      {active || posterFailed ? (
+      {active ? (
         <video
           ref={videoRef}
-          src={posterFailed ? `${src}#t=0.001` : src}
-          poster={posterFailed ? undefined : posterSrc}
+          src={posterFailed || !posterSrc ? `${src}#t=0.001` : src}
+          poster={posterFailed ? undefined : posterSrc ?? undefined}
           controls={controls}
           autoPlay={autoPlay}
           muted={muted}
@@ -124,7 +127,7 @@ export function LazyVideo({
           // gets "stuck" whenever the user's thumb lands on a video tile.
           style={{ touchAction: "pan-y" }}
         />
-      ) : (
+      ) : posterSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={posterSrc}
@@ -134,7 +137,7 @@ export function LazyVideo({
           onError={() => setPosterFailed(true)}
           className={className}
         />
-      )}
+      ) : null}
     </div>
   );
 }

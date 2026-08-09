@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { mediaKey, audioKey, getThumbnailUrl, getSignedDownloadUrl } from "./storage";
+import {
+  mediaKey,
+  audioKey,
+  getMediaThumbnailUrl,
+  getMediaUrl,
+  getThumbnailUrl,
+  getSignedDownloadUrl,
+} from "./storage";
 
 describe("mediaKey", () => {
   it("generates a path with the user id and filename", () => {
@@ -49,6 +56,34 @@ describe("getSignedDownloadUrl", () => {
     const url = "https://pub-abc.r2.dev/media/user1/photo.jpg";
     const result = await getSignedDownloadUrl(url);
     expect(result).toBe(url);
+  });
+});
+
+describe("browser-facing media URLs", () => {
+  it("routes stored media through the same origin when an id is available", async () => {
+    await expect(
+      getMediaUrl({ id: "media 1", storageKey: "https://pub-abc.r2.dev/photo.jpg" }),
+    ).resolves.toBe("/api/media/media%201/content");
+  });
+
+  it("uses the same-origin poster route for video thumbnails", async () => {
+    await expect(
+      getMediaThumbnailUrl({
+        id: "video1",
+        storageKey: "https://pub-abc.r2.dev/video.mp4",
+        mimeType: "video/mp4",
+      }),
+    ).resolves.toBe("/api/media/video1/poster");
+  });
+
+  it("uses the same-origin content route for image thumbnails", async () => {
+    await expect(
+      getMediaThumbnailUrl({
+        id: "image1",
+        storageKey: "https://pub-abc.r2.dev/image.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).resolves.toBe("/api/media/image1/content");
   });
 });
 

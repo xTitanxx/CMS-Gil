@@ -1,6 +1,6 @@
 // src/lib/public-posts.ts
 import { prisma } from "@/lib/prisma";
-import { getMediaUrl, getThumbnailUrl } from "@/lib/storage";
+import { getMediaThumbnailUrl } from "@/lib/storage";
 
 export interface PublicPostMedia {
   id: string;
@@ -310,8 +310,7 @@ export async function pickOgImage(
     firstImage ?? media.find((m) => m.mimeType.startsWith("video/"));
   if (!candidate) return null;
 
-  const baseUrl = await getMediaUrl(candidate);
-  const url = await getThumbnailUrl(baseUrl, candidate.mimeType);
+  const url = await getMediaThumbnailUrl(candidate);
   return {
     url,
     width: candidate.width ?? undefined,

@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { posterUrlFor } from "@/lib/poster-url";
 
 // Derive a poster URL from a video URL by swapping the extension to `.poster.jpg`.
 // Mirrors the server-side helper in `src/lib/storage.ts` so callers without an
 // explicit poster field still get a sensible placeholder.
-export function posterUrlFor(videoUrl: string): string {
-  return videoUrl.replace(/\.[^/.]+$/, ".poster.jpg");
-}
-
 type LazyVideoProps = {
   src: string;
   poster?: string | null;

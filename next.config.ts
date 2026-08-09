@@ -32,6 +32,9 @@ const FFMPEG_ROUTES = [
 
 const nextConfig: NextConfig = {
   images: {
+    // Next.js 16 only accepts quality 75 unless custom values are explicitly
+    // allowlisted. The admin feed requests 55 for lighter mobile thumbnails.
+    qualities: [55, 75],
     remotePatterns: [
       // Allow signed S3/R2 URLs
       { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },

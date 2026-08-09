@@ -106,11 +106,11 @@ export function LazyVideo({
 
   return (
     <div ref={wrapperRef} className={wrapperClassName} style={wrapperStyle}>
-      {active ? (
+      {active || posterFailed ? (
         <video
           ref={videoRef}
-          src={src}
-          poster={posterSrc}
+          src={posterFailed ? `${src}#t=0.001` : src}
+          poster={posterFailed ? undefined : posterSrc}
           controls={controls}
           autoPlay={autoPlay}
           muted={muted}
@@ -124,8 +124,6 @@ export function LazyVideo({
           // gets "stuck" whenever the user's thumb lands on a video tile.
           style={{ touchAction: "pan-y" }}
         />
-      ) : posterFailed ? (
-        <div className={className} aria-hidden />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img

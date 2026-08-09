@@ -184,7 +184,16 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
 
       <Link href={href} className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 md:h-28 md:w-28">
-          {post.thumbUrl ? (
+          {post.isVideo && post.videoUrl ? (
+            <video
+              src={`${post.videoUrl}#t=0.001`}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+              aria-label="Video preview"
+            />
+          ) : post.thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={post.thumbUrl}

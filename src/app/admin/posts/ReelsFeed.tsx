@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Volume2, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
-import { posterUrlFor } from "@/components/LazyVideo";
+import { posterUrlFor } from "@/lib/poster-url";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
 import { postAudioState } from "@/lib/post-audio-state";
 

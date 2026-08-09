@@ -9,7 +9,7 @@ import { Plus, Pencil, Trash2, Volume2, VolumeX } from "lucide-react";
 import { ViewToggle } from "./ViewToggle";
 import { KindTabs } from "./KindTabs";
 import { SubKindTabs, type SubKindCounts } from "./SubKindTabs";
-import { posterUrlFor } from "@/components/LazyVideo";
+import { posterUrlFor } from "@/lib/poster-url";
 import { AudioStateBadge } from "@/components/AudioStateBadge";
 import { postAudioState } from "@/lib/post-audio-state";
 import { useAsync } from "@/hooks/useAsync";

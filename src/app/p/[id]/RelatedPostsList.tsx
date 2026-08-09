@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { posterUrlFor } from "@/components/LazyVideo";
+import { posterUrlFor } from "@/lib/poster-url";
 
 export interface RelatedPostSummary {
   id: string;

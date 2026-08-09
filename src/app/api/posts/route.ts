@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getThumbnailUrl, getSignedDownloadUrl } from "@/lib/storage";
+import { getMediaThumbnailUrl, getMediaUrl } from "@/lib/storage";
 import { normalizeForSearch } from "@/lib/search-normalize";
 import { postAudioState } from "@/lib/post-audio-state";
 import { refreshReadiness } from "@/lib/readiness-service";
@@ -74,9 +74,7 @@ async function decoratePosts(posts: PostWithIncludes[]) {
     posts.map(async (post) => {
       const firstMedia = post.media[0];
       const thumbUrl = firstMedia
-        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(
-            () => null,
-          )
+        ? await getMediaThumbnailUrl(firstMedia).catch(() => null)
         : null;
       const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
       const videoMedia = post.media.filter((m) =>
@@ -88,7 +86,7 @@ async function decoratePosts(posts: PostWithIncludes[]) {
       // (will be muxed at publish time) from silent-bare (will publish muted).
       const audioState = postAudioState(post.media);
       const videoUrl = isVideo && firstMedia
-        ? await getSignedDownloadUrl(firstMedia.storageKey).catch(() => null)
+        ? await getMediaUrl(firstMedia).catch(() => null)
         : null;
       return { ...post, thumbUrl, videoUrl, isVideo, isSilent, audioState };
     }),

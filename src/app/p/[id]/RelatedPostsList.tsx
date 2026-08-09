@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { posterUrlFor } from "@/lib/poster-url";
 
 export interface RelatedPostSummary {
   id: string;
@@ -26,7 +25,6 @@ export function RelatedPostsList({ posts }: { posts: RelatedPostSummary[] }) {
       <h2 className="mb-2 px-1 text-sm font-semibold text-gray-700">Related posts</h2>
       <ul className="flex flex-col gap-2">
         {posts.map((p) => {
-          const stillSrc = p.thumbUrl && p.thumbIsVideo ? posterUrlFor(p.thumbUrl) : p.thumbUrl;
           return (
             <li key={p.id}>
               <Link
@@ -34,10 +32,19 @@ export function RelatedPostsList({ posts }: { posts: RelatedPostSummary[] }) {
                 className="flex items-start gap-3 rounded-lg bg-white p-3 shadow-sm transition-colors hover:bg-gray-50"
               >
                 <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
-                  {stillSrc ? (
+                  {p.thumbUrl && p.thumbIsVideo ? (
+                    <video
+                      src={`${p.thumbUrl}#t=0.001`}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="h-full w-full object-cover"
+                      aria-label={p.thumbAlt ?? "Video preview"}
+                    />
+                  ) : p.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={stillSrc}
+                      src={p.thumbUrl}
                       alt={p.thumbAlt ?? ""}
                       className="h-full w-full object-cover"
                       loading="lazy"
@@ -48,7 +55,7 @@ export function RelatedPostsList({ posts }: { posts: RelatedPostSummary[] }) {
                       —
                     </div>
                   )}
-                  {p.thumbIsVideo && stillSrc && (
+                  {p.thumbIsVideo && p.thumbUrl && (
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
                       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-md">
                         <Play className="h-4 w-4 fill-current" />

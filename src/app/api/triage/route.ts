@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getThumbnailUrl, getSignedDownloadUrl, getMediaUrl } from "@/lib/storage";
+import { getMediaThumbnailUrl, getMediaUrl } from "@/lib/storage";
 import {
   buildCursorClause,
   buildPostsQuery,
@@ -39,20 +39,20 @@ async function decoratePosts(posts: PostWithIncludes[]) {
     posts.map(async (post) => {
       const firstMedia = post.media[0];
       const thumbUrl = firstMedia
-        ? await getThumbnailUrl(firstMedia.storageKey, firstMedia.mimeType).catch(() => null)
+        ? await getMediaThumbnailUrl(firstMedia).catch(() => null)
         : null;
       const isVideo = firstMedia?.mimeType?.startsWith("video") ?? false;
       const videoMedia = post.media.filter((m) => m.mimeType.startsWith("video/"));
       const isSilent =
         videoMedia.length > 0 && videoMedia.every((m) => m.hasAudio === false);
       const videoUrl = isVideo && firstMedia
-        ? await getSignedDownloadUrl(firstMedia.storageKey).catch(() => null)
+        ? await getMediaUrl(firstMedia).catch(() => null)
         : null;
       const mediaWithUrls = await Promise.all(
         post.media.map(async (m) => ({
           ...m,
           url: await getMediaUrl(m).catch(() => null),
-          thumbnailUrl: await getThumbnailUrl(m.storageKey, m.mimeType).catch(() => null),
+          thumbnailUrl: await getMediaThumbnailUrl(m).catch(() => null),
         })),
       );
       return { ...post, media: mediaWithUrls, thumbUrl, videoUrl, isVideo, isSilent };

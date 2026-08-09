@@ -4,8 +4,8 @@
 //   1) Make repeat visits *fast*. The PWA can't keep a warm tab the way a
 //      browser does, so without caching every cold launch repays the full
 //      cost of downloading the JS bundle and waiting for an RSC roundtrip.
-//      We cache immutable static chunks aggressively, and serve a stale
-//      navigation HTML response while revalidating in the background.
+//      We cache immutable static chunks aggressively, and use cached
+//      navigation HTML only as a slow-network/offline fallback.
 //   2) Surface push notifications. (Previous behavior, unchanged.)
 //
 // Cache strategy:
@@ -20,14 +20,12 @@
 //     reload before a fix actually shows up, which looks indistinguishable
 //     from the fix not having worked at all.
 //   - Every other same-origin GET navigation (the public reader-facing
-//     pages) → stale-while-revalidate with a short network race so online
-//     users always see fresh content within ~1.5s but never wait on a cold
-//     lambda before *something* paints. Failed fetches fall back to the
-//     cached copy.
+//     pages) → network-first with a short timeout. Online users see current
+//     HTML; slow/offline visits fall back to the cached copy.
 //   - Everything else (API, cross-origin) → straight network. We never
 //     cache mutations or auth-sensitive JSON.
 
-const VERSION = "v3";
+const VERSION = "v4";
 const STATIC_CACHE = `static-${VERSION}`;
 const NAV_CACHE = `nav-${VERSION}`;
 
@@ -76,9 +74,8 @@ function isNavigationRequest(request) {
   return false;
 }
 
-async function staleWhileRevalidate(request, cacheName) {
+async function networkFirstWithFallback(request, cacheName, timeoutMs = 1500) {
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
 
   const networkPromise = (async () => {
     try {
@@ -93,14 +90,20 @@ async function staleWhileRevalidate(request, cacheName) {
     }
   })();
 
-  if (cached) {
-    // Kick off revalidation but don't wait for it.
-    networkPromise.catch(() => {});
-    return cached;
-  }
-  // No cache hit — we have to wait on the network.
-  const res = await networkPromise;
-  if (res) return res;
+  let timeoutId;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), timeoutMs);
+  });
+  const raced = await Promise.race([networkPromise, timeoutPromise]);
+  clearTimeout(timeoutId);
+  if (raced) return raced;
+
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  // No cached fallback: allow the already-running network request to finish.
+  const eventual = await networkPromise;
+  if (eventual) return eventual;
   return new Response("Offline", { status: 503, statusText: "Offline" });
 }
 
@@ -151,7 +154,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isNavigationRequest(request)) {
-    event.respondWith(staleWhileRevalidate(request, NAV_CACHE));
+    event.respondWith(networkFirstWithFallback(request, NAV_CACHE));
     return;
   }
 });

@@ -24,6 +24,8 @@ describe("proxy decide()", () => {
       "/api/auth/callback/subscriber-credentials",
       "/api/public/feed",
       "/api/public/stories",
+      "/api/media/media123/content",
+      "/api/media/media123/poster",
       "/api/cron/publish",
       "/api/cron/readiness",
       "/api/cron/push-reminders",
@@ -149,6 +151,21 @@ describe("proxy decide()", () => {
         check("admin", p, "allow");
       });
     }
+  });
+
+  describe("public media proxy boundary", () => {
+    it("keeps adjacent media mutation and diagnostic routes protected", () => {
+      for (const path of [
+        "/api/media/abc",
+        "/api/media/abc/download",
+        "/api/media/abc/probe-audio",
+        "/api/media/abc/replace",
+      ]) {
+        check(undefined, path, "unauth-api");
+        check("subscriber", path, "forbid-api");
+        check("admin", path, "allow");
+      }
+    });
   });
 
   describe("admin pages", () => {

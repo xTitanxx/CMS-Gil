@@ -36,6 +36,12 @@ const ALWAYS_PUBLIC_PREFIXES = [
   "/api/internal",
 ];
 
+// Browser-facing media routes must be reachable from the public archive.
+// The route itself only serves Gil's public media without a session and still
+// performs owner checks for every other user's media. Keep this exact so the
+// admin-only download, replace and probe routes remain protected.
+const PUBLIC_MEDIA_RE = /^\/api\/media\/[^/]+\/(content|poster)$/;
+
 // Public archive — readable by anyone, including unauthenticated visitors.
 const PUBLIC_ARCHIVE_EXACT = new Set(["/"]);
 const PUBLIC_ARCHIVE_PREFIXES = ["/p/", "/s/"];
@@ -68,6 +74,7 @@ function matchesAnyPrefix(pathname: string, prefixes: readonly string[]): boolea
 
 export function isAlwaysPublic(pathname: string): boolean {
   if (ALWAYS_PUBLIC_EXACT.has(pathname)) return true;
+  if (PUBLIC_MEDIA_RE.test(pathname)) return true;
   return ALWAYS_PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );

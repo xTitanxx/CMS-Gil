@@ -884,11 +884,11 @@ function MediaHero({
       )}
       {isSilentVideo && !media.audioTrack && (
         <div
-          className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-gray-900/70 px-2.5 py-1 text-[10px] text-white backdrop-blur-sm"
-          title="No audio track"
+          className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md border border-white/50 bg-red-600 px-3 py-1.5 text-xs font-bold tracking-wide text-white shadow-lg"
+          title="NO AUDIO — this video has no audio track"
         >
-          <VolumeX className="h-3 w-3" />
-          <span>silent</span>
+          <VolumeX className="h-4 w-4" strokeWidth={2.5} />
+          <span>NO AUDIO</span>
         </div>
       )}
       {isVideo && media.audioTrack && (
@@ -969,8 +969,12 @@ function MediaTile({
         </div>
       )}
       {isSilentVideo && !media.audioTrack && (
-        <div className="absolute bottom-1 left-1 rounded-full bg-gray-900/70 p-0.5 backdrop-blur-sm">
-          <VolumeX className="h-3 w-3 text-white" />
+        <div
+          className="absolute bottom-1 left-1 inline-flex items-center gap-1 rounded-sm border border-white/50 bg-red-600 px-1 py-0.5 text-[8px] font-bold tracking-wide text-white shadow"
+          title="NO AUDIO — this video has no audio track"
+        >
+          <VolumeX className="h-2.5 w-2.5" strokeWidth={2.5} />
+          <span>NO AUDIO</span>
         </div>
       )}
       {isVideo && media.audioTrack && (

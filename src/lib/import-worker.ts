@@ -93,6 +93,49 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
           continue;
         }
 
+        // Stories and reels are also repeated in Facebook's generic posts
+        // export. Reconcile them to an existing row only when an exact media
+        // URI and a nearby timestamp identify one unambiguous candidate.
+        if (parsed.postType === "STORY" || parsed.postType === "REEL") {
+          const from = new Date(parsed.originalDate.getTime() - 24 * 60 * 60 * 1000);
+          const to = new Date(parsed.originalDate.getTime() + 24 * 60 * 60 * 1000);
+          const candidates = await prisma.post.findMany({
+            where: {
+              userId,
+              originalDate: { gte: from, lte: to },
+              media: { some: { originalUri: { in: parsed.mediaUris } } },
+            },
+            select: { id: true, body: true },
+            take: 2,
+          });
+          if (candidates.length === 1) {
+            const candidate = candidates[0];
+            const body = parsed.body || candidate.body;
+            await prisma.post.update({
+              where: { id: candidate.id },
+              data: {
+                postType: parsed.postType,
+                originalDate: parsed.originalDate,
+                body,
+                bodyNormalized: normalizeForSearch(body),
+              },
+            });
+            imported++;
+            await prisma.importJob.update({
+              where: { id: jobId },
+              data: { importedPosts: imported, skippedPosts: skipped },
+            });
+            continue;
+          }
+          if (candidates.length > 1) {
+            errors.push(
+              `Ambiguous ${parsed.postType.toLowerCase()} ${parsed.sourceId}: multiple posts share its exact media URI`,
+            );
+            skipped++;
+            continue;
+          }
+        }
+
         const post = await prisma.post.create({
           data: {
             userId,
@@ -101,6 +144,7 @@ export async function runImportJob(opts: ImportOptions): Promise<void> {
             source: "FACEBOOK",
             sourceId: parsed.sourceId,
             originalDate: parsed.originalDate,
+            postType: parsed.postType ?? "POST",
             share: parsed.share ? (parsed.share as object) : undefined,
           },
         });

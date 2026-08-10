@@ -70,6 +70,7 @@ export interface ParsedPost {
   originalDate: Date;
   sourceId: string;
   mediaUris: string[];
+  postType?: "POST" | "REEL" | "STORY";
   share?: ParsedShare | null;
   // Priority for cross-file dedup. Higher wins when the same sourceId appears
   // in multiple exported files. your_posts_*.json (post.timestamp) is preferred
@@ -96,6 +97,7 @@ export function parseFacebookFile(raw: unknown): ParsedPost[] {
     if ("photos" in raw) return parseAlbumExport(raw as FBAlbum);
     if ("videos_v2" in raw) return parseVideosExport(raw as { videos_v2: FBVideoEntry[] });
     if ("archived_stories_v2" in raw) return parseStoriesExport(raw as { archived_stories_v2: FBPost[] });
+    if ("lasso_videos_v2" in raw) return parseReelsExport(raw as { lasso_videos_v2: FBPost[] });
   }
   return [];
 }
@@ -194,6 +196,7 @@ export function parseFacebookExport(raw: unknown): ParsedPost[] {
       originalDate: new Date(post.timestamp * 1000),
       sourceId,
       mediaUris,
+      postType: "POST",
       share,
       priority: PRIORITY_POSTS_FILE,
     });
@@ -225,6 +228,7 @@ export function parseAlbumExport(album: FBAlbum): ParsedPost[] {
       originalDate: new Date(photo.creation_timestamp * 1000),
       sourceId,
       mediaUris: [photo.uri],
+      postType: "POST",
       priority: PRIORITY_MEDIA_FILE,
     });
   }
@@ -268,6 +272,7 @@ export function parseVideosExport(raw: { videos_v2: FBVideoEntry[] }): ParsedPos
       originalDate: new Date(video.creation_timestamp * 1000),
       sourceId,
       mediaUris: [video.uri],
+      postType: "POST",
       priority: PRIORITY_MEDIA_FILE,
     });
   }
@@ -286,7 +291,21 @@ export function parseStoriesExport(raw: { archived_stories_v2: FBPost[] }): Pars
   return parsed.map((p) => ({
     ...p,
     sourceId: p.sourceId.replace(/^fb_/, "fb_story_"),
+    postType: "STORY",
     priority: PRIORITY_MEDIA_FILE,
+  }));
+}
+
+// Format 5: your_reels.json — {lasso_videos_v2: [...]}. Facebook also emits
+// these rows in the posts timeline export, so the distinct source prefix is
+// provenance only; the import worker reconciles by exact media URI before it
+// creates a row.
+export function parseReelsExport(raw: { lasso_videos_v2: FBPost[] }): ParsedPost[] {
+  if (!Array.isArray(raw.lasso_videos_v2)) return [];
+  return parseFacebookExport(raw.lasso_videos_v2).map((post) => ({
+    ...post,
+    sourceId: post.sourceId.replace(/^fb_/, "fb_reel_"),
+    postType: "REEL",
   }));
 }
 
@@ -399,7 +418,7 @@ export function dedupeParsedPosts(posts: ParsedPost[]): ParsedPost[] {
 }
 
 // Facebook exports use latin1-encoded UTF-8 strings in some versions
-function fixFBEncoding(str: string): string {
+export function fixFBEncoding(str: string): string {
   try {
     return decodeURIComponent(escape(str));
   } catch {

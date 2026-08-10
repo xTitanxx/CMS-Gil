@@ -3,10 +3,11 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
-export type PostKind = "posts" | "stories";
+export type PostKind = "posts" | "reels" | "stories";
 
 interface KindCounts {
   posts: number;
+  reels: number;
   stories: number;
 }
 
@@ -35,7 +36,7 @@ export function KindTabs({ current, counts }: { current: PostKind; counts?: Kind
       role="tablist"
       className="inline-flex w-fit items-center gap-0.5 rounded-full border border-gray-200 bg-gray-100/70 p-0.5"
     >
-      {(["posts", "stories"] as const).map((k) => {
+      {(["posts", "reels", "stories"] as const).map((k) => {
         const active = current === k;
         return (
           <button
@@ -50,7 +51,7 @@ export function KindTabs({ current, counts }: { current: PostKind; counts?: Kind
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
-            <span>{k === "posts" ? "Posts" : "Stories"}</span>
+            <span>{k === "posts" ? "Posts" : k === "reels" ? "Reels" : "Stories"}</span>
             {counts && (
               <span
                 className={`text-xs tabular-nums ${

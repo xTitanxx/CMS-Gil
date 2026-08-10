@@ -387,9 +387,12 @@ export function buildPostsQuery(
 
   if (filters.kind === "stories") {
     extraAnds.push({ postType: "STORY" });
+  } else if (filters.kind === "reels") {
+    extraAnds.push({ postType: "REEL" });
   } else {
-    // Default to excluding stories when kind is "posts" or unset
-    extraAnds.push({ postType: { not: "STORY" } });
+    // The posts feed should contain only timeline posts. Reels and stories
+    // have dedicated surfaces and would otherwise appear twice in the UI.
+    extraAnds.push({ postType: "POST" });
   }
 
   // Media-type sub-tabs: all (default), video-audio, video-silent, photo, text, quoted.

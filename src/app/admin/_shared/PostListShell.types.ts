@@ -14,7 +14,7 @@ import type {
   SortOption,
 } from "@/app/admin/posts/PostFilterUI";
 
-export type KindFilter = "posts" | "stories";
+export type KindFilter = "posts" | "reels" | "stories";
 
 export interface SharedFilterState {
   search: string;
@@ -37,7 +37,7 @@ export interface ListApiResponse<TPost> {
   posts: TPost[];
   total?: number;
   filteredTotal?: number;
-  kindCounts?: { posts: number; stories: number };
+  kindCounts?: { posts: number; reels: number; stories: number };
   subKindCounts?: Record<string, number>;
   subKindTotals?: Record<string, number>;
   nextCursor: string | null;

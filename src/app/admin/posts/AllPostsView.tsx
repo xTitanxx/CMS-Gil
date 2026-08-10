@@ -36,7 +36,7 @@ import {
   type EnrichedValue,
 } from "./PostFilterUI";
 
-type KindFilter = "posts" | "stories";
+type KindFilter = "posts" | "reels" | "stories";
 
 interface AllPostsViewProps {
   initialSearch?: string;
@@ -59,7 +59,8 @@ export function AllPostsView(_props: AllPostsViewProps) {
   void _props;
 
   const searchParams = useSearchParams();
-  const kind: KindFilter = (searchParams.get("kind") === "stories" ? "stories" : "posts");
+  const kindParam = searchParams.get("kind");
+  const kind: KindFilter = kindParam === "stories" ? "stories" : kindParam === "reels" ? "reels" : "posts";
 
   const [posts, setPosts] = useState<PostRowData[]>([]);
   const [filteredTotal, setFilteredTotal] = useState(0);
@@ -302,4 +303,3 @@ export function AllPostsView(_props: AllPostsViewProps) {
     />
   );
 }
-

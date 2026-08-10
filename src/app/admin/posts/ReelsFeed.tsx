@@ -91,7 +91,7 @@ export function ReelsFeed() {
         </div>
       </div>
 
-      <KindTabs current="posts" />
+      <KindTabs current="reels" />
 
       {loading && reels.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-xl bg-black/5">

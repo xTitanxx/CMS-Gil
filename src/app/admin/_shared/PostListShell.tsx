@@ -105,7 +105,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
 
   const searchParams = useSearchParams();
   const kindQS = searchParams.get("kind");
-  const kind: KindFilter = kindQS === "stories" ? "stories" : "posts";
+  const kind: KindFilter = kindQS === "stories" ? "stories" : kindQS === "reels" ? "reels" : "posts";
   const subKindQS = searchParams.get("subKind");
   const subKind = ["all", "video-audio", "video-silent", "photo", "text", "quoted"].includes(
     subKindQS ?? "",
@@ -122,7 +122,7 @@ export function PostListShell<TPost>(props: PostListShellProps<TPost>) {
   const [posts, setPosts] = useState<TPost[]>([]);
   const [total, setTotal] = useState(0);
   const [filteredTotal, setFilteredTotal] = useState(0);
-  const [kindCounts, setKindCounts] = useState<{ posts: number; stories: number } | null>(null);
+  const [kindCounts, setKindCounts] = useState<{ posts: number; reels: number; stories: number } | null>(null);
   const [subKindCounts, setSubKindCounts] = useState<SubKindCounts | null>(null);
   const [subKindTotals, setSubKindTotals] = useState<SubKindCounts | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);

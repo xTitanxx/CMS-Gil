@@ -729,10 +729,10 @@ function FeedCard({
             )}
             {post.audioState === "silent" && (
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700"
-                title="Silent video — no audio track"
+                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-100 px-2 py-0.5 text-[11px] font-bold tracking-wide text-red-800"
+                title="NO AUDIO — this video has no audio track"
               >
-                <VolumeX className="h-3 w-3" /> Silent
+                <VolumeX className="h-3.5 w-3.5" strokeWidth={2.5} /> NO AUDIO
               </span>
             )}
             {post.audioState === "music-added" && (

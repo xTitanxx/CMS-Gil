@@ -217,10 +217,11 @@ export function PostRow({ post, index, isSelected, href, onCheckboxClick, onDele
           )}
           {post.audioState === "silent" && (
             <div
-              className="absolute bottom-0.5 right-0.5 rounded-full bg-orange-500/85 p-0.5"
-              title="Silent video — no audio track. Attach music before publishing."
+              className="absolute bottom-1 left-1 inline-flex items-center gap-1 rounded-sm border border-white/50 bg-red-600 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white shadow"
+              title="NO AUDIO — this video has no audio track"
             >
-              <VolumeX className="h-3 w-3 text-white" />
+              <VolumeX className="h-3 w-3" strokeWidth={2.5} />
+              <span>NO AUDIO</span>
             </div>
           )}
           {post.audioState === "music-added" && (

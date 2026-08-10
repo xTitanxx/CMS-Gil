@@ -74,7 +74,7 @@ export async function getPublicFeedPage(cursor?: {
     ? {
         userId: gilUserId,
         readiness: "READY" as const,
-        NOT: { sourceId: { startsWith: "fb_story_" } },
+        postType: { not: "STORY" as const },
         OR: [
           { originalDate: { lt: cursor.date } },
           { originalDate: cursor.date, id: { lt: cursor.id } },
@@ -83,7 +83,7 @@ export async function getPublicFeedPage(cursor?: {
     : {
         userId: gilUserId,
         readiness: "READY" as const,
-        NOT: { sourceId: { startsWith: "fb_story_" } },
+        postType: { not: "STORY" as const },
       };
 
   const raw = await prisma.post.findMany({
@@ -247,13 +247,13 @@ export async function getPublicStoriesPage(cursor?: {
   const where = cursor
     ? {
         userId: gilUserId,
-        sourceId: { startsWith: "fb_story_" },
+        postType: "STORY" as const,
         OR: [
           { originalDate: { lt: cursor.date } },
           { originalDate: cursor.date, id: { lt: cursor.id } },
         ],
       }
-    : { userId: gilUserId, sourceId: { startsWith: "fb_story_" } };
+    : { userId: gilUserId, postType: "STORY" as const };
 
   const stories = await prisma.post.findMany({
     where,
@@ -333,7 +333,7 @@ export async function getPublicStory(id: string): Promise<PublicPost | null> {
     where: {
       id,
       userId: gilUserId,
-      sourceId: { startsWith: "fb_story_" },
+      postType: "STORY",
     },
     select: {
       id: true,

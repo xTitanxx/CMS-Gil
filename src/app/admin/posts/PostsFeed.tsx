@@ -117,8 +117,9 @@ function jumpCursorForDate(dateStr: string, sort: string): string | null {
 
 export function PostsFeed() {
   const searchParams = useSearchParams();
+  const kindParam = searchParams.get("kind");
   const kind: PostKind =
-    searchParams.get("kind") === "stories" ? "stories" : "posts";
+    kindParam === "stories" ? "stories" : kindParam === "reels" ? "reels" : "posts";
   const subKindQS = searchParams.get("subKind");
   const subKind = ["all", "video-audio", "video-silent", "photo", "text", "quoted"].includes(subKindQS ?? "")
     ? (subKindQS as string)

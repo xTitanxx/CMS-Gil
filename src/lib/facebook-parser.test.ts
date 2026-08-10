@@ -2,9 +2,37 @@ import { describe, it, expect } from "vitest";
 import {
   parseFacebookExport,
   parseAlbumExport,
+  parseFacebookFile,
   dedupeParsedPosts,
   type FBAlbum,
 } from "./facebook-parser";
+
+describe("story and reel classification", () => {
+  it("parses lasso_videos_v2 as a reel with a distinct provenance id", () => {
+    const [reel] = parseFacebookFile({
+      lasso_videos_v2: [{
+        timestamp: 1700000000,
+        data: [{ post: "A reel caption" }],
+        attachments: [{ data: [{ media: { uri: "your_facebook_activity/posts/media/videos/123.mp4" } }] }],
+      }],
+    });
+    expect(reel).toMatchObject({
+      postType: "REEL",
+      sourceId: "fb_reel_media_123",
+      mediaUris: ["your_facebook_activity/posts/media/videos/123.mp4"],
+    });
+  });
+
+  it("marks archived_stories_v2 rows as stories", () => {
+    const [story] = parseFacebookFile({
+      archived_stories_v2: [{
+        timestamp: 1700000000,
+        attachments: [{ data: [{ media: { uri: "your_facebook_activity/posts/media/photos/456.jpg" } }] }],
+      }],
+    });
+    expect(story).toMatchObject({ postType: "STORY", sourceId: "fb_story_media_456" });
+  });
+});
 
 describe("dedupeParsedPosts", () => {
   it("keeps posts-file entry when same photo also appears in album file", () => {

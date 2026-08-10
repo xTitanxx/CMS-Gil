@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
   // Where shape (search, filters, date range, etc.) but swapped kind+subKind,
   // so switching tabs feels consistent with what the user is currently
   // filtering for.
-  const subKindSpecs: Array<{ key: string; kind: "posts" | "stories"; sub: string }> = [
+  const subKindSpecs: Array<{ key: string; kind: "posts" | "reels" | "stories"; sub: string }> = [
     { key: "postsAll", kind: "posts", sub: "all" },
     { key: "postsVideoAudio", kind: "posts", sub: "video-audio" },
     { key: "postsVideoSilent", kind: "posts", sub: "video-silent" },
@@ -153,6 +153,9 @@ export async function GET(req: NextRequest) {
     { key: "storiesAll", kind: "stories", sub: "all" },
     { key: "storiesVideoAudio", kind: "stories", sub: "video-audio" },
     { key: "storiesVideoSilent", kind: "stories", sub: "video-silent" },
+    { key: "reelsAll", kind: "reels", sub: "all" },
+    { key: "reelsVideoAudio", kind: "reels", sub: "video-audio" },
+    { key: "reelsVideoSilent", kind: "reels", sub: "video-silent" },
   ];
 
   // Count WITHOUT subKind so "X posts total" reflects the full kind, not just
@@ -187,6 +190,7 @@ export async function GET(req: NextRequest) {
   ) as Record<string, number>;
   const postsCount = subKindCounts.postsAll ?? 0;
   const storiesCount = subKindCounts.storiesAll ?? 0;
+  const reelsCount = subKindCounts.reelsAll ?? 0;
 
   // When a filter is active, also compute unfiltered totals per sub-tab
   // so the UI can show "0/81" instead of just "0".
@@ -221,7 +225,7 @@ export async function GET(req: NextRequest) {
     page,
     pages: Math.ceil(filteredTotal / limit),
     nextCursor,
-    kindCounts: { posts: postsCount, stories: storiesCount },
+    kindCounts: { posts: postsCount, reels: reelsCount, stories: storiesCount },
     subKindCounts,
     ...(subKindTotals ? { subKindTotals } : {}),
   });

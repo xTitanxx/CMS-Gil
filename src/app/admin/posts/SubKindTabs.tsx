@@ -15,6 +15,9 @@ export type SubKindCounts = {
   storiesAll: number;
   storiesVideoAudio: number;
   storiesVideoSilent: number;
+  reelsAll: number;
+  reelsVideoAudio: number;
+  reelsVideoSilent: number;
 };
 
 interface Tab {
@@ -39,6 +42,12 @@ const STORIES_TABS: Tab[] = [
   { value: "video-silent", label: "Silent", countKey: "storiesVideoSilent", icon: VolumeX },
 ];
 
+const REELS_TABS: Tab[] = [
+  { value: "all", label: "All", countKey: "reelsAll", icon: LayoutGrid },
+  { value: "video-audio", label: "With sound", countKey: "reelsVideoAudio", icon: Volume2 },
+  { value: "video-silent", label: "Silent", countKey: "reelsVideoSilent", icon: VolumeX },
+];
+
 const DEFAULT_SUB = "all";
 
 export function SubKindTabs({
@@ -56,7 +65,7 @@ export function SubKindTabs({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const tabs = kind === "stories" ? STORIES_TABS : POSTS_TABS;
+  const tabs = kind === "stories" ? STORIES_TABS : kind === "reels" ? REELS_TABS : POSTS_TABS;
   const active =
     tabs.find((t) => t.value === current)?.value ?? DEFAULT_SUB;
 

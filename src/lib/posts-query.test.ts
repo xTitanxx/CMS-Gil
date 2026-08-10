@@ -47,6 +47,15 @@ describe("parsePostsFilters", () => {
 });
 
 describe("buildPostsQuery", () => {
+  it("keeps posts, reels, and stories on separate feed surfaces", () => {
+    const posts = buildPostsQuery({ kind: "posts" }, "user_1").where;
+    const reels = buildPostsQuery({ kind: "reels" }, "user_1").where;
+    const stories = buildPostsQuery({ kind: "stories" }, "user_1").where;
+    expect(posts.AND).toEqual(expect.arrayContaining([{ postType: "POST" }]));
+    expect(reels.AND).toEqual(expect.arrayContaining([{ postType: "REEL" }]));
+    expect(stories.AND).toEqual(expect.arrayContaining([{ postType: "STORY" }]));
+  });
+
   it("always orders by composite (field, id) to tiebreak", () => {
     const { orderBy } = buildPostsQuery({}, "user_1");
     expect(orderBy).toEqual([

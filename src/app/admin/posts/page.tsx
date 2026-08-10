@@ -21,11 +21,15 @@ export default async function PostsPage({
   const sp = await searchParams;
   const view = pick(sp, "view") === "feed" ? "feed" : "list";
   const kindRaw = pick(sp, "kind");
-  const kindParam: "posts" | "stories" =
-    kindRaw === "stories" ? "stories" : "posts";
+  const kindParam: "posts" | "stories" | "reels" =
+    kindRaw === "stories" ? "stories" : kindRaw === "reels" ? "reels" : "posts";
 
   if (view === "feed" && kindParam === "stories") {
     return <StoriesReel />;
+  }
+
+  if (view === "feed" && kindParam === "reels") {
+    return <ReelsFeed />;
   }
 
   if (view === "feed") {
